@@ -17,4 +17,10 @@ public enum EditorTool
 
     /// <summary>Eyedropper: adopts the picked voxel's color as the active one.</summary>
     Pick,
+
+    /// <summary>Drags out an axis-aligned box selection to operate on as a whole.</summary>
+    BoxSelect,
+
+    /// <summary>Pulls the connected coplanar surface under the cursor out by one layer.</summary>
+    Extrude,
 }

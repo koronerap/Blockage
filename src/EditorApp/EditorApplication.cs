@@ -23,6 +23,8 @@ public sealed class EditorApplication : IDisposable
     private static readonly Color32 GridMajor = new(92, 100, 110);
     private static readonly Color32 HighlightColor = new(255, 236, 120);
     private static readonly Color32 BrushOutlineColor = new(255, 160, 60);
+    private static readonly Color32 SelectionColor = new(120, 230, 140);
+    private static readonly Color32 PastePreviewColor = new(120, 200, 255);
 
     private readonly IWindow _window;
     private readonly int _smokeFrames;
@@ -43,6 +45,8 @@ public sealed class EditorApplication : IDisposable
     private bool _leftButtonWasDown;
     private RaycastHit? _hover;
     private Int3? _groundHover;
+    private Int3? _selectionAnchor;
+    private bool _pastePending;
     private int _frameCount;
     private float _lastDelta = 1f / 60f;
 
@@ -203,9 +207,37 @@ public sealed class EditorApplication : IDisposable
             && !ImGui.GetIO().WantCaptureMouse
             && !_looking;
 
+        bool pressed = leftDown && !_leftButtonWasDown;
+        bool released = !leftDown && _leftButtonWasDown;
+        _leftButtonWasDown = leftDown;
+
+        // Placing a pasted block takes priority: the click commits it rather than running a tool.
+        if (_pastePending)
+        {
+            UpdatePastePlacement(pressed);
+            return;
+        }
+
+        if (_session.ActiveTool == EditorTool.BoxSelect)
+        {
+            UpdateBoxSelection(leftDown, pressed, released);
+            return;
+        }
+
+        // Extrude fires once per click, never per frame: held down it would run away from the user.
+        if (_session.ActiveTool == EditorTool.Extrude)
+        {
+            if (pressed && _hover is { } surface)
+            {
+                _session.ExtrudeSurfaceAt(surface, IsAltHeld() ? -1 : 1);
+            }
+
+            return;
+        }
+
         if (leftDown)
         {
-            if (!_leftButtonWasDown)
+            if (pressed)
             {
                 _session.BeginStroke();
             }
@@ -219,12 +251,57 @@ public sealed class EditorApplication : IDisposable
                 _session.PlaceAt(cell);
             }
         }
-        else if (_leftButtonWasDown)
+        else if (released)
         {
             _session.EndStroke();
         }
+    }
 
-        _leftButtonWasDown = leftDown;
+    /// <summary>Drag from the first picked cell to the current one; the box follows the cursor live.</summary>
+    private void UpdateBoxSelection(bool leftDown, bool pressed, bool released)
+    {
+        Int3? cursorCell = _hover?.Voxel ?? _groundHover;
+
+        if (pressed && cursorCell is { } anchor)
+        {
+            _selectionAnchor = anchor;
+            _session.Selection = VoxelBox.Single(anchor);
+        }
+        else if (leftDown && _selectionAnchor is { } start && cursorCell is { } current)
+        {
+            _session.Selection = VoxelBox.FromCorners(start, current);
+        }
+        else if (released)
+        {
+            _selectionAnchor = null;
+        }
+    }
+
+    /// <summary>The clipboard follows the cursor until a click commits it (or Esc cancels).</summary>
+    private void UpdatePastePlacement(bool pressed)
+    {
+        if (!pressed || PasteOrigin() is not { } origin)
+        {
+            return;
+        }
+
+        _session.PasteAt(origin);
+        _pastePending = false;
+    }
+
+    private bool IsAltHeld() =>
+        _input is { Keyboards.Count: > 0 }
+        && (_input.Keyboards[0].IsKeyPressed(Key.AltLeft) || _input.Keyboards[0].IsKeyPressed(Key.AltRight));
+
+    /// <summary>Where the clipboard's minimum corner would land right now, or null if not aiming anywhere.</summary>
+    private Int3? PasteOrigin()
+    {
+        if (_hover is { } hit)
+        {
+            return hit.Placement;
+        }
+
+        return _groundHover;
     }
 
     private void OnKeyDown(IKeyboard keyboard, Key key, int _)
@@ -250,6 +327,32 @@ public sealed class EditorApplication : IDisposable
             case Key.Number3: _session.ActiveTool = EditorTool.Paint; break;
             case Key.Number4: _session.ActiveTool = EditorTool.Fill; break;
             case Key.Number5: _session.ActiveTool = EditorTool.Pick; break;
+            case Key.Number6: _session.ActiveTool = EditorTool.BoxSelect; break;
+            case Key.Number7: _session.ActiveTool = EditorTool.Extrude; break;
+
+            case Key.A when control: _session.SelectAll(); break;
+            case Key.C when control: _session.CopySelection(); break;
+            case Key.X when control: _session.CutSelection(); break;
+
+            case Key.V when control:
+                _pastePending = _session.HasClipboard;
+                break;
+
+            case Key.Delete:
+                _session.DeleteSelection();
+                break;
+
+            case Key.Escape:
+                if (_pastePending)
+                {
+                    _pastePending = false;
+                }
+                else
+                {
+                    _session.ClearSelection();
+                }
+
+                break;
 
             case Key.Z when control && shift:
             case Key.Y when control:
@@ -303,17 +406,43 @@ public sealed class EditorApplication : IDisposable
         lines.Clear();
         lines.AddGroundGrid(64, GridMinor, GridMajor);
 
+        if (_session.Selection is { } selection)
+        {
+            (Vector3 min, Vector3 max) = selection.ToWorldBounds();
+            lines.AddBox(min, max, SelectionColor);
+        }
+
+        if (_pastePending)
+        {
+            AddPastePreview(lines);
+            return;   // the cursor is placing a block, not pointing a brush
+        }
+
         if (_hover is { } hit)
         {
             lines.AddVoxelFace(hit.Voxel, hit.Face, HighlightColor);
 
-            Int3 center = _session.ActiveTool == EditorTool.Place ? hit.Placement : hit.Voxel;
-            AddBrushOutline(lines, center);
+            if (_session.ActiveTool is not (EditorTool.BoxSelect or EditorTool.Extrude))
+            {
+                Int3 center = _session.ActiveTool == EditorTool.Place ? hit.Placement : hit.Voxel;
+                AddBrushOutline(lines, center);
+            }
         }
-        else if (_groundHover is { } cell)
+        else if (_groundHover is { } cell && _session.ActiveTool != EditorTool.BoxSelect)
         {
             AddBrushOutline(lines, cell);
         }
+    }
+
+    private void AddPastePreview(LineBatch lines)
+    {
+        if (_session.Clipboard is not { } clip || PasteOrigin() is not { } origin)
+        {
+            return;
+        }
+
+        (Vector3 min, Vector3 max) = clip.BoxAt(origin).ToWorldBounds();
+        lines.AddBox(min, max, PastePreviewColor);
     }
 
     private void AddBrushOutline(LineBatch lines, Int3 center)
@@ -330,6 +459,7 @@ public sealed class EditorApplication : IDisposable
         MainMenu.Draw(_session, _project!, _export!, _window.Close);
         StatsOverlay.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
         ToolPanel.Draw(_session, _hover);
+        SelectionPanel.Draw(_session);
         _palettePanel.Draw(_session);
         _project!.DrawDialogs();
         _export!.Draw();

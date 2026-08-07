@@ -62,11 +62,27 @@ public sealed class EditorSession
         _stroke = null;
     }
 
+    /// <summary>The active box selection, or null. Region operations act on this.</summary>
+    public VoxelBox? Selection { get; set; }
+
+    /// <summary>The copied region, or null. Survives until the next copy or cut.</summary>
+    public VoxelClip? Clipboard { get; private set; }
+
+    public bool HasSelection => Selection is not null;
+
+    public bool HasClipboard => Clipboard is not null;
+
     /// <summary>Applies the active tool to a picking result. Returns true when something changed.</summary>
     public bool ApplyTool(RaycastHit hit)
     {
         switch (ActiveTool)
         {
+            case EditorTool.Extrude:
+                return ExtrudeSurfaceAt(hit, layers: 1);
+
+            case EditorTool.BoxSelect:
+                return false;   // driven by drag state in the host, not by a single click
+
             case EditorTool.Pick:
                 byte picked = World.GetVoxel(hit.Voxel);
                 if (picked == Palette.EmptyIndex)
@@ -122,6 +138,129 @@ public sealed class EditorSession
         return changed;
     }
 
+    /// <summary>
+    /// Runs a region edit as exactly one undo step, independent of any stroke the mouse has open.
+    /// Returns false when nothing changed, in which case no history entry is created.
+    /// </summary>
+    private bool RunStep(string name, Func<VoxelEditCommand, int> operation)
+    {
+        EndStroke();
+
+        var command = new VoxelEditCommand(name);
+        if (operation(command) == 0 || command.IsEmpty)
+        {
+            return false;
+        }
+
+        History.Push(command);
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    public void ClearSelection() => Selection = null;
+
+    /// <summary>Selects everything in the level.</summary>
+    public bool SelectAll()
+    {
+        if (!World.TryGetBounds(out Int3 min, out Int3 max))
+        {
+            return false;
+        }
+
+        Selection = new VoxelBox(min, max);
+        return true;
+    }
+
+    public bool FillSelection() =>
+        Selection is { } box && RunStep("Fill region", c => RegionOperations.Fill(World, box, ActiveColorIndex, c));
+
+    public bool PaintSelection() =>
+        Selection is { } box && RunStep("Paint region", c => RegionOperations.Paint(World, box, ActiveColorIndex, c));
+
+    public bool DeleteSelection() =>
+        Selection is { } box && RunStep("Delete region", c => RegionOperations.Delete(World, box, c));
+
+    public bool MirrorSelection(Axis axis) =>
+        Selection is { } box && RunStep($"Mirror {axis}", c => RegionOperations.Mirror(World, box, axis, c));
+
+    public bool MoveSelection(Int3 delta)
+    {
+        if (Selection is not { } box || delta == Int3.Zero)
+        {
+            return false;
+        }
+
+        if (!RunStep("Move region", c => RegionOperations.Move(World, box, delta, c)))
+        {
+            return false;
+        }
+
+        // The selection follows the voxels it was on, so a move can be repeated.
+        Selection = box.Translate(delta);
+        return true;
+    }
+
+    /// <summary>Extrudes one face of the selection; the selection grows to include the new layers.</summary>
+    public bool ExtrudeSelection(Face face, int layers)
+    {
+        if (Selection is not { } box || layers == 0)
+        {
+            return false;
+        }
+
+        if (!RunStep($"Extrude {face}", c => RegionOperations.Extrude(World, box, face, layers, c)))
+        {
+            return false;
+        }
+
+        // Signed growth: a negative layer count points the offset back into the box, so intruding
+        // shrinks the same edge that extruding grows.
+        Int3 growth = FaceInfo.Offset(face) * layers;
+        VoxelBox grown = FaceInfo.IsPositive(face)
+            ? box with { Max = box.Max + growth }
+            : box with { Min = box.Min + growth };
+
+        // An intrude that eats the whole box leaves nothing to select.
+        int axis = FaceInfo.Axis(face);
+        Selection = VoxelBox.Component(grown.Size, axis) >= 1 ? grown : null;
+        return true;
+    }
+
+    public bool ExtrudeSurfaceAt(RaycastHit hit, int layers) =>
+        RunStep(
+            layers > 0 ? "Extrude surface" : "Intrude surface",
+            c => RegionOperations.ExtrudeSurface(World, hit.Voxel, hit.Face, layers, c));
+
+    public bool CopySelection()
+    {
+        if (Selection is not { } box)
+        {
+            return false;
+        }
+
+        Clipboard = VoxelClip.Copy(World, box);
+        return true;
+    }
+
+    public bool CutSelection() => CopySelection() && DeleteSelection();
+
+    /// <summary>Stamps the clipboard with its minimum corner at <paramref name="origin"/>.</summary>
+    public bool PasteAt(Int3 origin)
+    {
+        if (Clipboard is not { } clip)
+        {
+            return false;
+        }
+
+        if (!RunStep("Paste", c => clip.Paste(World, origin, c)))
+        {
+            return false;
+        }
+
+        Selection = clip.BoxAt(origin);
+        return true;
+    }
+
     public bool Undo()
     {
         EndStroke();
@@ -170,6 +309,7 @@ public sealed class EditorSession
     public void ReplaceWorld(VoxelWorld world, string? projectPath)
     {
         _stroke = null;
+        Selection = null;
         World = world;
         World.MarkAllDirty();
         History.Clear();

@@ -15,6 +15,8 @@ public static class ToolPanel
         (EditorTool.Paint, "Paint", "3", "Recolors the voxel under the cursor."),
         (EditorTool.Fill, "Fill", "4", "Recolors the connected run of matching voxels."),
         (EditorTool.Pick, "Pick", "5", "Adopts the color under the cursor."),
+        (EditorTool.BoxSelect, "Select", "6", "Drags out a box selection. Esc clears it."),
+        (EditorTool.Extrude, "Extrude", "7", "Pulls the connected surface out one layer. Hold Alt to push it in."),
     ];
 
     public static void Draw(EditorSession session, RaycastHit? hover)
