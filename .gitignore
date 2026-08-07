@@ -1,0 +1,23 @@
+## .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+*.userprefs
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+
+## NuGet
+*.nupkg
+packages/
+
+## Editor output — exported meshes and test scratch
+exports/
+*.vxlevel.bak
