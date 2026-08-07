@@ -1,9 +1,0 @@
-﻿palette.png — generated palette texture (128x128)
-
-  Filtering : Point / Nearest        (voxel art wants hard edges)
-  Mipmaps   : fine to leave on       (8x8 blocks survive 3-4 levels without bleeding)
-  Color     : sRGB                   (this is color data, not linear)
-  Wrapping  : Clamp
-
-Every face samples the exact center of its palette block, so quad size never affects the
-color. Keep the PNG next to the mesh file: the mesh references it by relative path.

@@ -1,9 +1,0 @@
-﻿# Exported by EditorApp
-# One material for the whole level; color comes from the palette texture.
-newmtl palette
-Ka 0 0 0
-Kd 1 1 1
-Ks 0 0 0
-d 1
-illum 1
-map_Kd palette.png

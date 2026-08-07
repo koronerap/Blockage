@@ -21,3 +21,4 @@ packages/
 ## Editor output — exported meshes and test scratch
 exports/
 *.vxlevel.bak
+out/
