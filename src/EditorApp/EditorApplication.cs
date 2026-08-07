@@ -34,6 +34,8 @@ public sealed class EditorApplication : IDisposable
     private IInputContext? _input;
     private ImGuiController? _imgui;
     private GlRenderer? _renderer;
+    private ProjectController? _project;
+    private string _windowTitle = string.Empty;
 
     private Vector2 _previousMousePosition;
     private bool _looking;
@@ -74,6 +76,7 @@ public sealed class EditorApplication : IDisposable
         _input = _window.CreateInput();
         _imgui = new ImGuiController(_gl, _window, _input);
         _renderer = new GlRenderer(_gl);
+        _project = new ProjectController(_session, () => _renderer.ResetBuffers());
 
         DemoScene.Fill(_session.World);
         _session.ActiveColorIndex = 96;
@@ -136,6 +139,12 @@ public sealed class EditorApplication : IDisposable
         }
 
         if (io.WantCaptureKeyboard)
+        {
+            return;
+        }
+
+        // Ctrl is a menu modifier (Ctrl+S, Ctrl+Z...), never a movement key.
+        if (keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight))
         {
             return;
         }
@@ -228,6 +237,11 @@ public sealed class EditorApplication : IDisposable
 
         switch (key)
         {
+            case Key.N when control: _project?.NewProject(); break;
+            case Key.O when control: _project?.OpenProject(); break;
+            case Key.S when control && shift: _project?.SaveAs(); break;
+            case Key.S when control: _project?.Save(); break;
+
             case Key.Number1: _session.ActiveTool = EditorTool.Place; break;
             case Key.Number2: _session.ActiveTool = EditorTool.Erase; break;
             case Key.Number3: _session.ActiveTool = EditorTool.Paint; break;
@@ -310,9 +324,19 @@ public sealed class EditorApplication : IDisposable
 
     private void DrawUi()
     {
+        MainMenu.Draw(_session, _project!, _window.Close);
         StatsOverlay.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
         ToolPanel.Draw(_session, _hover);
         _palettePanel.Draw(_session);
+        _project!.DrawDialogs();
+
+        // The asterisk in the title is the only always-visible unsaved-changes indicator.
+        string title = _project.WindowTitle;
+        if (title != _windowTitle)
+        {
+            _windowTitle = title;
+            _window.Title = title;
+        }
     }
 
     private void OnFramebufferResize(Vector2D<int> size) =>
