@@ -7,7 +7,7 @@ namespace EditorApp.Ui;
 /// <summary>The menu bar and the status line under it.</summary>
 public static class MainMenu
 {
-    public static void Draw(EditorSession session, ProjectController project, Action onExit)
+    public static void Draw(EditorSession session, ProjectController project, ExportController export, Action onExit)
     {
         if (!ImGui.BeginMainMenuBar())
         {
@@ -38,6 +38,13 @@ public static class MainMenu
             if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
             {
                 project.SaveAs();
+            }
+
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Export mesh...", "Ctrl+E"))
+            {
+                export.Show();
             }
 
             ImGui.Separator();

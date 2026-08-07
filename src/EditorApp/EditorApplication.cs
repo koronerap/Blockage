@@ -35,6 +35,7 @@ public sealed class EditorApplication : IDisposable
     private ImGuiController? _imgui;
     private GlRenderer? _renderer;
     private ProjectController? _project;
+    private ExportController? _export;
     private string _windowTitle = string.Empty;
 
     private Vector2 _previousMousePosition;
@@ -77,6 +78,7 @@ public sealed class EditorApplication : IDisposable
         _imgui = new ImGuiController(_gl, _window, _input);
         _renderer = new GlRenderer(_gl);
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());
+        _export = new ExportController(_session);
 
         DemoScene.Fill(_session.World);
         _session.ActiveColorIndex = 96;
@@ -241,6 +243,7 @@ public sealed class EditorApplication : IDisposable
             case Key.O when control: _project?.OpenProject(); break;
             case Key.S when control && shift: _project?.SaveAs(); break;
             case Key.S when control: _project?.Save(); break;
+            case Key.E when control: _export?.Show(); break;
 
             case Key.Number1: _session.ActiveTool = EditorTool.Place; break;
             case Key.Number2: _session.ActiveTool = EditorTool.Erase; break;
@@ -324,11 +327,12 @@ public sealed class EditorApplication : IDisposable
 
     private void DrawUi()
     {
-        MainMenu.Draw(_session, _project!, _window.Close);
+        MainMenu.Draw(_session, _project!, _export!, _window.Close);
         StatsOverlay.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
         ToolPanel.Draw(_session, _hover);
         _palettePanel.Draw(_session);
         _project!.DrawDialogs();
+        _export!.Draw();
 
         // The asterisk in the title is the only always-visible unsaved-changes indicator.
         string title = _project.WindowTitle;
