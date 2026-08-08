@@ -20,11 +20,16 @@ public sealed class PalettePanel
 {
     private const int Columns = 16;
     private const float SwatchGap = 2f;
+    private const float PickerWidth = 240f;
+
+    private const string PickerPopupId = "free-picker";
+    private const string EditPopupId = "library-edit";
 
     private Vector3 _working = new(0.85f, 0.35f, 0.25f);
 
     private int _editingIndex = -1;
     private Color32 _editingBefore;
+    private bool _openEditPopup;
 
     public void DrawContent(EditorSession session)
     {
@@ -48,11 +53,18 @@ public sealed class PalettePanel
         int active = session.ActiveColorIndex;
         float height = ImGui.GetFrameHeight();
 
-        ImGui.ColorButton(
+        // The swatch itself opens the picker. Clicking a colour to change it is the obvious
+        // gesture, and a button beside it was the only way in.
+        bool openPicker = ImGui.ColorButton(
             "##active",
             palette[active].ToVector4(),
             ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip,
             new Vector2(height * 2f, height));
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Click to choose any colour.");
+        }
 
         ImGui.SameLine();
         ImGui.AlignTextToFramePadding();
@@ -60,17 +72,24 @@ public sealed class PalettePanel
         ImGui.SameLine();
         ImGui.TextDisabled(palette[active].ToString());
 
-        // The picker is a popover: it is the tallest control here and it is wanted for a few
-        // seconds at a time, while the swatch rows are what the panel is for.
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 46f + ImGui.GetCursorPosX());
-        if (ImGui.Button("Pick"))
+        const float pickWidth = 52f;
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - pickWidth);
+        if (ImGui.Button("Pick", new Vector2(pickWidth, 0f)))
         {
-            ImGui.OpenPopup("free-picker");
+            openPicker = true;
         }
 
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip("Choose any colour. It is matched to the palette,\nor saved to a custom slot if it is new.");
+        }
+
+        if (openPicker)
+        {
+            // Start from where the user already is, rather than from whatever was picked last.
+            Vector4 current = palette[active].ToVector4();
+            _working = new Vector3(current.X, current.Y, current.Z);
+            ImGui.OpenPopup(PickerPopupId);
         }
 
         DrawPickerPopup(session);
@@ -82,15 +101,19 @@ public sealed class PalettePanel
     /// </summary>
     private void DrawPickerPopup(EditorSession session)
     {
-        if (!ImGui.BeginPopup("free-picker"))
+        if (!ImGui.BeginPopup(PickerPopupId))
         {
             return;
         }
 
+        // An explicit width is required. A popup auto-sizes to its contents, and the picker sizes
+        // itself from the window, so left to themselves on the first frame they collapse each
+        // other to nothing and the picker cannot be used at all.
+        ImGui.SetNextItemWidth(PickerWidth);
         ImGui.ColorPicker3(
             "##picker",
             ref _working,
-            ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.NoSmallPreview | ImGuiColorEditFlags.DisplayRGB);
+            ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB);
 
         var colour = Color32.FromVector4(new Vector4(_working, 1f));
         byte? existing = session.Scene.Palette.FindExact(colour);
@@ -107,7 +130,7 @@ public sealed class PalettePanel
                 : "No free custom slot - the oldest unused one is reused.");
         }
 
-        if (ImGui.Button("Use colour", new Vector2(-1f, 0f)))
+        if (ImGui.Button("Use colour", new Vector2(PickerWidth, 0f)))
         {
             session.SelectColor(colour);
             ImGui.CloseCurrentPopup();
@@ -188,10 +211,11 @@ public sealed class PalettePanel
 
         if (ImGui.MenuItem("Edit colour..."))
         {
+            // Only record the intent. Opening a popup from inside the popup that is closing puts
+            // it on the wrong ID stack, so the panel opens it next frame instead.
             _editingIndex = index;
             _editingBefore = session.Scene.Palette[index];
-            ImGui.CloseCurrentPopup();
-            ImGui.OpenPopup("library-edit");
+            _openEditPopup = true;
         }
 
         if (ImGui.IsItemHovered())
@@ -213,33 +237,30 @@ public sealed class PalettePanel
     /// </summary>
     private void DrawLibraryEditPopup(EditorSession session, Palette palette)
     {
-        if (_editingIndex < 1)
+        if (_openEditPopup)
+        {
+            ImGui.OpenPopup(EditPopupId);
+            _openEditPopup = false;
+        }
+
+        if (_editingIndex < 1 || !ImGui.BeginPopup(EditPopupId))
         {
             return;
         }
 
-        if (!ImGui.IsPopupOpen("library-edit"))
-        {
-            ImGui.OpenPopup("library-edit");
-        }
-
-        if (!ImGui.BeginPopup("library-edit"))
-        {
-            return;
-        }
-
-        ImGui.Text($"Palette index {_editingIndex}");
+        ImGui.SeparatorText($"Palette index {_editingIndex}");
         ImGui.TextDisabled("Every voxel using this index is recoloured.");
 
         Vector4 rgba = palette[_editingIndex].ToVector4();
         var rgb = new Vector3(rgba.X, rgba.Y, rgba.Z);
 
+        ImGui.SetNextItemWidth(PickerWidth);
         if (ImGui.ColorPicker3("##edit", ref rgb, ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB))
         {
             session.ApplyPaletteColor(_editingIndex, Color32.FromVector4(new Vector4(rgb, 1f)));
         }
 
-        if (ImGui.Button("Done", new Vector2(-1f, 0f)))
+        if (ImGui.Button("Done", new Vector2(PickerWidth, 0f)))
         {
             // The whole drag lands in history as one step, not one per frame.
             session.PushPaletteEdit(_editingIndex, _editingBefore, palette[_editingIndex]);
