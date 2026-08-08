@@ -122,6 +122,113 @@ public static class PaintOperations
         && Math.Abs(candidate.G - target.G) <= threshold
         && Math.Abs(candidate.B - target.B) <= threshold;
 
+    /// <summary>
+    /// Paints a straight line between two cells, brushing at every step of a 3D Bresenham walk.
+    /// Applied once from the finished endpoints rather than as the cursor moves — a freehand path
+    /// would otherwise leave half-drawn strokes everywhere the cursor happened to pass.
+    /// </summary>
+    public static int Line(Int3 from, Int3 to, float radius, byte paletteIndex, VoxelEditCommand command)
+    {
+        int changed = 0;
+        foreach (Int3 cell in Walk(from, to))
+        {
+            changed += Brush(cell, radius, paletteIndex, command);
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Paints the twelve edges of the box spanned by two cells — a hollow frame, not a filled box.
+    /// </summary>
+    public static int BoxFrame(Int3 from, Int3 to, float radius, byte paletteIndex, VoxelEditCommand command)
+    {
+        VoxelBox box = VoxelBox.FromCorners(from, to);
+
+        Span<Int3> corners =
+        [
+            new(box.Min.X, box.Min.Y, box.Min.Z), new(box.Max.X, box.Min.Y, box.Min.Z),
+            new(box.Max.X, box.Min.Y, box.Max.Z), new(box.Min.X, box.Min.Y, box.Max.Z),
+            new(box.Min.X, box.Max.Y, box.Min.Z), new(box.Max.X, box.Max.Y, box.Min.Z),
+            new(box.Max.X, box.Max.Y, box.Max.Z), new(box.Min.X, box.Max.Y, box.Max.Z),
+        ];
+
+        int changed = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            changed += Line(corners[i], corners[(i + 1) & 3], radius, paletteIndex, command);
+            changed += Line(corners[i + 4], corners[((i + 1) & 3) + 4], radius, paletteIndex, command);
+            changed += Line(corners[i], corners[i + 4], radius, paletteIndex, command);
+        }
+
+        return changed;
+    }
+
+    /// <summary>3D Bresenham: every cell the straight line between two points passes through.</summary>
+    public static IEnumerable<Int3> Walk(Int3 from, Int3 to)
+    {
+        int dx = Math.Abs(to.X - from.X);
+        int dy = Math.Abs(to.Y - from.Y);
+        int dz = Math.Abs(to.Z - from.Z);
+
+        int sx = Math.Sign(to.X - from.X);
+        int sy = Math.Sign(to.Y - from.Y);
+        int sz = Math.Sign(to.Z - from.Z);
+
+        Int3 current = from;
+        yield return current;
+
+        // Step along whichever axis is longest and carry the error on the other two.
+        if (dx >= dy && dx >= dz)
+        {
+            int errorY = 2 * dy - dx;
+            int errorZ = 2 * dz - dx;
+
+            for (int i = 0; i < dx; i++)
+            {
+                if (errorY > 0) { current = current with { Y = current.Y + sy }; errorY -= 2 * dx; }
+                if (errorZ > 0) { current = current with { Z = current.Z + sz }; errorZ -= 2 * dx; }
+
+                errorY += 2 * dy;
+                errorZ += 2 * dz;
+                current = current with { X = current.X + sx };
+                yield return current;
+            }
+        }
+        else if (dy >= dz)
+        {
+            int errorX = 2 * dx - dy;
+            int errorZ = 2 * dz - dy;
+
+            for (int i = 0; i < dy; i++)
+            {
+                if (errorX > 0) { current = current with { X = current.X + sx }; errorX -= 2 * dy; }
+                if (errorZ > 0) { current = current with { Z = current.Z + sz }; errorZ -= 2 * dy; }
+
+                errorX += 2 * dx;
+                errorZ += 2 * dz;
+                current = current with { Y = current.Y + sy };
+                yield return current;
+            }
+        }
+        else
+        {
+            int errorX = 2 * dx - dz;
+            int errorY = 2 * dy - dz;
+
+            for (int i = 0; i < dz; i++)
+            {
+                if (errorX > 0) { current = current with { X = current.X + sx }; errorX -= 2 * dz; }
+                if (errorY > 0) { current = current with { Y = current.Y + sy }; errorY -= 2 * dz; }
+
+                errorX += 2 * dx;
+                errorY += 2 * dy;
+                current = current with { Z = current.Z + sz };
+                yield return current;
+            }
+        }
+    }
+
     /// <summary>The eyedropper: the colour under the cursor, or null when there is nothing to sample.</summary>
     public static byte? Sample(VoxelWorld world, Int3 cell)
     {

@@ -63,6 +63,8 @@ public sealed class EditorApplication : IDisposable
     private ExtrudeInteraction? _extrude;
     private TransformInteraction? _transform;
     private RaycastHit? _hover;
+    private Int3? _paintShapeStart;
+    private bool _paintShapeIsBox;
     private bool _showGrid = true;
     private bool _showMeasurements = true;
     private int _frameCount;
@@ -315,11 +317,19 @@ public sealed class EditorApplication : IDisposable
 
     private void UpdatePaint(bool leftDown, bool pressed, bool released)
     {
+        if (pressed)
+        {
+            // The shape modifier is read once, when the drag starts.
+            _paintShapeIsBox = IsControlHeld();
+            _paintShapeStart = (IsShiftHeld() || _paintShapeIsBox) && _hover is { } start ? start.Voxel : null;
+        }
+
         if (_hover is not { } hit)
         {
             if (released)
             {
                 _session.EndStroke();
+                _paintShapeStart = null;
             }
 
             return;
@@ -331,6 +341,18 @@ public sealed class EditorApplication : IDisposable
             if (pressed)
             {
                 _session.SampleColor(hit);
+            }
+
+            return;
+        }
+
+        // A line or box drag draws nothing until it is let go, so the cursor's path leaves no trail.
+        if (_paintShapeStart is { } anchor)
+        {
+            if (released)
+            {
+                _session.PaintShape(anchor, hit.Voxel, _paintShapeIsBox);
+                _paintShapeStart = null;
             }
 
             return;
@@ -588,6 +610,7 @@ public sealed class EditorApplication : IDisposable
             if (_session.ActiveTool == EditorTool.Paint)
             {
                 AddBrushOutline(lines, hit.Voxel);
+                AddPaintShapePreview(lines, hit.Voxel);
             }
         }
 
@@ -746,6 +769,29 @@ public sealed class EditorApplication : IDisposable
         lines.AddLine(arrow.End, barbBase - side, ArrowColor);
         lines.AddLine(arrow.End, barbBase + other, ArrowColor);
         lines.AddLine(arrow.End, barbBase - other, ArrowColor);
+    }
+
+    /// <summary>Shows where a Shift or Ctrl drag would land before it is committed.</summary>
+    private void AddPaintShapePreview(LineBatch lines, Int3 cursor)
+    {
+        if (_paintShapeStart is not { } anchor)
+        {
+            return;
+        }
+
+        var half = new Vector3(0.5f);
+
+        if (_paintShapeIsBox)
+        {
+            (Vector3 min, Vector3 max) = VoxelBox.FromCorners(anchor, cursor).ToWorldBounds();
+            lines.AddBox(min, max, BrushOutlineColor);
+            return;
+        }
+
+        lines.AddLine(
+            anchor.ToVector3() + half,
+            cursor.ToVector3() + half,
+            BrushOutlineColor);
     }
 
     private void AddBrushOutline(LineBatch lines, Int3 center)

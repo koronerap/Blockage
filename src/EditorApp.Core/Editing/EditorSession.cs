@@ -215,12 +215,51 @@ public sealed class EditorSession
             return false;
         }
 
+        // Create only makes sense pulling out; pushing in has nothing to hand to a new object, so
+        // it behaves like a plain extrude.
+        if (ExtrudeCreatesObject && ExtrudeSteps > 0 && Scene.Focus is { } source)
+        {
+            return ConfirmExtrudeAsNewObject(preview, source);
+        }
+
         History.Push(preview);
         HasUnsavedChanges = true;
 
         Selection = ExtrudeOperation.Advance(selection, ExtrudeSteps);
         _extrudePreview = null;
         ExtrudeSteps = 0;
+        return true;
+    }
+
+    private bool ConfirmExtrudeAsNewObject(VoxelEditCommand preview, VoxelObject source)
+    {
+        var grid = new VoxelWorld();
+        foreach ((Int3 position, byte value) in preview.Written())
+        {
+            if (value != Palette.EmptyIndex)
+            {
+                grid.SetVoxel(position, value);
+            }
+        }
+
+        // Take the voxels back out of the object they were pulled from; they belong to the new one.
+        preview.Undo();
+        _extrudePreview = null;
+        ExtrudeSteps = 0;
+
+        if (grid.SolidCount == 0)
+        {
+            return false;
+        }
+
+        // Same transform, and the voxels keep their coordinates, so the new object appears exactly
+        // where the extrude drew it.
+        var command = new CreateObjectCommand(Scene, grid, source.Transform, source.Name + " (extruded)");
+        command.Redo();
+        History.Push(command);
+
+        Selection = null;
+        HasUnsavedChanges = true;
         return true;
     }
 
@@ -246,6 +285,17 @@ public sealed class EditorSession
             _ => PaintOperations.Brush(hit.Voxel, BrushRadius, ActiveColorIndex, _stroke!) > 0,
         };
     }
+
+    /// <summary>
+    /// Paints a straight line or a hollow box between two cells, as one step. Shift and Ctrl drags
+    /// commit their shape on release rather than as the cursor travels.
+    /// </summary>
+    public bool PaintShape(Int3 from, Int3 to, bool asBox) =>
+        RunStep(
+            asBox ? "Paint box" : "Paint line",
+            c => asBox
+                ? PaintOperations.BoxFrame(from, to, BrushRadius, ActiveColorIndex, c)
+                : PaintOperations.Line(from, to, BrushRadius, ActiveColorIndex, c));
 
     /// <summary>The eyedropper. Returns false when there is nothing to sample.</summary>
     public bool SampleColor(RaycastHit hit)

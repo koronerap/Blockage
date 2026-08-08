@@ -26,6 +26,18 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
     public bool IsEmpty => _changes.Count == 0;
 
     /// <summary>
+    /// The cells this command wrote and what it put there. Extrude's Create sub-mode uses it to
+    /// lift the voxels it just made into an object of their own.
+    /// </summary>
+    public IEnumerable<(Int3 Position, byte Value)> Written()
+    {
+        foreach (CellChange change in _changes)
+        {
+            yield return (change.Position, change.After);
+        }
+    }
+
+    /// <summary>
     /// Writes a voxel and records the change. Returns false when nothing changed. A cell touched
     /// more than once inside the same command keeps its original "before" value, so undoing a drag
     /// that crossed itself still restores the state from before the drag.
