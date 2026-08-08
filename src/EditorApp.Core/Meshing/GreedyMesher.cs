@@ -67,9 +67,13 @@ public static class GreedyMesher
         var mask = new byte[uCount * vCount];
         Span<int> position = stackalloc int[3];
 
+        // Rows run along one axis, so this cursor stays inside the same chunk for 32 cells at a
+        // time. Nothing writes to the world during a sweep, so the cache cannot go stale.
+        var reader = new VoxelReader(world);
+
         for (int slice = minimum[axis]; slice <= maximum[axis]; slice++)
         {
-            BuildMask(world, mask, axis, uAxis, vAxis, slice, minimum, uCount, vCount, neighbourOffset, position);
+            BuildMask(ref reader, mask, axis, uAxis, vAxis, slice, minimum, uCount, vCount, neighbourOffset, position);
             EmitQuads(mesh, mask, face, axis, uAxis, vAxis, slice, minimum, uCount, vCount, normal, uvSelector);
         }
     }
@@ -79,7 +83,7 @@ public static class GreedyMesher
     /// Storing the index rather than a flag is what makes same-color merging an equality test.
     /// </summary>
     private static void BuildMask(
-        VoxelWorld world,
+        ref VoxelReader reader,
         byte[] mask,
         int axis,
         int uAxis,
@@ -93,27 +97,31 @@ public static class GreedyMesher
     {
         Array.Clear(mask);
 
+        position[axis] = slice;
+
         for (int v = 0; v < vCount; v++)
         {
+            position[vAxis] = minimum[vAxis] + v;
+            int rowBase = v * uCount;
+
             for (int u = 0; u < uCount; u++)
             {
-                position[axis] = slice;
+                // Only the u component varies down a row; the other two are already set.
                 position[uAxis] = minimum[uAxis] + u;
-                position[vAxis] = minimum[vAxis] + v;
 
                 var voxel = new Int3(position[0], position[1], position[2]);
-                byte index = world.GetVoxel(voxel);
+                byte index = reader.Get(voxel);
                 if (index == Palette.EmptyIndex)
                 {
                     continue;
                 }
 
-                if (world.IsSolid(voxel + neighbourOffset))
+                if (reader.IsSolid(voxel + neighbourOffset))
                 {
                     continue;   // interior face, never visible
                 }
 
-                mask[v * uCount + u] = index;
+                mask[rowBase + u] = index;
             }
         }
     }

@@ -31,6 +31,8 @@ public sealed class EditorApplication : IDisposable
     private readonly EditorSession _session = new();
     private readonly FlyCamera _camera = new();
     private readonly PalettePanel _palettePanel = new();
+    private readonly ReferencePanel _referencePanel = new();
+    private readonly StatsOverlay _stats = new();
 
     private GL? _gl;
     private IInputContext? _input;
@@ -457,10 +459,11 @@ public sealed class EditorApplication : IDisposable
     private void DrawUi()
     {
         MainMenu.Draw(_session, _project!, _export!, _window.Close);
-        StatsOverlay.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
+        _stats.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
         ToolPanel.Draw(_session, _hover);
         SelectionPanel.Draw(_session);
         _palettePanel.Draw(_session);
+        _referencePanel.Draw(_session, _renderer!.Reference);
         _project!.DrawDialogs();
         _export!.Draw();
 
