@@ -91,6 +91,33 @@ public sealed class FlyCamera
         return Ray.Normalized(nearPoint, farPoint - nearPoint);
     }
 
+    /// <summary>
+    /// Projects a world point to a pixel. Returns false when the point is behind the camera, where
+    /// the perspective divide would flip it to a nonsense position on screen.
+    ///
+    /// Gizmo picking works in screen space (EditorApp.md, "Transform"), so this is the primitive the
+    /// arrow, ring and edge hit tests are all built on — none of them has a collider.
+    /// </summary>
+    public bool TryProjectToScreen(Vector3 world, Vector2 viewportSize, out Vector2 screen)
+    {
+        screen = Vector2.Zero;
+
+        Matrix4x4 viewProjection = ViewProjection(viewportSize.X / MathF.Max(viewportSize.Y, 1f));
+        Vector4 clip = Vector4.Transform(new Vector4(world, 1f), viewProjection);
+
+        if (clip.W <= 1e-5f)
+        {
+            return false;
+        }
+
+        var ndc = new Vector2(clip.X / clip.W, clip.Y / clip.W);
+        screen = new Vector2(
+            (ndc.X * 0.5f + 0.5f) * viewportSize.X,
+            (1f - (ndc.Y * 0.5f + 0.5f)) * viewportSize.Y);
+
+        return true;
+    }
+
     /// <summary>Places the camera so the given box fills a comfortable part of the view.</summary>
     public void FrameBox(Vector3 min, Vector3 max)
     {

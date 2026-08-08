@@ -34,9 +34,11 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
     public void NewProject() => GuardUnsaved("start a new level", () =>
     {
-        session.ReplaceWorld(new VoxelWorld(), projectPath: null);
+        // A new level starts with one voxel, not an empty world: with no Place tool there has to be
+        // a surface for Extrude to pull on.
+        session.ReplaceWorld(EditorSession.CreateStarterWorld(session.ActiveColorIndex), projectPath: null);
         onWorldReplaced();
-        Report("New level.", isError: false);
+        Report("New level — one voxel at the origin to extrude from.", isError: false);
     });
 
     public void OpenProject() => GuardUnsaved("open another level", () =>

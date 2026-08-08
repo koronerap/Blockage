@@ -141,43 +141,7 @@ public class UndoStackTests
         Assert.Equal(after, world.Palette[20]);
     }
 
-    [Fact]
-    public void FloodFillRecolorsOnlyTheConnectedSameColorRegion()
-    {
-        var world = new VoxelWorld();
-        for (int x = 0; x < 5; x++)
-        {
-            world.SetVoxel(x, 0, 0, 3);
-        }
-
-        world.SetVoxel(2, 0, 0, 4);          // splits the run in two
-        world.SetVoxel(50, 0, 0, 3);         // same color, disconnected
-
-        var command = new VoxelEditCommand("fill");
-        int filled = FloodFill.Fill(world, new Int3(0, 0, 0), 8, command);
-
-        Assert.Equal(2, filled);
-        Assert.Equal(8, world.GetVoxel(0, 0, 0));
-        Assert.Equal(8, world.GetVoxel(1, 0, 0));
-        Assert.Equal(4, world.GetVoxel(2, 0, 0));
-        Assert.Equal(3, world.GetVoxel(3, 0, 0));
-        Assert.Equal(3, world.GetVoxel(50, 0, 0));
-
-        command.Undo(world);
-        Assert.Equal(3, world.GetVoxel(0, 0, 0));
-    }
-
-    [Fact]
-    public void FloodFillDoesNotSpreadThroughEmptySpace()
-    {
-        var world = new VoxelWorld();
-        world.SetVoxel(0, 0, 0, 3);
-        world.SetVoxel(2, 0, 0, 3);
-
-        var command = new VoxelEditCommand("fill");
-        Assert.Equal(1, FloodFill.Fill(world, new Int3(0, 0, 0), 8, command));
-        Assert.Equal(3, world.GetVoxel(2, 0, 0));
-    }
+    // Flood fill now belongs to Paint's Bucket sub-mode and is tested in PaintOperationsTests.
 
     [Fact]
     public void UndoRedoAcrossAChunkBoundaryRestoresBothChunks()

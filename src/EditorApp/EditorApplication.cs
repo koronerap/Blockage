@@ -24,7 +24,15 @@ public sealed class EditorApplication : IDisposable
     private static readonly Color32 HighlightColor = new(255, 236, 120);
     private static readonly Color32 BrushOutlineColor = new(255, 160, 60);
     private static readonly Color32 SelectionColor = new(120, 230, 140);
-    private static readonly Color32 PastePreviewColor = new(120, 200, 255);
+    private static readonly Color32 SelectionAddColor = new(120, 230, 140);
+
+    // Subtract has to look different from add: until the click lands, the two gestures are
+    // otherwise indistinguishable (EditorApp.md, "Extrude").
+    private static readonly Color32 SelectionSubtractColor = new(255, 110, 110);
+    private static readonly Color32 ArrowColor = new(255, 210, 90);
+
+    /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
+    private const int MaxOutlinedFaces = 3000;
 
     private readonly IWindow _window;
     private readonly int _smokeFrames;
@@ -45,10 +53,10 @@ public sealed class EditorApplication : IDisposable
     private Vector2 _previousMousePosition;
     private bool _looking;
     private bool _leftButtonWasDown;
+    private ExtrudeInteraction? _extrude;
     private RaycastHit? _hover;
-    private Int3? _groundHover;
-    private Int3? _selectionAnchor;
-    private bool _pastePending;
+    private bool _showGrid = true;
+    private bool _showMeasurements = true;
     private int _frameCount;
     private float _lastDelta = 1f / 60f;
 
@@ -85,9 +93,11 @@ public sealed class EditorApplication : IDisposable
         _renderer = new GlRenderer(_gl);
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());
         _export = new ExportController(_session);
+        _extrude = new ExtrudeInteraction(_session);
 
         DemoScene.Fill(_session.World);
         _session.ActiveColorIndex = 96;
+        _session.ActiveTool = EditorTool.Extrude;
         _session.HasUnsavedChanges = false;
 
         if (_session.World.TryGetBounds(out Int3 min, out Int3 max))
@@ -98,12 +108,24 @@ public sealed class EditorApplication : IDisposable
         if (_input.Mice.Count > 0)
         {
             _previousMousePosition = _input.Mice[0].Position;
+            _input.Mice[0].Scroll += OnScroll;
         }
 
         foreach (IKeyboard keyboard in _input.Keyboards)
         {
             keyboard.KeyDown += OnKeyDown;
         }
+    }
+
+    /// <summary>Ctrl+Scroll resizes the paint brush live while hovering (EditorApp.md, "Paint").</summary>
+    private void OnScroll(IMouse mouse, ScrollWheel wheel)
+    {
+        if (_session.ActiveTool != EditorTool.Paint || !IsControlHeld() || ImGui.GetIO().WantCaptureMouse)
+        {
+            return;
+        }
+
+        _session.BrushRadius = Math.Clamp(_session.BrushRadius + wheel.Y * 0.5f, 0f, 12f);
     }
 
     private void OnUpdate(double deltaSeconds)
@@ -157,6 +179,13 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
+        // WASD/QE only fly while the look button is held. The spec gives Q W E R V to the tools, and
+        // a key cannot mean both "Paint" and "go up" at the same moment.
+        if (!_looking)
+        {
+            return;
+        }
+
         var movement = Vector3.Zero;
         if (keyboard.IsKeyPressed(Key.W)) movement.Z += 1f;
         if (keyboard.IsKeyPressed(Key.S)) movement.Z -= 1f;
@@ -172,14 +201,8 @@ public sealed class EditorApplication : IDisposable
     private void UpdateHover()
     {
         _hover = null;
-        _groundHover = null;
 
-        if (_input is null || _input.Mice.Count == 0 || _looking)
-        {
-            return;
-        }
-
-        if (ImGui.GetIO().WantCaptureMouse)
+        if (_input is null || _input.Mice.Count == 0 || _looking || ImGui.GetIO().WantCaptureMouse)
         {
             return;
         }
@@ -191,11 +214,6 @@ public sealed class EditorApplication : IDisposable
         {
             _hover = hit;
         }
-        else if (VoxelRaycaster.TryHitGroundPlane(ray, 0, out Int3 cell))
-        {
-            // Nothing hit: fall back to the ground plane so an empty level can be started.
-            _groundHover = cell;
-        }
     }
 
     private void UpdateTools()
@@ -205,7 +223,8 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        bool leftDown = _input.Mice[0].IsButtonPressed(MouseButton.Left)
+        IMouse mouse = _input.Mice[0];
+        bool leftDown = mouse.IsButtonPressed(MouseButton.Left)
             && !ImGui.GetIO().WantCaptureMouse
             && !_looking;
 
@@ -213,25 +232,58 @@ public sealed class EditorApplication : IDisposable
         bool released = !leftDown && _leftButtonWasDown;
         _leftButtonWasDown = leftDown;
 
-        // Placing a pasted block takes priority: the click commits it rather than running a tool.
-        if (_pastePending)
-        {
-            UpdatePastePlacement(pressed);
-            return;
-        }
+        var viewport = new Vector2(_window.Size.X, _window.Size.Y);
 
-        if (_session.ActiveTool == EditorTool.BoxSelect)
+        switch (_session.ActiveTool)
         {
-            UpdateBoxSelection(leftDown, pressed, released);
-            return;
-        }
+            case EditorTool.Extrude:
+                UpdateExtrude(mouse.Position, viewport, leftDown, pressed, released);
+                break;
 
-        // Extrude fires once per click, never per frame: held down it would run away from the user.
-        if (_session.ActiveTool == EditorTool.Extrude)
+            case EditorTool.Paint:
+                UpdatePaint(leftDown, pressed, released);
+                break;
+
+            // Transform and Loop Cut need the multi-object scene first (R4-R6); View never edits.
+            default:
+                break;
+        }
+    }
+
+    private void UpdateExtrude(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released)
+    {
+        if (pressed)
         {
-            if (pressed && _hover is { } surface)
+            _extrude!.OnPress(_hover, mouse, viewport, _camera, IsShiftHeld(), IsAltHeld());
+        }
+        else if (leftDown && _extrude!.IsBusy)
+        {
+            _extrude.OnDrag(_hover, mouse, viewport, _camera);
+        }
+        else if (released)
+        {
+            _extrude!.OnRelease();
+        }
+    }
+
+    private void UpdatePaint(bool leftDown, bool pressed, bool released)
+    {
+        if (_hover is not { } hit)
+        {
+            if (released)
             {
-                _session.ExtrudeSurfaceAt(surface, IsAltHeld() ? -1 : 1);
+                _session.EndStroke();
+            }
+
+            return;
+        }
+
+        // Alt turns the click into a sample rather than a stroke.
+        if (leftDown && IsAltHeld())
+        {
+            if (pressed)
+            {
+                _session.SampleColor(hit);
             }
 
             return;
@@ -239,18 +291,10 @@ public sealed class EditorApplication : IDisposable
 
         if (leftDown)
         {
-            if (pressed)
+            // Bucket is a single click; a brush keeps painting while the button is held.
+            if (pressed || _session.PaintMode == PaintMode.Brush)
             {
-                _session.BeginStroke();
-            }
-
-            if (_hover is { } hit)
-            {
-                _session.ApplyTool(hit);
-            }
-            else if (_groundHover is { } cell && _session.ActiveTool == EditorTool.Place)
-            {
-                _session.PlaceAt(cell);
+                _session.Paint(hit);
             }
         }
         else if (released)
@@ -259,52 +303,17 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    /// <summary>Drag from the first picked cell to the current one; the box follows the cursor live.</summary>
-    private void UpdateBoxSelection(bool leftDown, bool pressed, bool released)
-    {
-        Int3? cursorCell = _hover?.Voxel ?? _groundHover;
-
-        if (pressed && cursorCell is { } anchor)
-        {
-            _selectionAnchor = anchor;
-            _session.Selection = VoxelBox.Single(anchor);
-        }
-        else if (leftDown && _selectionAnchor is { } start && cursorCell is { } current)
-        {
-            _session.Selection = VoxelBox.FromCorners(start, current);
-        }
-        else if (released)
-        {
-            _selectionAnchor = null;
-        }
-    }
-
-    /// <summary>The clipboard follows the cursor until a click commits it (or Esc cancels).</summary>
-    private void UpdatePastePlacement(bool pressed)
-    {
-        if (!pressed || PasteOrigin() is not { } origin)
-        {
-            return;
-        }
-
-        _session.PasteAt(origin);
-        _pastePending = false;
-    }
-
     private bool IsAltHeld() =>
         _input is { Keyboards.Count: > 0 }
         && (_input.Keyboards[0].IsKeyPressed(Key.AltLeft) || _input.Keyboards[0].IsKeyPressed(Key.AltRight));
 
-    /// <summary>Where the clipboard's minimum corner would land right now, or null if not aiming anywhere.</summary>
-    private Int3? PasteOrigin()
-    {
-        if (_hover is { } hit)
-        {
-            return hit.Placement;
-        }
+    private bool IsShiftHeld() =>
+        _input is { Keyboards.Count: > 0 }
+        && (_input.Keyboards[0].IsKeyPressed(Key.ShiftLeft) || _input.Keyboards[0].IsKeyPressed(Key.ShiftRight));
 
-        return _groundHover;
-    }
+    private bool IsControlHeld() =>
+        _input is { Keyboards.Count: > 0 }
+        && (_input.Keyboards[0].IsKeyPressed(Key.ControlLeft) || _input.Keyboards[0].IsKeyPressed(Key.ControlRight));
 
     private void OnKeyDown(IKeyboard keyboard, Key key, int _)
     {
@@ -316,6 +325,12 @@ public sealed class EditorApplication : IDisposable
         bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
         bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
 
+        // While the look button is held, the letter keys are flying the camera, not picking tools.
+        if (_looking && !control)
+        {
+            return;
+        }
+
         switch (key)
         {
             case Key.N when control: _project?.NewProject(); break;
@@ -324,36 +339,23 @@ public sealed class EditorApplication : IDisposable
             case Key.S when control: _project?.Save(); break;
             case Key.E when control: _export?.Show(); break;
 
-            case Key.Number1: _session.ActiveTool = EditorTool.Place; break;
-            case Key.Number2: _session.ActiveTool = EditorTool.Erase; break;
-            case Key.Number3: _session.ActiveTool = EditorTool.Paint; break;
-            case Key.Number4: _session.ActiveTool = EditorTool.Fill; break;
-            case Key.Number5: _session.ActiveTool = EditorTool.Pick; break;
-            case Key.Number6: _session.ActiveTool = EditorTool.BoxSelect; break;
-            case Key.Number7: _session.ActiveTool = EditorTool.Extrude; break;
+            // The four tools plus View. Q W E R V, in the order the spec lists them.
+            case Key.Q when !control: SwitchTool(EditorTool.Transform); break;
+            case Key.W when !control: SwitchTool(EditorTool.Extrude); break;
+            case Key.E when !control: SwitchTool(EditorTool.Paint); break;
+            case Key.R when !control: SwitchTool(EditorTool.LoopCut); break;
+            case Key.V when !control: SwitchTool(EditorTool.View); break;
 
-            case Key.A when control: _session.SelectAll(); break;
-            case Key.C when control: _session.CopySelection(); break;
-            case Key.X when control: _session.CutSelection(); break;
+            // F and X mean "the other sub-mode", and what that is depends on the active tool.
+            case Key.F when !control: ToggleSubMode(); break;
+            case Key.X when !control: CycleMode(); break;
 
-            case Key.V when control:
-                _pastePending = _session.HasClipboard;
-                break;
-
-            case Key.Delete:
-                _session.DeleteSelection();
+            case Key.Enter or Key.KeypadEnter:
+                _extrude?.Confirm();
                 break;
 
             case Key.Escape:
-                if (_pastePending)
-                {
-                    _pastePending = false;
-                }
-                else
-                {
-                    _session.ClearSelection();
-                }
-
+                OnEscape();
                 break;
 
             case Key.Z when control && shift:
@@ -365,12 +367,88 @@ public sealed class EditorApplication : IDisposable
                 _session.Undo();
                 break;
 
-            case Key.F:
+            case Key.G:
+                _showGrid = !_showGrid;
+                break;
+
+            case Key.D when !control:
+                _showMeasurements = !_showMeasurements;
+                break;
+
+            case Key.Home:
                 if (_session.World.TryGetBounds(out Int3 min, out Int3 max))
                 {
                     _camera.FrameBox(min.ToVector3(), max.ToVector3() + Vector3.One);
                 }
 
+                break;
+        }
+    }
+
+    private void SwitchTool(EditorTool tool)
+    {
+        if (_extrude!.IsBusy)
+        {
+            return;   // never swap tools out from under a running drag
+        }
+
+        _extrude.Confirm();
+        _session.EndStroke();
+        _session.ActiveTool = tool;
+    }
+
+    /// <summary>Esc cancels a drag if one is running, otherwise it returns to Transform.</summary>
+    private void OnEscape()
+    {
+        if (_session.IsExtruding || _extrude!.IsBusy)
+        {
+            _extrude!.Cancel();
+            return;
+        }
+
+        if (_session.HasSelection)
+        {
+            _session.ClearSelection();
+            return;
+        }
+
+        _session.ActiveTool = EditorTool.Transform;
+    }
+
+    private void ToggleSubMode()
+    {
+        switch (_session.ActiveTool)
+        {
+            case EditorTool.Transform:
+                _session.TransformMode = _session.TransformMode == TransformMode.Move
+                    ? TransformMode.Rotate
+                    : TransformMode.Move;
+                break;
+
+            case EditorTool.Extrude:
+                _session.ExtrudeSelectionMode = _session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box
+                    ? ExtrudeSelectionMode.Face
+                    : ExtrudeSelectionMode.Box;
+                break;
+        }
+    }
+
+    private void CycleMode()
+    {
+        switch (_session.ActiveTool)
+        {
+            case EditorTool.Transform:
+                _session.TransformSpace = _session.TransformSpace == TransformSpace.Global
+                    ? TransformSpace.Local
+                    : TransformSpace.Global;
+                break;
+
+            case EditorTool.Extrude:
+                _session.ExtrudeCreatesObject = !_session.ExtrudeCreatesObject;
+                break;
+
+            case EditorTool.Paint:
+                _session.PaintMode = (PaintMode)(((int)_session.PaintMode + 1) % 3);
                 break;
         }
     }
@@ -406,54 +484,87 @@ public sealed class EditorApplication : IDisposable
     {
         LineBatch lines = _renderer!.Lines;
         lines.Clear();
-        lines.AddGroundGrid(64, GridMinor, GridMajor);
 
-        if (_session.Selection is { } selection)
+        if (_showGrid)
         {
-            (Vector3 min, Vector3 max) = selection.ToWorldBounds();
-            lines.AddBox(min, max, SelectionColor);
+            lines.AddGroundGrid(64, GridMinor, GridMajor);
         }
 
-        if (_pastePending)
-        {
-            AddPastePreview(lines);
-            return;   // the cursor is placing a block, not pointing a brush
-        }
+        AddSelectionOutline(lines, _session.Selection, SelectionColor);
+        AddSelectionOutline(
+            lines,
+            _extrude!.PendingSelection,
+            _extrude.PendingOperation == SelectionOperation.Subtract ? SelectionSubtractColor : SelectionAddColor);
+
+        AddExtrudeArrow(lines);
 
         if (_hover is { } hit)
         {
             lines.AddVoxelFace(hit.Voxel, hit.Face, HighlightColor);
 
-            if (_session.ActiveTool is not (EditorTool.BoxSelect or EditorTool.Extrude))
+            if (_session.ActiveTool == EditorTool.Paint)
             {
-                Int3 center = _session.ActiveTool == EditorTool.Place ? hit.Placement : hit.Voxel;
-                AddBrushOutline(lines, center);
+                AddBrushOutline(lines, hit.Voxel);
             }
-        }
-        else if (_groundHover is { } cell && _session.ActiveTool != EditorTool.BoxSelect)
-        {
-            AddBrushOutline(lines, cell);
         }
     }
 
-    private void AddPastePreview(LineBatch lines)
+    private static void AddSelectionOutline(LineBatch lines, FaceSelection? selection, Color32 color)
     {
-        if (_session.Clipboard is not { } clip || PasteOrigin() is not { } origin)
+        if (selection is not { IsEmpty: false })
         {
             return;
         }
 
-        (Vector3 min, Vector3 max) = clip.BoxAt(origin).ToWorldBounds();
-        lines.AddBox(min, max, PastePreviewColor);
+        // Outlining thousands of individual faces costs more than it communicates; past the cap the
+        // bounding box says the same thing for four orders of magnitude fewer lines.
+        if (selection.Count > MaxOutlinedFaces)
+        {
+            (Vector3 min, Vector3 max) = selection.Bounds().ToWorldBounds();
+            lines.AddBox(min, max, color);
+            return;
+        }
+
+        foreach (Int3 voxel in selection.Voxels)
+        {
+            lines.AddVoxelFace(voxel, selection.Direction, color, offset: 0.02f);
+        }
+    }
+
+    private void AddExtrudeArrow(LineBatch lines)
+    {
+        if (_session.ActiveTool != EditorTool.Extrude || _extrude!.Arrow() is not { } arrow)
+        {
+            return;
+        }
+
+        lines.AddLine(arrow.Start, arrow.End, ArrowColor);
+
+        // A simple four-barbed head, so the arrow reads as a direction from any angle.
+        Vector3 direction = Vector3.Normalize(arrow.End - arrow.Start);
+        Vector3 side = Vector3.Cross(direction, Vector3.UnitY);
+        if (side.LengthSquared() < 1e-4f)
+        {
+            side = Vector3.Cross(direction, Vector3.UnitX);
+        }
+
+        side = Vector3.Normalize(side) * 0.35f;
+        Vector3 other = Vector3.Normalize(Vector3.Cross(direction, side)) * 0.35f;
+        Vector3 barbBase = arrow.End - direction * 0.8f;
+
+        lines.AddLine(arrow.End, barbBase + side, ArrowColor);
+        lines.AddLine(arrow.End, barbBase - side, ArrowColor);
+        lines.AddLine(arrow.End, barbBase + other, ArrowColor);
+        lines.AddLine(arrow.End, barbBase - other, ArrowColor);
     }
 
     private void AddBrushOutline(LineBatch lines, Int3 center)
     {
-        int radius = _session.BrushRadius;
-        Vector3 min = (center - new Int3(radius, radius, radius)).ToVector3();
-        Vector3 max = (center + new Int3(radius + 1, radius + 1, radius + 1)).ToVector3();
+        float radius = _session.BrushRadius;
+        Vector3 centre = center.ToVector3() + new Vector3(0.5f);
+        var extent = new Vector3(radius + 0.5f);
 
-        lines.AddBox(min - new Vector3(0.01f), max + new Vector3(0.01f), BrushOutlineColor);
+        lines.AddBox(centre - extent, centre + extent, BrushOutlineColor);
     }
 
     private void DrawUi()
@@ -461,7 +572,6 @@ public sealed class EditorApplication : IDisposable
         MainMenu.Draw(_session, _project!, _export!, _window.Close);
         _stats.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
         ToolPanel.Draw(_session, _hover);
-        SelectionPanel.Draw(_session);
         _palettePanel.Draw(_session);
         _referencePanel.Draw(_session, _renderer!.Reference);
         _project!.DrawDialogs();

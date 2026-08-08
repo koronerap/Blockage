@@ -5,24 +5,25 @@ using ImGuiNET;
 
 namespace EditorApp.Ui;
 
-/// <summary>Tool selection, brush size, undo/redo and what the cursor is currently over.</summary>
+/// <summary>
+/// The four tools plus View (EditorApp.md, "Araçlar"). There is no Place and no Erase: adding
+/// voxels is pulling Extrude out, removing them is pushing it in.
+/// </summary>
 public static class ToolPanel
 {
     private static readonly (EditorTool Tool, string Label, string Shortcut, string Help)[] Tools =
     [
-        (EditorTool.Place, "Place", "1", "Adds a voxel against the face under the cursor."),
-        (EditorTool.Erase, "Erase", "2", "Removes the voxel under the cursor."),
-        (EditorTool.Paint, "Paint", "3", "Recolors the voxel under the cursor."),
-        (EditorTool.Fill, "Fill", "4", "Recolors the connected run of matching voxels."),
-        (EditorTool.Pick, "Pick", "5", "Adopts the color under the cursor."),
-        (EditorTool.BoxSelect, "Select", "6", "Drags out a box selection. Esc clears it."),
-        (EditorTool.Extrude, "Extrude", "7", "Pulls the connected surface out one layer. Hold Alt to push it in."),
+        (EditorTool.Transform, "Transform", "Q", "Moves and rotates a whole object. Default tool."),
+        (EditorTool.Extrude, "Extrude", "W", "Select a surface, then drag its arrow. Out adds voxels, in deletes them."),
+        (EditorTool.Paint, "Paint", "E", "Recolors existing, visible voxels. Never creates or deletes."),
+        (EditorTool.LoopCut, "Loop Cut", "R", "Splits the model at a grid plane into two independent objects."),
+        (EditorTool.View, "View", "V", "Camera only — no editing."),
     ];
 
     public static void Draw(EditorSession session, RaycastHit? hover)
     {
-        ImGui.SetNextWindowPos(new Vector2(12, 170), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new Vector2(400, 140), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowPos(new Vector2(12f, 250f), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new Vector2(420f, 250f), ImGuiCond.FirstUseEver);
 
         if (!ImGui.Begin("Tools"))
         {
@@ -30,6 +31,17 @@ public static class ToolPanel
             return;
         }
 
+        DrawToolButtons(session);
+        ImGui.Separator();
+        DrawSubModes(session);
+        ImGui.Separator();
+        DrawHover(session, hover);
+
+        ImGui.End();
+    }
+
+    private static void DrawToolButtons(EditorSession session)
+    {
         foreach ((EditorTool tool, string label, string shortcut, string help) in Tools)
         {
             if (tool != Tools[0].Tool)
@@ -47,18 +59,119 @@ public static class ToolPanel
                 ImGui.SetTooltip(help);
             }
         }
+    }
 
-        int radius = session.BrushRadius;
-        ImGui.SetNextItemWidth(180f);
-        if (ImGui.SliderInt("Brush radius", ref radius, 0, 8))
+    private static void DrawSubModes(EditorSession session)
+    {
+        switch (session.ActiveTool)
         {
-            session.BrushRadius = radius;
+            case EditorTool.Extrude:
+                DrawExtrudeModes(session);
+                break;
+
+            case EditorTool.Paint:
+                DrawPaintModes(session);
+                break;
+
+            case EditorTool.Transform:
+            case EditorTool.LoopCut:
+                ImGui.TextDisabled("Not built yet — see R5 / R6 in TODO.md.");
+                ImGui.TextDisabled("Both need the multi-object scene first.");
+                break;
+
+            default:
+                ImGui.TextDisabled("Camera only.");
+                break;
+        }
+    }
+
+    private static void DrawExtrudeModes(EditorSession session)
+    {
+        ImGui.Text("Selection (F)");
+        ImGui.SameLine();
+        if (ImGui.RadioButton("Box##sel", session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box))
+        {
+            session.ExtrudeSelectionMode = ExtrudeSelectionMode.Box;
         }
 
         ImGui.SameLine();
-        int side = session.BrushRadius * 2 + 1;
-        ImGui.TextDisabled($"{side}x{side}x{side}");
+        if (ImGui.RadioButton("Face##sel", session.ExtrudeSelectionMode == ExtrudeSelectionMode.Face))
+        {
+            session.ExtrudeSelectionMode = ExtrudeSelectionMode.Face;
+        }
 
+        bool creates = session.ExtrudeCreatesObject;
+        if (ImGui.Checkbox("Create a new object (X)", ref creates))
+        {
+            session.ExtrudeCreatesObject = creates;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Pulled voxels become a separate object instead of joining this one.\nNot built yet — see R7.");
+        }
+
+        if (session.Selection is { IsEmpty: false } selection)
+        {
+            ImGui.Text($"Selected: {selection.Count} face(s), {selection.Direction}, plane {selection.Plane}");
+        }
+        else
+        {
+            ImGui.TextDisabled("Drag on a surface to select. Shift adds, Alt subtracts.");
+        }
+
+        if (session.IsExtruding)
+        {
+            ImGui.TextColored(
+                new Vector4(1f, 0.85f, 0.4f, 1f),
+                $"{session.ExtrudeSteps:+0;-0} units — Enter confirms, Esc cancels");
+        }
+    }
+
+    private static void DrawPaintModes(EditorSession session)
+    {
+        ImGui.Text("Mode (X)");
+        foreach (PaintMode mode in new[] { PaintMode.Brush, PaintMode.Bucket, PaintMode.Pattern })
+        {
+            ImGui.SameLine();
+            if (ImGui.RadioButton($"{mode}##paint", session.PaintMode == mode))
+            {
+                session.PaintMode = mode;
+            }
+        }
+
+        if (session.PaintMode == PaintMode.Pattern)
+        {
+            ImGui.TextDisabled("Pattern is not built yet — see R7.");
+        }
+
+        if (session.PaintMode == PaintMode.Bucket)
+        {
+            int threshold = session.BucketThreshold;
+            ImGui.SetNextItemWidth(180f);
+            if (ImGui.SliderInt("Colour threshold", ref threshold, 0, 128))
+            {
+                session.BucketThreshold = threshold;
+            }
+        }
+        else
+        {
+            float radius = session.BrushRadius;
+            ImGui.SetNextItemWidth(180f);
+            if (ImGui.SliderFloat("Radius", ref radius, 0f, 12f, "%.1f"))
+            {
+                session.BrushRadius = radius;
+            }
+
+            ImGui.SameLine();
+            ImGui.TextDisabled("Ctrl+Scroll");
+        }
+
+        ImGui.TextDisabled("Hold Alt to sample the colour under the cursor.");
+    }
+
+    private static void DrawHover(EditorSession session, RaycastHit? hover)
+    {
         ImGui.BeginDisabled(!session.History.CanUndo);
         if (ImGui.Button($"Undo ({session.History.NextUndoName ?? "-"})"))
         {
@@ -81,13 +194,11 @@ public static class ToolPanel
 
         if (hover is { } hit)
         {
-            ImGui.Text($"Hover  {hit.Voxel}  face {hit.Face}  ->  place at {hit.Placement}");
+            ImGui.Text($"Hover  {hit.Voxel}  face {hit.Face}");
         }
         else
         {
             ImGui.TextDisabled("Hover  -");
         }
-
-        ImGui.End();
     }
 }
