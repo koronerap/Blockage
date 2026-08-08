@@ -373,11 +373,27 @@ public class ExtrudeSessionTests
     }
 
     [Fact]
-    public void ANewLevelStartsWithSomethingToExtrudeFrom()
+    public void ANewLevelStartsAsAWhiteCubeWithEveryFaceExtrudable()
     {
-        // With no Place tool, an empty world would be a dead end.
+        // With no Place tool, an empty world would be a dead end. A cube gives all six directions
+        // a real surface from the first click.
         VoxelWorld starter = EditorSession.CreateStarterWorld();
-        Assert.Equal(1, starter.SolidCount);
-        Assert.True(FaceSelection.IsFaceExposed(starter, Int3.Zero, Face.PosY));
+        const int side = EditorSession.StarterCubeSize;
+
+        Assert.Equal(side * side * side, starter.SolidCount);
+        Assert.Equal(Palette.WhiteIndex, starter.GetVoxel(0, 0, 0));
+        Assert.Equal(new Color32(255, 255, 255), starter.Palette[Palette.WhiteIndex]);
+
+        for (int f = 0; f < FaceInfo.Count; f++)
+        {
+            var face = (Face)f;
+            Int3 corner = FaceInfo.IsPositive(face)
+                ? new Int3(side - 1, side - 1, side - 1)
+                : Int3.Zero;
+
+            Assert.True(
+                FaceSelection.IsFaceExposed(starter, corner, face),
+                $"{face} has no surface to extrude from.");
+        }
     }
 }

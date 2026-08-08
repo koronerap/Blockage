@@ -1,9 +1,114 @@
 using System.Numerics;
+using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Tests;
+
+public class SessionFocusTests
+{
+    private static (EditorSession Session, VoxelObject A, VoxelObject B) TwoObjects()
+    {
+        var session = new EditorSession();
+        var scene = new VoxelScene();
+
+        var first = new VoxelWorld();
+        first.SetVoxel(0, 0, 0, 5);
+        VoxelObject a = scene.Add(first, ObjectTransform.Identity, "a");
+
+        var second = new VoxelWorld();
+        second.SetVoxel(0, 0, 0, 5);
+        VoxelObject b = scene.Add(second, ObjectTransform.At(new Vector3(20f, 0f, 0f)), "b");
+
+        session.ReplaceScene(scene, projectPath: null);
+        return (session, a, b);
+    }
+
+    [Fact]
+    public void ToolsEditWhicheverObjectHasFocus()
+    {
+        (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
+
+        Assert.Same(a.Grid, session.World);
+
+        Assert.True(session.TryFocus(b.Id));
+        Assert.Same(b.Grid, session.World);
+    }
+
+    [Fact]
+    public void FocusIsLockedWhileAStrokeIsRunning()
+    {
+        // Focus changing mid-drag would hand the rest of the gesture to a different object.
+        (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
+
+        session.BeginStroke();
+        Assert.False(session.TryFocus(b.Id));
+        Assert.Same(a.Grid, session.World);
+
+        session.EndStroke();
+        Assert.True(session.TryFocus(b.Id));
+    }
+
+    [Fact]
+    public void FocusIsLockedWhileAnExtrudePreviewIsPending()
+    {
+        (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
+
+        session.SetSelection(FaceSelection.ConnectedPatch(session.World, Int3.Zero, Face.PosY));
+        session.PreviewExtrude(2);
+
+        Assert.False(session.TryFocus(b.Id));
+
+        session.CancelExtrude();
+        Assert.True(session.TryFocus(b.Id));
+        Assert.Same(b.Grid, session.World);
+    }
+
+    [Fact]
+    public void ChangingFocusDropsTheSelectionItWasMadeOn()
+    {
+        (EditorSession session, _, VoxelObject b) = TwoObjects();
+
+        session.SetSelection(FaceSelection.ConnectedPatch(session.World, Int3.Zero, Face.PosY));
+        Assert.True(session.HasSelection);
+
+        session.TryFocus(b.Id);
+        Assert.False(session.HasSelection);
+    }
+
+    [Fact]
+    public void PaletteEditsReachEveryObject()
+    {
+        (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
+
+        session.ApplyPaletteColor(5, new Color32(9, 9, 9));
+
+        Assert.Equal(new Color32(9, 9, 9), a.Grid.Palette[5]);
+        Assert.Equal(new Color32(9, 9, 9), b.Grid.Palette[5]);
+    }
+
+    [Fact]
+    public void AFreshSessionStillHasAGridToWriteInto()
+    {
+        // The session starts with no objects; touching World must not be a null reference.
+        var session = new EditorSession();
+
+        session.BeginStroke();
+        Assert.True(session.PaintOrNothing());
+        Assert.Single(session.Scene.Objects);
+    }
+}
+
+file static class SessionTestExtensions
+{
+    /// <summary>Writes one voxel through the session, which forces a focus object into existence.</summary>
+    public static bool PaintOrNothing(this EditorSession session)
+    {
+        session.World.SetVoxel(0, 0, 0, 1);
+        return session.World.SolidCount == 1;
+    }
+}
 
 public class ObjectTransformTests
 {
@@ -251,13 +356,17 @@ public class VoxelSceneTests
     }
 
     [Fact]
-    public void StarterSceneHasOneVoxelToExtrudeFrom()
+    public void StarterSceneIsOneWhiteCube()
     {
         VoxelScene scene = VoxelScene.CreateStarter();
 
         Assert.Single(scene.Objects);
-        Assert.Equal(1, scene.SolidCount);
+        Assert.Equal(8 * 8 * 8, scene.SolidCount);
         Assert.NotNull(scene.Focus);
+
+        Assert.True(scene.TryGetWorldBounds(out Vector3 min, out Vector3 max));
+        Assert.Equal(Vector3.Zero, min);
+        Assert.Equal(new Vector3(8f, 8f, 8f), max);
     }
 
     [Fact]

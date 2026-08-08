@@ -1,25 +1,31 @@
 using System.Diagnostics;
 using System.Numerics;
 using EditorApp.Core.Meshing;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using Silk.NET.OpenGL;
 
 namespace EditorApp.Rendering;
 
 /// <summary>
-/// Draws the world: one buffer per chunk, dirty chunks remeshed on the CPU and re-uploaded, plus a
-/// line pass for the grid and the hovered face.
+/// Draws the scene: one buffer per chunk per object, dirty chunks remeshed on the CPU and
+/// re-uploaded, plus a line pass for the grid, the selection and the gizmos.
+///
+/// Vertices stay in their object's local space and the object's transform arrives as a uniform, so
+/// moving or rotating an object costs one matrix rather than a remesh.
 /// </summary>
 public sealed class GlRenderer : IDisposable
 {
+    private readonly record struct ChunkKey(int ObjectId, ChunkCoord Coord);
+
     private readonly GL _gl;
-    private readonly Dictionary<ChunkCoord, ChunkMeshBuffer> _buffers = new();
+    private readonly Dictionary<int, Dictionary<ChunkCoord, ChunkMeshBuffer>> _buffers = new();
     private readonly MeshBuilder _scratch = new();
 
     // Chunks waiting to be remeshed. The set and the queue are kept in step so a chunk dirtied
     // repeatedly before it is reached is still only rebuilt once.
-    private readonly HashSet<ChunkCoord> _pending = new();
-    private readonly Queue<ChunkCoord> _pendingOrder = new();
+    private readonly HashSet<ChunkKey> _pending = new();
+    private readonly Queue<ChunkKey> _pendingOrder = new();
     private readonly ShaderProgram _voxelShader;
     private readonly ShaderProgram _lineShader;
 
@@ -71,13 +77,19 @@ public sealed class GlRenderer : IDisposable
     /// <summary>
     /// Remeshes and re-uploads dirty chunks. Chunks that became empty release their buffers.
     /// </summary>
-    public void SyncDirtyChunks(VoxelWorld world)
+    public void SyncDirtyChunks(VoxelScene scene)
     {
-        foreach (ChunkCoord coord in world.ConsumeDirtyChunks())
+        DropDeletedObjects(scene);
+
+        foreach (VoxelObject o in scene.Objects)
         {
-            if (_pending.Add(coord))
+            foreach (ChunkCoord coord in o.Grid.ConsumeDirtyChunks())
             {
-                _pendingOrder.Enqueue(coord);
+                var key = new ChunkKey(o.Id, coord);
+                if (_pending.Add(key))
+                {
+                    _pendingOrder.Enqueue(key);
+                }
             }
         }
 
@@ -101,26 +113,82 @@ public sealed class GlRenderer : IDisposable
                 break;
             }
 
-            ChunkCoord coord = _pendingOrder.Dequeue();
-            _pending.Remove(coord);
+            ChunkKey key = _pendingOrder.Dequeue();
+            _pending.Remove(key);
+
+            VoxelObject? owner = FindObject(scene, key.ObjectId);
+            if (owner is null)
+            {
+                continue;   // the object went away before its chunk came up
+            }
 
             stepClock.Restart();
-            EditMesher.BuildChunk(world, coord, _scratch);
+            EditMesher.BuildChunk(owner.Grid, key.Coord, _scratch);
             LastMeshMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             stepClock.Restart();
-            ApplyChunkMesh(coord);
+            ApplyChunkMesh(key);
             LastUploadMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             LastRemeshedChunks++;
         }
     }
 
-    private void ApplyChunkMesh(ChunkCoord coord)
+    private static VoxelObject? FindObject(VoxelScene scene, int id)
     {
+        foreach (VoxelObject o in scene.Objects)
+        {
+            if (o.Id == id)
+            {
+                return o;
+            }
+        }
+
+        return null;
+    }
+
+    private void DropDeletedObjects(VoxelScene scene)
+    {
+        List<int>? stale = null;
+        foreach (int id in _buffers.Keys)
+        {
+            if (FindObject(scene, id) is null)
+            {
+                (stale ??= []).Add(id);
+            }
+        }
+
+        if (stale is null)
+        {
+            return;
+        }
+
+        foreach (int id in stale)
+        {
+            if (!_buffers.Remove(id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+            {
+                continue;
+            }
+
+            foreach (ChunkMeshBuffer buffer in chunks.Values)
+            {
+                TotalVertices -= buffer.VertexCount;
+                buffer.Dispose();
+            }
+        }
+    }
+
+    private void ApplyChunkMesh(ChunkKey key)
+    {
+        if (!_buffers.TryGetValue(key.ObjectId, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+        {
+            chunks = [];
+            _buffers.Add(key.ObjectId, chunks);
+        }
+
         if (_scratch.IsEmpty)
         {
-            if (_buffers.Remove(coord, out ChunkMeshBuffer? removed))
+            if (chunks.Remove(key.Coord, out ChunkMeshBuffer? removed))
             {
                 TotalVertices -= removed.VertexCount;
                 removed.Dispose();
@@ -129,10 +197,10 @@ public sealed class GlRenderer : IDisposable
             return;
         }
 
-        if (!_buffers.TryGetValue(coord, out ChunkMeshBuffer? buffer))
+        if (!chunks.TryGetValue(key.Coord, out ChunkMeshBuffer? buffer))
         {
             buffer = new ChunkMeshBuffer(_gl);
-            _buffers.Add(coord, buffer);
+            chunks.Add(key.Coord, buffer);
         }
 
         // Tracked incrementally: recounting every buffer each frame is wasted work once a level
@@ -142,7 +210,7 @@ public sealed class GlRenderer : IDisposable
         TotalVertices += buffer.VertexCount;
     }
 
-    public void Render(FlyCamera camera, Vector2 viewportSize)
+    public void Render(VoxelScene scene, FlyCamera camera, Vector2 viewportSize)
     {
         _gl.Viewport(0, 0, (uint)MathF.Max(viewportSize.X, 1f), (uint)MathF.Max(viewportSize.Y, 1f));
 
@@ -159,23 +227,15 @@ public sealed class GlRenderer : IDisposable
         VisibleChunks = 0;
         DrawnTriangles = 0;
 
-        foreach ((ChunkCoord coord, ChunkMeshBuffer buffer) in _buffers)
+        foreach (VoxelObject o in scene.Objects)
         {
-            if (buffer.IsEmpty)
+            if (!o.Visible || !_buffers.TryGetValue(o.Id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
             {
                 continue;
             }
 
-            Vector3 min = coord.Origin.ToVector3();
-            Vector3 max = min + new Vector3(Chunk.Size);
-            if (!frustum.Intersects(min, max))
-            {
-                continue;
-            }
-
-            buffer.Draw();
-            VisibleChunks++;
-            DrawnTriangles += buffer.IndexCount / 3;
+            _voxelShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            DrawObjectChunks(o, chunks, frustum);
         }
 
         Reference.Draw(viewProjection);
@@ -190,12 +250,67 @@ public sealed class GlRenderer : IDisposable
         _gl.BindVertexArray(0);
     }
 
-    /// <summary>Drops every GPU buffer. Used when the world is replaced by New or Open.</summary>
+    private void DrawObjectChunks(
+        VoxelObject o,
+        Dictionary<ChunkCoord, ChunkMeshBuffer> chunks,
+        Frustum frustum)
+    {
+        foreach ((ChunkCoord coord, ChunkMeshBuffer buffer) in chunks)
+        {
+            if (buffer.IsEmpty)
+            {
+                continue;
+            }
+
+            // The chunk box is axis aligned in the object's space, so once the object is turned its
+            // world bounds have to come from all eight corners.
+            Vector3 localMin = coord.Origin.ToVector3();
+            Vector3 localMax = localMin + new Vector3(Chunk.Size);
+            (Vector3 min, Vector3 max) = TransformBounds(o.Transform, localMin, localMax);
+
+            if (!frustum.Intersects(min, max))
+            {
+                continue;
+            }
+
+            buffer.Draw();
+            VisibleChunks++;
+            DrawnTriangles += buffer.IndexCount / 3;
+        }
+    }
+
+    private static (Vector3 Min, Vector3 Max) TransformBounds(
+        Core.Scene.ObjectTransform transform,
+        Vector3 localMin,
+        Vector3 localMax)
+    {
+        Vector3 min = Vector3.Zero;
+        Vector3 max = Vector3.Zero;
+
+        for (int corner = 0; corner < 8; corner++)
+        {
+            var local = new Vector3(
+                (corner & 1) == 0 ? localMin.X : localMax.X,
+                (corner & 2) == 0 ? localMin.Y : localMax.Y,
+                (corner & 4) == 0 ? localMin.Z : localMax.Z);
+
+            Vector3 world = transform.TransformPoint(local);
+            min = corner == 0 ? world : Vector3.Min(min, world);
+            max = corner == 0 ? world : Vector3.Max(max, world);
+        }
+
+        return (min, max);
+    }
+
+    /// <summary>Drops every GPU buffer. Used when the level is replaced by New or Open.</summary>
     public void ResetBuffers()
     {
-        foreach (ChunkMeshBuffer buffer in _buffers.Values)
+        foreach (Dictionary<ChunkCoord, ChunkMeshBuffer> chunks in _buffers.Values)
         {
-            buffer.Dispose();
+            foreach (ChunkMeshBuffer buffer in chunks.Values)
+            {
+                buffer.Dispose();
+            }
         }
 
         _buffers.Clear();

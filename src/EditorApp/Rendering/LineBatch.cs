@@ -44,13 +44,24 @@ public sealed class LineBatch : IDisposable
 
     public bool IsEmpty => _vertices.Count == 0;
 
-    public void Clear() => _vertices.Clear();
+    /// <summary>
+    /// Applied to every point added from now on. Selections and hover highlights are expressed in
+    /// the focused object's own space, so this carries them into the world without a second shader
+    /// or a second draw pass.
+    /// </summary>
+    public Matrix4x4 Transform { get; set; } = Matrix4x4.Identity;
+
+    public void Clear()
+    {
+        _vertices.Clear();
+        Transform = Matrix4x4.Identity;
+    }
 
     public void AddLine(Vector3 from, Vector3 to, Color32 color)
     {
         uint rgba = color.Rgba;
-        _vertices.Add(new LineVertex(from, rgba));
-        _vertices.Add(new LineVertex(to, rgba));
+        _vertices.Add(new LineVertex(Vector3.Transform(from, Transform), rgba));
+        _vertices.Add(new LineVertex(Vector3.Transform(to, Transform), rgba));
     }
 
     /// <summary>Outlines one face of a voxel, pushed slightly outward so it does not z-fight.</summary>

@@ -14,12 +14,16 @@ public static class Shaders
 
         uniform mat4 uViewProjection;
 
+        // Each object carries its own place in the world; the voxel grid itself is always axis
+        // aligned in its own space.
+        uniform mat4 uModel;
+
         out vec4 vColor;
 
         void main()
         {
             vColor = vec4(aColor.rgb * aShade, aColor.a);
-            gl_Position = uViewProjection * vec4(aPosition, 1.0);
+            gl_Position = uViewProjection * uModel * vec4(aPosition, 1.0);
         }
         """;
 

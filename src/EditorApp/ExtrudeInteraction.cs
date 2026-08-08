@@ -40,19 +40,26 @@ public sealed class ExtrudeInteraction(EditorSession session)
 
     public bool IsBusy => IsSelecting || IsDraggingArrow;
 
-    /// <summary>The arrow segment in world space, or null when there is nothing selected.</summary>
+    /// <summary>
+    /// The arrow segment in <b>world</b> space, or null when there is nothing selected. The
+    /// selection lives in the focused object's own space, so the object's transform is folded in
+    /// here — otherwise the arrow would be drawn and grabbed in the wrong place for a moved or
+    /// rotated object.
+    /// </summary>
     public (Vector3 Start, Vector3 End)? Arrow()
     {
-        if (session.Selection is not { IsEmpty: false } selection)
+        if (session.Selection is not { IsEmpty: false } selection || session.Scene.Focus is not { } focus)
         {
             return null;
         }
 
-        Vector3 start = selection.ArrowOrigin();
-        Vector3 direction = FaceInfo.Normal(selection.Direction);
+        Vector3 localDirection = FaceInfo.Normal(selection.Direction);
 
         // While dragging, the arrow follows the preview so it stays attached to the moving surface.
-        start += direction * session.ExtrudeSteps;
+        Vector3 localStart = selection.ArrowOrigin() + localDirection * session.ExtrudeSteps;
+
+        Vector3 start = focus.Transform.TransformPoint(localStart);
+        Vector3 direction = focus.Transform.TransformDirection(localDirection);
         return (start, start + direction * ArrowLength);
     }
 
@@ -134,12 +141,14 @@ public sealed class ExtrudeInteraction(EditorSession session)
     /// </summary>
     private int StepsFromDrag(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
-        if (session.Selection is not { } selection || Arrow() is not { } arrow)
+        if (session.Selection is not { } selection
+            || session.Scene.Focus is not { } focus
+            || Arrow() is not { } arrow)
         {
             return 0;
         }
 
-        Vector3 axis = FaceInfo.Normal(selection.Direction);
+        Vector3 axis = focus.Transform.TransformDirection(FaceInfo.Normal(selection.Direction));
         if (!camera.TryProjectToScreen(arrow.Start, viewport, out Vector2 origin)
             || !camera.TryProjectToScreen(arrow.Start + axis, viewport, out Vector2 oneUnit))
         {

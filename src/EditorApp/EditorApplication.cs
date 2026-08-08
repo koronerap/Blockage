@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Rendering;
 using EditorApp.Ui;
@@ -95,10 +96,10 @@ public sealed class EditorApplication : IDisposable
         _export = new ExportController(_session);
         _extrude = new ExtrudeInteraction(_session);
 
-        DemoScene.Fill(_session.World);
-        _session.ActiveColorIndex = 96;
+        // The editor opens on the same thing New gives you: an 8³ white cube to extrude from.
+        _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
+        _session.ActiveColorIndex = Palette.WhiteIndex;
         _session.ActiveTool = EditorTool.Extrude;
-        _session.HasUnsavedChanges = false;
 
         if (_session.World.TryGetBounds(out Int3 min, out Int3 max))
         {
@@ -210,9 +211,20 @@ public sealed class EditorApplication : IDisposable
         var viewport = new Vector2(_window.Size.X, _window.Size.Y);
         Ray ray = _camera.ScreenPointToRay(_input.Mice[0].Position, viewport);
 
-        if (VoxelRaycaster.TryCast(_session.World, ray, out RaycastHit hit))
+        if (!_session.Scene.TryPick(ray, out ScenePick pick))
         {
-            _hover = hit;
+            return;
+        }
+
+        // Focus follows whatever the cursor is over, but TryFocus refuses while a gesture is
+        // running — focus changing mid-drag would hand the rest of the drag to another object.
+        _session.TryFocus(pick.Object.Id);
+
+        // The hit is in the picked object's own space, which is only what the tools edit when that
+        // object actually holds focus.
+        if (pick.Object.Id == _session.Scene.FocusId)
+        {
+            _hover = pick.Hit;
         }
     }
 
@@ -462,11 +474,11 @@ public sealed class EditorApplication : IDisposable
 
         _imgui.Update((float)deltaSeconds);
 
-        _renderer.SyncDirtyChunks(_session.World);
+        _renderer.SyncDirtyChunks(_session.Scene);
         BuildOverlayLines();
 
         var viewport = new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y);
-        _renderer.Render(_camera, viewport);
+        _renderer.Render(_session.Scene, _camera, viewport);
 
         DrawUi();
         _imgui.Render();
@@ -490,13 +502,14 @@ public sealed class EditorApplication : IDisposable
             lines.AddGroundGrid(64, GridMinor, GridMajor);
         }
 
+        // Everything from here on is expressed in the focused object's own space.
+        lines.Transform = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;
+
         AddSelectionOutline(lines, _session.Selection, SelectionColor);
         AddSelectionOutline(
             lines,
             _extrude!.PendingSelection,
             _extrude.PendingOperation == SelectionOperation.Subtract ? SelectionSubtractColor : SelectionAddColor);
-
-        AddExtrudeArrow(lines);
 
         if (_hover is { } hit)
         {
@@ -507,6 +520,10 @@ public sealed class EditorApplication : IDisposable
                 AddBrushOutline(lines, hit.Voxel);
             }
         }
+
+        // The arrow already carries the object transform, so it is drawn in world space.
+        lines.Transform = Matrix4x4.Identity;
+        AddExtrudeArrow(lines);
     }
 
     private static void AddSelectionOutline(LineBatch lines, FaceSelection? selection, Color32 color)

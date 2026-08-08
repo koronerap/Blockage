@@ -13,6 +13,12 @@ public sealed class Palette
     /// <summary>Index 0 means "no voxel" and is never rendered or exported.</summary>
     public const byte EmptyIndex = 0;
 
+    /// <summary>
+    /// Last entry of the default grayscale ramp, and therefore pure white — what a new level is
+    /// built from, so the first thing on screen shows shape rather than colour.
+    /// </summary>
+    public const byte WhiteIndex = 15;
+
     private readonly Color32[] _colors = new Color32[Size];
 
     public Palette()

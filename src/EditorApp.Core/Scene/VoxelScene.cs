@@ -221,13 +221,11 @@ public sealed class VoxelScene
         return total;
     }
 
-    /// <summary>A scene holding one object with a single voxel — what New starts from.</summary>
-    public static VoxelScene CreateStarter(byte paletteIndex = 1)
+    /// <summary>A scene holding one 8³ white cube — what New starts from.</summary>
+    public static VoxelScene CreateStarter(byte paletteIndex = Palette.WhiteIndex)
     {
         var scene = new VoxelScene();
-        var grid = new VoxelWorld();
-        grid.SetVoxel(0, 0, 0, paletteIndex);
-        scene.Add(grid, ObjectTransform.Identity, "Object 1");
+        scene.Add(Editing.EditorSession.CreateStarterWorld(paletteIndex), ObjectTransform.Identity, "Object 1");
         return scene;
     }
 }

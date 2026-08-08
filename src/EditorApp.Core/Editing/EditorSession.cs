@@ -1,5 +1,6 @@
 using EditorApp.Core.Commands;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Editing;
@@ -14,7 +15,52 @@ public sealed class EditorSession
     private VoxelEditCommand? _stroke;
     private VoxelEditCommand? _extrudePreview;
 
-    public VoxelWorld World { get; private set; } = new();
+    /// <summary>
+    /// The level: one or more independently placed objects sharing a palette. Starts empty — what
+    /// a new level contains is the caller's decision, not the session's.
+    /// </summary>
+    public VoxelScene Scene { get; private set; } = new();
+
+    /// <summary>
+    /// The focused object's grid — what every tool edits. The scene guarantees an object always
+    /// exists, so this never has to be null-checked at a call site.
+    /// </summary>
+    public VoxelWorld World => Scene.Focus?.Grid ?? EnsureFocus();
+
+    public VoxelObject FocusObject => Scene.Focus ?? throw new InvalidOperationException("The scene has no object.");
+
+    /// <summary>
+    /// Moves focus to whatever the cursor is over. Refused while a gesture is running: focus
+    /// changing mid-drag would hand the rest of the drag to a different object.
+    /// </summary>
+    public bool TryFocus(int objectId)
+    {
+        if (IsStrokeActive || IsExtruding)
+        {
+            return false;
+        }
+
+        if (objectId == Scene.FocusId)
+        {
+            return true;
+        }
+
+        if (!Scene.SetFocus(objectId))
+        {
+            return false;
+        }
+
+        // A selection belongs to the object it was made on.
+        Selection = null;
+        return true;
+    }
+
+    private VoxelWorld EnsureFocus()
+    {
+        VoxelObject created = Scene.Add(new VoxelWorld(), ObjectTransform.Identity);
+        Scene.SetFocus(created.Id);
+        return created.Grid;
+    }
 
     public UndoStack History { get; } = new();
 
@@ -244,8 +290,8 @@ public sealed class EditorSession
     /// <summary>Applies a palette color live, without recording history (used while dragging a picker).</summary>
     public void ApplyPaletteColor(int index, Color32 color)
     {
-        World.Palette[index] = color;
-        World.MarkAllDirty();
+        Scene.Palette[index] = color;
+        Scene.MarkAllDirty();
         HasUnsavedChanges = true;
     }
 
@@ -261,28 +307,58 @@ public sealed class EditorSession
         HasUnsavedChanges = true;
     }
 
-    /// <summary>Replaces the whole world — New, or opening a project.</summary>
+    /// <summary>Replaces the level with a single-object scene — New, or opening a v1 project.</summary>
     public void ReplaceWorld(VoxelWorld world, string? projectPath)
+    {
+        var scene = new VoxelScene();
+        scene.ReplacePalette(world.Palette);
+        scene.Add(world, ObjectTransform.Identity, "Object 1");
+        ReplaceScene(scene, projectPath);
+    }
+
+    /// <summary>Replaces the whole level.</summary>
+    public void ReplaceScene(VoxelScene scene, string? projectPath)
     {
         _stroke = null;
         _extrudePreview = null;
         ExtrudeSteps = 0;
         Selection = null;
-        World = world;
-        World.MarkAllDirty();
+
+        Scene = scene;
+        if (Scene.Objects.Count == 0)
+        {
+            EnsureFocus();
+        }
+
+        Scene.MarkAllDirty();
         History.Clear();
         ProjectPath = projectPath;
         HasUnsavedChanges = false;
     }
 
+    /// <summary>Side of the cube a new level starts from.</summary>
+    public const int StarterCubeSize = 8;
+
     /// <summary>
-    /// A new level starts with a single voxel at the origin. With no Place tool there has to be
-    /// something to extrude from, and one voxel is the smallest thing that can become anything.
+    /// A new level starts as an 8³ white cube at the origin. With no Place tool there has to be
+    /// something to extrude from, and a cube gives every one of the six directions a real surface to
+    /// pull on from the first click. White keeps the first thing on screen about shape, not colour.
     /// </summary>
-    public static VoxelWorld CreateStarterWorld(byte paletteIndex = 1)
+    public static VoxelWorld CreateStarterWorld(byte paletteIndex = Palette.WhiteIndex)
     {
         var world = new VoxelWorld();
-        world.SetVoxel(0, 0, 0, paletteIndex);
+
+        for (int x = 0; x < StarterCubeSize; x++)
+        {
+            for (int y = 0; y < StarterCubeSize; y++)
+            {
+                for (int z = 0; z < StarterCubeSize; z++)
+                {
+                    world.SetVoxel(x, y, z, paletteIndex);
+                }
+            }
+        }
+
         return world;
     }
 }
