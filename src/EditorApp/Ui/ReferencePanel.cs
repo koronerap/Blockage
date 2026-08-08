@@ -61,7 +61,7 @@ public sealed class ReferencePanel
         if (_status.Length > 0)
         {
             ImGui.TextColored(
-                _statusIsError ? new Vector4(1f, 0.5f, 0.4f, 1f) : new Vector4(0.55f, 0.9f, 0.55f, 1f),
+                _statusIsError ? Theme.Danger : Theme.Success,
                 _status);
         }
 

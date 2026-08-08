@@ -105,8 +105,14 @@ public sealed class EditorApplication : IDisposable
     {
         _gl = _window.CreateOpenGL();
         _input = _window.CreateInput();
-        _imgui = new ImGuiController(_gl, _window, _input);
-        _renderer = new GlRenderer(_gl);
+        _imgui = CreateImGui(_gl, _input);
+        Theme.Apply();
+
+        _renderer = new GlRenderer(_gl)
+        {
+            BackgroundColor = Color32.FromVector4(Theme.Viewport),
+        };
+
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());
         _export = new ExportController(_session);
         _extrude = new ExtrudeInteraction(_session);
@@ -131,6 +137,22 @@ public sealed class EditorApplication : IDisposable
         {
             keyboard.KeyDown += OnKeyDown;
         }
+    }
+
+    /// <summary>
+    /// Builds the ImGui layer with a real UI font when one can be found. ImGui's built-in font is a
+    /// 13px bitmap face, and it is the single loudest reason a tool looks like a debug overlay — but
+    /// it is also the guaranteed fallback, so a missing font file must not stop the editor opening.
+    /// </summary>
+    private ImGuiController CreateImGui(GL gl, IInputContext input)
+    {
+        if (Theme.ResolveFontPath() is not { } fontPath)
+        {
+            Console.WriteLine("No UI font found; falling back to the built-in bitmap font.");
+            return new ImGuiController(gl, _window, input);
+        }
+
+        return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels));
     }
 
     /// <summary>Ctrl+Scroll resizes the paint brush live while hovering (EditorApp.md, "Paint").</summary>

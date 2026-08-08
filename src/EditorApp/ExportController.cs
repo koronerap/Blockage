@@ -188,7 +188,7 @@ public sealed class ExportController(EditorSession session)
         {
             float reduction = 100f * (1f - greedyVertices / (float)Math.Max(_naiveVertexCount, 1));
             ImGui.SameLine();
-            ImGui.TextColored(new Vector4(0.55f, 0.9f, 0.55f, 1f), $"  -{reduction:0.0}%");
+            ImGui.TextColored(Theme.Success, $"  -{reduction:0.0}%");
         }
 
         ImGui.Text($"  Colors used  {_analysis.UsedPaletteIndices().Count}  ->  1 material, 1 texture");
@@ -217,7 +217,7 @@ public sealed class ExportController(EditorSession session)
         if (_status.Length > 0)
         {
             ImGui.TextColored(
-                _statusIsError ? new Vector4(1f, 0.5f, 0.4f, 1f) : new Vector4(0.55f, 0.9f, 0.55f, 1f),
+                _statusIsError ? Theme.Danger : Theme.Success,
                 _status);
         }
 

@@ -149,7 +149,7 @@ public sealed class FileBrowserDialog
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            ImGui.TextColored(new Vector4(1f, 0.5f, 0.4f, 1f), $"Cannot list this folder: {exception.Message}");
+            ImGui.TextColored(Theme.Danger, $"Cannot list this folder: {exception.Message}");
         }
 
         ImGui.EndChild();
@@ -166,7 +166,7 @@ public sealed class FileBrowserDialog
 
         if (_error is not null)
         {
-            ImGui.TextColored(new Vector4(1f, 0.5f, 0.4f, 1f), _error);
+            ImGui.TextColored(Theme.Danger, _error);
         }
 
         string confirmLabel = _mode == FileBrowserMode.Save ? "Save" : "Open";

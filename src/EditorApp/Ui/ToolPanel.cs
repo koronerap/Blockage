@@ -166,7 +166,7 @@ public static class ToolPanel
         if (session.IsExtruding)
         {
             ImGui.TextColored(
-                new Vector4(1f, 0.85f, 0.4f, 1f),
+                Theme.Highlight,
                 $"{session.ExtrudeSteps:+0;-0} units — Enter confirms, Esc cancels");
         }
     }

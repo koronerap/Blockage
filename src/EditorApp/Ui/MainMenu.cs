@@ -115,7 +115,7 @@ public static class MainMenu
 
         if (project.IsError)
         {
-            ImGui.TextColored(new Vector4(1f, 0.5f, 0.4f, 1f), project.StatusMessage);
+            ImGui.TextColored(Theme.Danger, project.StatusMessage);
         }
         else
         {

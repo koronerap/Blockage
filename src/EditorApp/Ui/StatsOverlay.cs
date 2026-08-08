@@ -48,7 +48,7 @@ public sealed class StatsOverlay
         if (renderer.PendingChunks > 0)
         {
             // A backlog is normal right after a big paste; it should drain within a few frames.
-            ImGui.TextColored(new Vector4(1f, 0.8f, 0.4f, 1f), $"  queued     {renderer.PendingChunks:N0}");
+            ImGui.TextColored(Theme.Highlight, $"  queued     {renderer.PendingChunks:N0}");
         }
         else
         {
