@@ -49,7 +49,9 @@ public static class ReferenceMeshLoader
 
         var positions = new List<Vector3>();
 
-        Scene scene = model.DefaultScene ?? model.LogicalScenes.FirstOrDefault()
+        // Fully qualified: EditorApp.Core.Scene is a namespace of ours, and SharpGLTF has a type
+        // with the same name.
+        SharpGLTF.Schema2.Scene scene = model.DefaultScene ?? model.LogicalScenes.FirstOrDefault()
             ?? throw new ReferenceImportException($"{name} contains no scene.");
 
         foreach (Node node in scene.VisualChildren)
