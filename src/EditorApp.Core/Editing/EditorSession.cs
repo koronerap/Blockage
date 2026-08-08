@@ -127,6 +127,13 @@ public sealed class EditorSession
         {
             History.Push(_stroke);
             HasUnsavedChanges = true;
+
+            // Voxels now carry this colour, so the slot is no longer the picker's to reuse.
+            // Without this, choosing the next colour would silently repaint what was just painted.
+            if (WorkingSlot == ActiveColorIndex)
+            {
+                WorkingSlot = null;
+            }
         }
 
         _stroke = null;
@@ -148,6 +155,13 @@ public sealed class EditorSession
 
         History.Push(command);
         HasUnsavedChanges = true;
+
+        // Same reasoning as EndStroke: once voxels carry the working colour it stops being scratch.
+        if (WorkingSlot == ActiveColorIndex)
+        {
+            WorkingSlot = null;
+        }
+
         return true;
     }
 
@@ -462,8 +476,16 @@ public sealed class EditorSession
     }
 
     /// <summary>
-    /// Makes an arbitrary colour the active one. If the palette already holds it exactly, that
-    /// entry is selected and nothing changes; otherwise it lands in a custom slot.
+    /// The slot the picker is currently writing into, while that colour has not been painted with
+    /// or saved. Reused as the picker is dragged, so one session of choosing a colour consumes one
+    /// slot rather than one per frame.
+    /// </summary>
+    public byte? WorkingSlot { get; private set; }
+
+    /// <summary>
+    /// Makes an arbitrary colour the active one, live. If the palette already holds it exactly that
+    /// entry is selected; otherwise it goes into a working slot, which is not a saved swatch until
+    /// <see cref="SaveActiveColor"/> says so.
     ///
     /// This is the difference between picking a colour and editing the palette. Writing the picked
     /// colour over the active entry — which is what the editor used to do — repaints every voxel
@@ -475,23 +497,51 @@ public sealed class EditorSession
 
         if (Scene.Palette.FindExact(color) is { } existing)
         {
+            WorkingSlot = null;
             ActiveColorIndex = existing;
             return existing;
         }
 
-        byte slot = AllocateCustomSlot();
-        Color32 before = Scene.Palette[slot];
+        // Keep using the same working slot while it is still nobody's colour but the picker's.
+        byte slot = WorkingSlot is { } reusable && !Scene.Palette.IsCustomSaved(reusable)
+            ? reusable
+            : AllocateCustomSlot();
 
         Scene.Palette[slot] = color;
+        Scene.Palette.SetCustomSaved(slot, false);
         Scene.MarkAllDirty();
         Pattern?.InvalidateMatches();
 
-        // Recorded, because claiming a slot that voxels were using does change what they look like.
-        History.Push(new PaletteEditCommand(Scene, slot, before, color));
+        // No history entry: a working slot has nothing painted with it, so nothing visible changed.
         HasUnsavedChanges = true;
 
+        WorkingSlot = slot;
         ActiveColorIndex = slot;
         return slot;
+    }
+
+    /// <summary>
+    /// Keeps the active colour as a swatch. Only colours saved this way appear in the Custom row —
+    /// otherwise every colour ever used would pile up there.
+    /// </summary>
+    public bool SaveActiveColor()
+    {
+        if (!Palette.IsCustomIndex(ActiveColorIndex) || Scene.Palette.IsCustomSlotFree(ActiveColorIndex))
+        {
+            return false;
+        }
+
+        if (Scene.Palette.IsCustomSaved(ActiveColorIndex))
+        {
+            return false;
+        }
+
+        Scene.Palette.SetCustomSaved(ActiveColorIndex, true);
+
+        // The slot belongs to the swatch now; the next picker change starts a fresh one.
+        WorkingSlot = null;
+        HasUnsavedChanges = true;
+        return true;
     }
 
     /// <summary>Gives a custom slot back to the pool.</summary>
@@ -513,8 +563,9 @@ public sealed class EditorSession
     }
 
     /// <summary>
-    /// A free slot if there is one, otherwise one no voxel is using, and only as a last resort a
-    /// slot that is in use — losing the oldest custom colour beats refusing to pick one.
+    /// A free slot first; then an unsaved one no voxel is using, since a working colour nobody kept
+    /// and nobody painted with is the cheapest thing to lose; then any unsaved one; and only as a
+    /// last resort a saved swatch, because refusing to pick a colour is worse than dropping one.
     /// </summary>
     private byte AllocateCustomSlot()
     {
@@ -527,9 +578,18 @@ public sealed class EditorSession
         }
 
         HashSet<byte> used = UsedPaletteIndices();
+
         for (int i = Palette.CustomStart; i < Palette.Size; i++)
         {
-            if (!used.Contains((byte)i))
+            if (!Scene.Palette.IsCustomSaved(i) && !used.Contains((byte)i))
+            {
+                return (byte)i;
+            }
+        }
+
+        for (int i = Palette.CustomStart; i < Palette.Size; i++)
+        {
+            if (!Scene.Palette.IsCustomSaved(i))
             {
                 return (byte)i;
             }

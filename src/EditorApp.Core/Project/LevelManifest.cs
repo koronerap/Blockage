@@ -27,6 +27,14 @@ public sealed class LevelManifest
     [JsonPropertyName("palette")]
     public string[] Palette { get; set; } = [];
 
+    /// <summary>
+    /// Custom slots the user chose to keep, as indices. Absent in files written before saved
+    /// swatches existed, where every occupied custom slot had been picked deliberately — so those
+    /// are all treated as saved rather than silently disappearing from the Custom row.
+    /// </summary>
+    [JsonPropertyName("savedCustomSlots")]
+    public int[]? SavedCustomSlots { get; set; }
+
     /// <summary>Inclusive world bounds of the solid voxels, or null for an empty level.</summary>
     [JsonPropertyName("boundsMin")]
     public int[]? BoundsMin { get; set; }
@@ -80,7 +88,7 @@ public sealed class LevelManifest
         return encoded;
     }
 
-    public static Palette DecodePalette(string[]? encoded)
+    public static Palette DecodePalette(string[]? encoded, int[]? savedCustomSlots = null)
     {
         var palette = new Palette();
         if (encoded is null)
@@ -93,6 +101,22 @@ public sealed class LevelManifest
         for (int i = 1; i < count; i++)
         {
             palette[i] = ParseColor(encoded[i], i);
+        }
+
+        if (savedCustomSlots is null)
+        {
+            // An older file: every occupied custom slot was a deliberate pick back then.
+            for (int i = Voxels.Palette.CustomStart; i < Voxels.Palette.Size; i++)
+            {
+                palette.SetCustomSaved(i, !palette.IsCustomSlotFree(i));
+            }
+        }
+        else
+        {
+            foreach (int index in savedCustomSlots)
+            {
+                palette.SetCustomSaved(index, true);
+            }
         }
 
         return palette;

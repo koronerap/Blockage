@@ -88,6 +88,7 @@ public static class VxLevelFile
             Name = name,
             ChunkSize = Chunk.Size,
             Palette = LevelManifest.EncodePalette(scene.Palette),
+            SavedCustomSlots = [.. scene.Palette.SavedCustomSlots()],
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
 
@@ -253,7 +254,7 @@ public static class VxLevelFile
         }
 
         var scene = new VoxelScene();
-        scene.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette));
+        scene.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette, manifest.SavedCustomSlots));
 
         if (manifest.Objects is { Length: > 0 } objects)
         {

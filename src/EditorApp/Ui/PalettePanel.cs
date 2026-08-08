@@ -39,7 +39,7 @@ public sealed class PalettePanel
         ImGui.Spacing();
 
         ImGui.SeparatorText("Custom");
-        DrawSwatches(session, palette, Palette.CustomStart, Palette.Size, custom: true);
+        DrawSavedSwatches(session, palette);
 
         ImGui.Spacing();
         ImGui.SeparatorText("Library");
@@ -110,33 +110,69 @@ public sealed class PalettePanel
         // itself from the window, so left to themselves on the first frame they collapse each
         // other to nothing and the picker cannot be used at all.
         ImGui.SetNextItemWidth(PickerWidth);
-        ImGui.ColorPicker3(
-            "##picker",
-            ref _working,
-            ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB);
 
-        var colour = Color32.FromVector4(new Vector4(_working, 1f));
-        byte? existing = session.Scene.Palette.FindExact(colour);
-
-        if (existing is { } index)
+        // Applied as it is dragged, so the active colour is whatever the picker shows. It goes to a
+        // working slot, which is not a swatch until it is saved.
+        if (ImGui.ColorPicker3(
+                "##picker",
+                ref _working,
+                ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB))
         {
-            ImGui.TextDisabled($"Already in the palette at index {index}.");
-        }
-        else
-        {
-            int free = session.Scene.Palette.FreeCustomSlots;
-            ImGui.TextDisabled(free > 0
-                ? $"Saved to a custom slot ({free} free)."
-                : "No free custom slot - the oldest unused one is reused.");
+            session.SelectColor(Color32.FromVector4(new Vector4(_working, 1f)));
         }
 
-        if (ImGui.Button("Use colour", new Vector2(PickerWidth, 0f)))
+        bool alreadySaved = session.Scene.Palette.IsCustomSaved(session.ActiveColorIndex);
+        bool inLibrary = !Palette.IsCustomIndex(session.ActiveColorIndex);
+
+        ImGui.BeginDisabled(alreadySaved || inLibrary);
+        if (ImGui.Button("Save colour", new Vector2(PickerWidth, 0f)))
         {
-            session.SelectColor(colour);
-            ImGui.CloseCurrentPopup();
+            session.SaveActiveColor();
         }
+
+        ImGui.EndDisabled();
+
+        ImGui.TextDisabled(
+            inLibrary ? $"Already in the library at index {session.ActiveColorIndex}."
+            : alreadySaved ? "Saved."
+            : $"Keeps it in Custom ({session.Scene.Palette.FreeCustomSlots} slots free).");
 
         ImGui.EndPopup();
+    }
+
+    /// <summary>
+    /// Only the colours kept on purpose. Working colours occupy slots too — they have to, once a
+    /// voxel carries one — but showing them would turn this into a log of everything ever used.
+    /// </summary>
+    private void DrawSavedSwatches(EditorSession session, Palette palette)
+    {
+        int[] saved = [.. palette.SavedCustomSlots()];
+
+        if (saved.Length == 0)
+        {
+            ImGui.TextDisabled("No saved colours yet.");
+            ImGui.TextDisabled("Pick a colour and press Save colour.");
+            return;
+        }
+
+        float available = ImGui.GetContentRegionAvail().X;
+        float swatch = MathF.Max((available - ((Columns - 1) * SwatchGap)) / Columns, 8f);
+
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 2f);
+
+        for (int i = 0; i < saved.Length; i++)
+        {
+            if (i % Columns != 0)
+            {
+                ImGui.SameLine(0f, SwatchGap);
+            }
+
+            ImGui.PushID(saved[i]);
+            DrawSwatch(session, palette, saved[i], swatch, custom: true);
+            ImGui.PopID();
+        }
+
+        ImGui.PopStyleVar();
     }
 
     private void DrawSwatches(EditorSession session, Palette palette, int from, int to, bool custom)

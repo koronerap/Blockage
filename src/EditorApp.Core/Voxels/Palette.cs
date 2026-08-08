@@ -34,6 +34,15 @@ public sealed class Palette
 
     private readonly Color32[] _colors = new Color32[Size];
 
+    /// <summary>
+    /// Which custom slots the user actually asked to keep.
+    ///
+    /// A colour has to occupy a slot the moment it is painted with, because voxels store indices —
+    /// but that does not make it a swatch worth showing. Only slots saved on purpose appear in the
+    /// Custom row; the rest are working colours that happen to be anchored somewhere.
+    /// </summary>
+    private readonly bool[] _customSaved = new bool[CustomCount];
+
     public Palette()
     {
         _colors[EmptyIndex] = Color32.Transparent;
@@ -84,6 +93,48 @@ public sealed class Palette
         if (IsCustomIndex(index))
         {
             _colors[index] = Color32.Transparent;
+            _customSaved[index - CustomStart] = false;
+        }
+    }
+
+    /// <summary>True when this custom slot was kept on purpose rather than just used.</summary>
+    public bool IsCustomSaved(int index) =>
+        IsCustomIndex(index) && !IsCustomSlotFree(index) && _customSaved[index - CustomStart];
+
+    public void SetCustomSaved(int index, bool saved)
+    {
+        if (IsCustomIndex(index))
+        {
+            _customSaved[index - CustomStart] = saved;
+        }
+    }
+
+    /// <summary>The saved swatches, in slot order — what the Custom row shows.</summary>
+    public IEnumerable<int> SavedCustomSlots()
+    {
+        for (int i = CustomStart; i < Size; i++)
+        {
+            if (IsCustomSaved(i))
+            {
+                yield return i;
+            }
+        }
+    }
+
+    public int SavedCustomCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = CustomStart; i < Size; i++)
+            {
+                if (IsCustomSaved(i))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
     }
 
@@ -117,6 +168,7 @@ public sealed class Palette
     {
         var clone = new Palette();
         _colors.CopyTo(clone._colors, 0);
+        _customSaved.CopyTo(clone._customSaved, 0);
         return clone;
     }
 
