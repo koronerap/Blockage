@@ -29,7 +29,15 @@ public sealed class GlRenderer : IDisposable
     private readonly ShaderProgram _voxelShader;
     private readonly ShaderProgram _lineShader;
 
+    /// <summary>Depth-tested overlays: the grid, selections, the hovered face.</summary>
     public LineBatch Lines { get; }
+
+    /// <summary>
+    /// Overlays drawn with the depth test off, so they are never swallowed by the model. A move
+    /// gizmo sits at the centre of its object's bounding box, which is usually inside solid voxels —
+    /// depth tested, it would be invisible exactly when it is needed.
+    /// </summary>
+    public LineBatch GizmoLines { get; }
 
     /// <summary>The imported guide model, drawn between the voxels and the overlay lines.</summary>
     public ReferenceModelRenderer Reference { get; }
@@ -65,6 +73,7 @@ public sealed class GlRenderer : IDisposable
         _voxelShader = new ShaderProgram(gl, Shaders.VoxelVertex, Shaders.VoxelFragment);
         _lineShader = new ShaderProgram(gl, Shaders.LineVertex, Shaders.LineFragment);
         Lines = new LineBatch(gl);
+        GizmoLines = new LineBatch(gl);
         Reference = new ReferenceModelRenderer(gl);
 
         _gl.Enable(EnableCap.DepthTest);
@@ -239,15 +248,35 @@ public sealed class GlRenderer : IDisposable
         }
 
         Reference.Draw(viewProjection);
-
-        if (!Lines.IsEmpty)
-        {
-            _lineShader.Use();
-            _lineShader.SetMatrix4("uViewProjection", viewProjection);
-            Lines.Draw();
-        }
+        DrawOverlays(viewProjection);
 
         _gl.BindVertexArray(0);
+    }
+
+    private void DrawOverlays(Matrix4x4 viewProjection)
+    {
+        if (Lines.IsEmpty && GizmoLines.IsEmpty)
+        {
+            return;
+        }
+
+        _lineShader.Use();
+        _lineShader.SetMatrix4("uViewProjection", viewProjection);
+
+        // Thick overlays are quads, and a quad seen from behind is still the stroke the user asked
+        // for, so culling comes off for the whole overlay pass.
+        _gl.Disable(EnableCap.CullFace);
+
+        Lines.Draw();
+
+        if (!GizmoLines.IsEmpty)
+        {
+            _gl.Disable(EnableCap.DepthTest);
+            GizmoLines.Draw();
+            _gl.Enable(EnableCap.DepthTest);
+        }
+
+        _gl.Enable(EnableCap.CullFace);
     }
 
     private void DrawObjectChunks(
@@ -324,6 +353,7 @@ public sealed class GlRenderer : IDisposable
         ResetBuffers();
         Reference.Dispose();
         Lines.Dispose();
+        GizmoLines.Dispose();
         _voxelShader.Dispose();
         _lineShader.Dispose();
     }

@@ -41,6 +41,12 @@ public sealed class EditorApplication : IDisposable
     /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
     private const int MaxOutlinedFaces = 3000;
 
+    // Overlay stroke widths, as multiples of the batch's screen-constant thickness.
+    private const float SelectionWidth = 1.6f;
+    private const float GizmoWidth = 4.5f;
+    private const float GizmoEdgeWidth = 2.5f;
+    private const float ArrowWidth = 4f;
+
     private readonly IWindow _window;
     private readonly int _smokeFrames;
     private readonly EditorSession _session = new();
@@ -587,7 +593,12 @@ public sealed class EditorApplication : IDisposable
     private void BuildOverlayLines()
     {
         LineBatch lines = _renderer!.Lines;
+        LineBatch gizmos = _renderer.GizmoLines;
+
         lines.Clear();
+        gizmos.Clear();
+        lines.CameraPosition = _camera.Position;
+        gizmos.CameraPosition = _camera.Position;
 
         if (_showGrid)
         {
@@ -595,7 +606,9 @@ public sealed class EditorApplication : IDisposable
         }
 
         // Everything from here on is expressed in the focused object's own space.
-        lines.Transform = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;
+        Matrix4x4 focusMatrix = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;
+        lines.Transform = focusMatrix;
+        gizmos.Transform = focusMatrix;
 
         AddSelectionOutline(lines, _session.Selection, SelectionColor);
         AddSelectionOutline(
@@ -605,7 +618,7 @@ public sealed class EditorApplication : IDisposable
 
         if (_hover is { } hit)
         {
-            lines.AddVoxelFace(hit.Voxel, hit.Face, HighlightColor);
+            lines.AddVoxelFace(hit.Voxel, hit.Face, HighlightColor, width: SelectionWidth);
 
             if (_session.ActiveTool == EditorTool.Paint)
             {
@@ -614,12 +627,15 @@ public sealed class EditorApplication : IDisposable
             }
         }
 
-        AddCutPreview(lines);
+        // The cut plane runs through the middle of the model, so depth testing would hide it.
+        AddCutPreview(gizmos);
 
         // Everything below is already in world space.
         lines.Transform = Matrix4x4.Identity;
-        AddExtrudeArrow(lines);
-        AddTransformGizmo(lines);
+        gizmos.Transform = Matrix4x4.Identity;
+
+        AddExtrudeArrow(gizmos);
+        AddTransformGizmo(gizmos);
     }
 
     /// <summary>Draws the move arrows, the box edges and the rotate rings.</summary>
@@ -646,7 +662,7 @@ public sealed class EditorApplication : IDisposable
                 {
                     if (previous is { } from)
                     {
-                        lines.AddLine(from, point, color);
+                        lines.AddThickLine(from, point, color, GizmoWidth);
                     }
 
                     previous = point;
@@ -656,7 +672,13 @@ public sealed class EditorApplication : IDisposable
             }
 
             (Vector3 start, Vector3 end) = _transform.Segment(handle, _camera);
-            lines.AddLine(start, end, color);
+            float width = handle.Kind == GizmoKind.EdgeHinge ? GizmoEdgeWidth : GizmoWidth;
+            lines.AddThickLine(start, end, color, width);
+
+            if (handle.Kind == GizmoKind.MoveAxis)
+            {
+                AddArrowHead(lines, start, end, color);
+            }
         }
 
         // The pivot a rotation is turning about, so a hinge is not a mystery mid-drag.
@@ -665,8 +687,36 @@ public sealed class EditorApplication : IDisposable
                 is { } pivot)
         {
             var size = new Vector3(0.25f);
-            lines.AddBox(pivot - size, pivot + size, GizmoActiveColor);
+            lines.AddBox(pivot - size, pivot + size, GizmoActiveColor, GizmoEdgeWidth);
         }
+    }
+
+    /// <summary>Four barbs at the tip, so a move axis reads as a direction rather than a stick.</summary>
+    private static void AddArrowHead(LineBatch lines, Vector3 start, Vector3 end, Color32 color)
+    {
+        Vector3 along = end - start;
+        float length = along.Length();
+        if (length < 1e-4f)
+        {
+            return;
+        }
+
+        Vector3 direction = along / length;
+        Vector3 side = Vector3.Cross(direction, Vector3.UnitY);
+        if (side.LengthSquared() < 1e-4f)
+        {
+            side = Vector3.Cross(direction, Vector3.UnitX);
+        }
+
+        float barb = length * 0.22f;
+        side = Vector3.Normalize(side) * barb;
+        Vector3 other = Vector3.Normalize(Vector3.Cross(direction, side)) * barb;
+        Vector3 barbBase = end - direction * (barb * 1.6f);
+
+        lines.AddThickLine(end, barbBase + side, color, GizmoWidth);
+        lines.AddThickLine(end, barbBase - side, color, GizmoWidth);
+        lines.AddThickLine(end, barbBase + other, color, GizmoWidth);
+        lines.AddThickLine(end, barbBase - other, color, GizmoWidth);
     }
 
     private static Color32 ColorFor(GizmoHandle handle) => handle.Kind switch
@@ -713,13 +763,13 @@ public sealed class EditorApplication : IDisposable
         Vector3 c = Corner(uMax, vMax);
         Vector3 d = Corner(uMin, vMax);
 
-        lines.AddLine(a, b, CutPlaneColor);
-        lines.AddLine(b, c, CutPlaneColor);
-        lines.AddLine(c, d, CutPlaneColor);
-        lines.AddLine(d, a, CutPlaneColor);
+        lines.AddThickLine(a, b, CutPlaneColor, SelectionWidth);
+        lines.AddThickLine(b, c, CutPlaneColor, SelectionWidth);
+        lines.AddThickLine(c, d, CutPlaneColor, SelectionWidth);
+        lines.AddThickLine(d, a, CutPlaneColor, SelectionWidth);
 
         // A diagonal makes the plane read as a surface rather than an empty frame.
-        lines.AddLine(a, c, CutPlaneColor);
+        lines.AddThickLine(a, c, CutPlaneColor, SelectionWidth);
     }
 
     private static void AddSelectionOutline(LineBatch lines, FaceSelection? selection, Color32 color)
@@ -734,13 +784,13 @@ public sealed class EditorApplication : IDisposable
         if (selection.Count > MaxOutlinedFaces)
         {
             (Vector3 min, Vector3 max) = selection.Bounds().ToWorldBounds();
-            lines.AddBox(min, max, color);
+            lines.AddBox(min, max, color, SelectionWidth);
             return;
         }
 
         foreach (Int3 voxel in selection.Voxels)
         {
-            lines.AddVoxelFace(voxel, selection.Direction, color, offset: 0.02f);
+            lines.AddVoxelFace(voxel, selection.Direction, color, offset: 0.02f, width: SelectionWidth);
         }
     }
 
@@ -751,7 +801,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        lines.AddLine(arrow.Start, arrow.End, ArrowColor);
+        lines.AddThickLine(arrow.Start, arrow.End, ArrowColor, ArrowWidth);
 
         // A simple four-barbed head, so the arrow reads as a direction from any angle.
         Vector3 direction = Vector3.Normalize(arrow.End - arrow.Start);
@@ -765,10 +815,10 @@ public sealed class EditorApplication : IDisposable
         Vector3 other = Vector3.Normalize(Vector3.Cross(direction, side)) * 0.35f;
         Vector3 barbBase = arrow.End - direction * 0.8f;
 
-        lines.AddLine(arrow.End, barbBase + side, ArrowColor);
-        lines.AddLine(arrow.End, barbBase - side, ArrowColor);
-        lines.AddLine(arrow.End, barbBase + other, ArrowColor);
-        lines.AddLine(arrow.End, barbBase - other, ArrowColor);
+        lines.AddThickLine(arrow.End, barbBase + side, ArrowColor, ArrowWidth);
+        lines.AddThickLine(arrow.End, barbBase - side, ArrowColor, ArrowWidth);
+        lines.AddThickLine(arrow.End, barbBase + other, ArrowColor, ArrowWidth);
+        lines.AddThickLine(arrow.End, barbBase - other, ArrowColor, ArrowWidth);
     }
 
     /// <summary>Shows where a Shift or Ctrl drag would land before it is committed.</summary>
@@ -784,14 +834,15 @@ public sealed class EditorApplication : IDisposable
         if (_paintShapeIsBox)
         {
             (Vector3 min, Vector3 max) = VoxelBox.FromCorners(anchor, cursor).ToWorldBounds();
-            lines.AddBox(min, max, BrushOutlineColor);
+            lines.AddBox(min, max, BrushOutlineColor, SelectionWidth);
             return;
         }
 
-        lines.AddLine(
+        lines.AddThickLine(
             anchor.ToVector3() + half,
             cursor.ToVector3() + half,
-            BrushOutlineColor);
+            BrushOutlineColor,
+            SelectionWidth);
     }
 
     private void AddBrushOutline(LineBatch lines, Int3 center)

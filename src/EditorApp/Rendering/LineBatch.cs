@@ -14,24 +14,43 @@ public struct LineVertex(Vector3 position, uint rgba)
     public const int SizeInBytes = 16;
 }
 
-/// <summary>Immediate-mode line drawing for the ground grid and the hovered-face highlight.</summary>
+/// <summary>
+/// Immediate-mode overlay drawing: the ground grid, selection outlines and the gizmos.
+///
+/// Anything that needs to be thicker than a hairline is built as camera-facing quads rather than
+/// asking for a wide <c>GL_LINE</c>. A core-profile driver is only required to support a line width
+/// of 1, so <c>glLineWidth</c> is silently ignored on many of them — the one thing a gizmo cannot
+/// afford. Width is scaled by distance so it stays constant on screen.
+/// </summary>
 public sealed class LineBatch : IDisposable
 {
     private readonly GL _gl;
-    private readonly uint _vao;
-    private readonly uint _vbo;
-    private readonly List<LineVertex> _vertices = [];
+    private readonly uint _lineVao;
+    private readonly uint _lineVbo;
+    private readonly uint _quadVao;
+    private readonly uint _quadVbo;
 
-    private nuint _capacity;
+    private readonly List<LineVertex> _lines = [];
+    private readonly List<LineVertex> _quads = [];
+
+    private nuint _lineCapacity;
+    private nuint _quadCapacity;
 
     public unsafe LineBatch(GL gl)
     {
         _gl = gl;
-        _vao = _gl.GenVertexArray();
-        _vbo = _gl.GenBuffer();
 
-        _gl.BindVertexArray(_vao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
+        (_lineVao, _lineVbo) = CreateBuffer();
+        (_quadVao, _quadVbo) = CreateBuffer();
+    }
+
+    private unsafe (uint Vao, uint Vbo) CreateBuffer()
+    {
+        uint vao = _gl.GenVertexArray();
+        uint vbo = _gl.GenBuffer();
+
+        _gl.BindVertexArray(vao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, vbo);
 
         const uint stride = LineVertex.SizeInBytes;
         _gl.EnableVertexAttribArray(0);
@@ -40,9 +59,10 @@ public sealed class LineBatch : IDisposable
         _gl.VertexAttribPointer(1, 4, VertexAttribPointerType.UnsignedByte, true, stride, (void*)12);
 
         _gl.BindVertexArray(0);
+        return (vao, vbo);
     }
 
-    public bool IsEmpty => _vertices.Count == 0;
+    public bool IsEmpty => _lines.Count == 0 && _quads.Count == 0;
 
     /// <summary>
     /// Applied to every point added from now on. Selections and hover highlights are expressed in
@@ -51,21 +71,84 @@ public sealed class LineBatch : IDisposable
     /// </summary>
     public Matrix4x4 Transform { get; set; } = Matrix4x4.Identity;
 
+    /// <summary>Where the camera is, so thick lines can be turned to face it and sized on screen.</summary>
+    public Vector3 CameraPosition { get; set; }
+
+    /// <summary>
+    /// Half-width of a thick line as a fraction of its distance from the camera. Roughly a
+    /// constant number of pixels at the default field of view.
+    /// </summary>
+    public float ThicknessScale { get; set; } = 0.0035f;
+
     public void Clear()
     {
-        _vertices.Clear();
+        _lines.Clear();
+        _quads.Clear();
         Transform = Matrix4x4.Identity;
     }
 
     public void AddLine(Vector3 from, Vector3 to, Color32 color)
     {
         uint rgba = color.Rgba;
-        _vertices.Add(new LineVertex(Vector3.Transform(from, Transform), rgba));
-        _vertices.Add(new LineVertex(Vector3.Transform(to, Transform), rgba));
+        _lines.Add(new LineVertex(Vector3.Transform(from, Transform), rgba));
+        _lines.Add(new LineVertex(Vector3.Transform(to, Transform), rgba));
+    }
+
+    /// <summary>
+    /// A line with body. <paramref name="width"/> is a multiplier on <see cref="ThicknessScale"/>,
+    /// so 1 is a normal overlay stroke and 3 is a gizmo handle you can actually grab.
+    /// </summary>
+    public void AddThickLine(Vector3 from, Vector3 to, Color32 color, float width = 1f)
+    {
+        Vector3 start = Vector3.Transform(from, Transform);
+        Vector3 end = Vector3.Transform(to, Transform);
+
+        Vector3 along = end - start;
+        if (along.LengthSquared() < 1e-10f)
+        {
+            return;
+        }
+
+        Vector3 midpoint = (start + end) * 0.5f;
+        Vector3 toCamera = CameraPosition - midpoint;
+        if (toCamera.LengthSquared() < 1e-10f)
+        {
+            toCamera = Vector3.UnitY;
+        }
+
+        // Perpendicular to both the line and the view, which is what makes the quad read as a
+        // round stroke from any angle.
+        Vector3 side = Vector3.Cross(Vector3.Normalize(along), Vector3.Normalize(toCamera));
+        if (side.LengthSquared() < 1e-8f)
+        {
+            // Looking straight down the line: any perpendicular will do.
+            side = Vector3.Cross(Vector3.Normalize(along), Vector3.UnitY);
+            if (side.LengthSquared() < 1e-8f)
+            {
+                side = Vector3.Cross(Vector3.Normalize(along), Vector3.UnitX);
+            }
+        }
+
+        float halfWidth = MathF.Max(toCamera.Length() * ThicknessScale * width, 1e-4f);
+        side = Vector3.Normalize(side) * halfWidth;
+
+        uint rgba = color.Rgba;
+        var a = new LineVertex(start - side, rgba);
+        var b = new LineVertex(start + side, rgba);
+        var c = new LineVertex(end + side, rgba);
+        var d = new LineVertex(end - side, rgba);
+
+        // Two triangles; the overlay pass draws with culling off, so winding does not matter.
+        _quads.Add(a);
+        _quads.Add(b);
+        _quads.Add(c);
+        _quads.Add(a);
+        _quads.Add(c);
+        _quads.Add(d);
     }
 
     /// <summary>Outlines one face of a voxel, pushed slightly outward so it does not z-fight.</summary>
-    public void AddVoxelFace(Int3 voxel, Face face, Color32 color, float offset = 0.004f)
+    public void AddVoxelFace(Int3 voxel, Face face, Color32 color, float offset = 0.004f, float width = 0f)
     {
         Vector3 push = FaceInfo.Normal(face) * offset;
         Vector3 origin = voxel.ToVector3();
@@ -74,11 +157,11 @@ public sealed class LineBatch : IDisposable
 
         for (int i = 0; i < 4; i++)
         {
-            AddLine(Corner(i), Corner((i + 1) & 3), color);
+            AddEdge(Corner(i), Corner((i + 1) & 3), color, width);
         }
     }
 
-    public void AddBox(Vector3 min, Vector3 max, Color32 color)
+    public void AddBox(Vector3 min, Vector3 max, Color32 color, float width = 0f)
     {
         Span<Vector3> corners =
         [
@@ -90,9 +173,22 @@ public sealed class LineBatch : IDisposable
 
         for (int i = 0; i < 4; i++)
         {
-            AddLine(corners[i], corners[(i + 1) & 3], color);
-            AddLine(corners[i + 4], corners[((i + 1) & 3) + 4], color);
-            AddLine(corners[i], corners[i + 4], color);
+            AddEdge(corners[i], corners[(i + 1) & 3], color, width);
+            AddEdge(corners[i + 4], corners[((i + 1) & 3) + 4], color, width);
+            AddEdge(corners[i], corners[i + 4], color, width);
+        }
+    }
+
+    /// <summary>Thin when no width is asked for, so the grid stays cheap.</summary>
+    private void AddEdge(Vector3 from, Vector3 to, Color32 color, float width)
+    {
+        if (width > 0f)
+        {
+            AddThickLine(from, to, color, width);
+        }
+        else
+        {
+            AddLine(from, to, color);
         }
     }
 
@@ -109,40 +205,58 @@ public sealed class LineBatch : IDisposable
 
     public unsafe void Draw()
     {
-        if (_vertices.Count == 0)
+        Upload(_lines, _lineVao, _lineVbo, ref _lineCapacity);
+        if (_lines.Count > 0)
+        {
+            _gl.BindVertexArray(_lineVao);
+            _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_lines.Count);
+        }
+
+        Upload(_quads, _quadVao, _quadVbo, ref _quadCapacity);
+        if (_quads.Count > 0)
+        {
+            _gl.BindVertexArray(_quadVao);
+            _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)_quads.Count);
+        }
+
+        _gl.BindVertexArray(0);
+    }
+
+    private unsafe void Upload(List<LineVertex> vertices, uint vao, uint vbo, ref nuint capacity)
+    {
+        if (vertices.Count == 0)
         {
             return;
         }
 
-        ReadOnlySpan<LineVertex> vertices = CollectionsMarshal.AsSpan(_vertices);
-        var bytes = (nuint)(vertices.Length * LineVertex.SizeInBytes);
+        ReadOnlySpan<LineVertex> span = CollectionsMarshal.AsSpan(vertices);
+        var bytes = (nuint)(span.Length * LineVertex.SizeInBytes);
 
-        _gl.BindVertexArray(_vao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
+        _gl.BindVertexArray(vao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, vbo);
 
-        if (bytes > _capacity)
+        if (bytes > capacity)
         {
-            _capacity = 4096;
-            while (_capacity < bytes)
+            capacity = 4096;
+            while (capacity < bytes)
             {
-                _capacity *= 2;
+                capacity *= 2;
             }
 
-            _gl.BufferData(BufferTargetARB.ArrayBuffer, _capacity, null, BufferUsageARB.DynamicDraw);
+            _gl.BufferData(BufferTargetARB.ArrayBuffer, capacity, null, BufferUsageARB.DynamicDraw);
         }
 
-        fixed (LineVertex* source = vertices)
+        fixed (LineVertex* source = span)
         {
             _gl.BufferSubData(BufferTargetARB.ArrayBuffer, 0, bytes, source);
         }
-
-        _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)vertices.Length);
-        _gl.BindVertexArray(0);
     }
 
     public void Dispose()
     {
-        _gl.DeleteBuffer(_vbo);
-        _gl.DeleteVertexArray(_vao);
+        _gl.DeleteBuffer(_lineVbo);
+        _gl.DeleteBuffer(_quadVbo);
+        _gl.DeleteVertexArray(_lineVao);
+        _gl.DeleteVertexArray(_quadVao);
     }
 }
