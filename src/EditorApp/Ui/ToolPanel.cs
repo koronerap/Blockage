@@ -73,10 +73,18 @@ public static class ToolPanel
                 DrawPaintModes(session);
                 break;
 
-            case EditorTool.Transform:
             case EditorTool.LoopCut:
-                ImGui.TextDisabled("Not built yet — see R5 / R6 in TODO.md.");
-                ImGui.TextDisabled("Both need the multi-object scene first.");
+                ImGui.TextDisabled("Hover the model; the nearest grid plane through it is previewed.");
+                ImGui.TextDisabled("Click to split it into two independent objects.");
+                if (session.PreviewCutPlane is { } plane)
+                {
+                    ImGui.Text($"Cut at {plane.Axis} = {plane.Coordinate}");
+                }
+
+                break;
+
+            case EditorTool.Transform:
+                ImGui.TextDisabled("Not built yet — see R5 in TODO.md.");
                 break;
 
             default:

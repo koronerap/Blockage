@@ -65,6 +65,26 @@ public sealed class VoxelScene
         return created;
     }
 
+    /// <summary>
+    /// Puts a previously removed object back, keeping its identity. Undo needs the original object
+    /// itself, not a copy of it, so anything still holding a reference stays correct.
+    /// </summary>
+    public void Restore(VoxelObject original)
+    {
+        if (_objects.Any(o => o.Id == original.Id))
+        {
+            return;
+        }
+
+        original.Grid.ReplacePalette(Palette);
+        _objects.Add(original);
+
+        if (FocusId == 0)
+        {
+            FocusId = original.Id;
+        }
+    }
+
     public bool Remove(int id)
     {
         int index = _objects.FindIndex(o => o.Id == id);

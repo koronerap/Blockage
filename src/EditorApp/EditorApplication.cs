@@ -31,6 +31,7 @@ public sealed class EditorApplication : IDisposable
     // otherwise indistinguishable (EditorApp.md, "Extrude").
     private static readonly Color32 SelectionSubtractColor = new(255, 110, 110);
     private static readonly Color32 ArrowColor = new(255, 210, 90);
+    private static readonly Color32 CutPlaneColor = new(255, 130, 220);
 
     /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
     private const int MaxOutlinedFaces = 3000;
@@ -256,6 +257,10 @@ public sealed class EditorApplication : IDisposable
                 UpdatePaint(leftDown, pressed, released);
                 break;
 
+            case EditorTool.LoopCut:
+                UpdateLoopCut(pressed);
+                break;
+
             // Transform and Loop Cut need the multi-object scene first (R4-R6); View never edits.
             default:
                 break;
@@ -312,6 +317,35 @@ public sealed class EditorApplication : IDisposable
         else if (released)
         {
             _session.EndStroke();
+        }
+    }
+
+    /// <summary>
+    /// Previews the grid boundary nearest the cursor and cuts on click. The preview point is the
+    /// exact spot on the picked face, so the plane tracks the cursor rather than snapping per voxel.
+    /// </summary>
+    private void UpdateLoopCut(bool pressed)
+    {
+        _session.PreviewCutPlane = null;
+
+        if (_hover is not { } hit || _session.Scene.Focus is not { } focus)
+        {
+            return;
+        }
+
+        Vector3 surfacePoint = hit.Voxel.ToVector3() + new Vector3(0.5f) + FaceInfo.Normal(hit.Face) * 0.5f;
+        CutPlane? plane = LoopCut.FindNearestPlane(focus, surfacePoint);
+
+        if (plane is null || !LoopCut.Divides(focus.Grid, plane.Value))
+        {
+            return;
+        }
+
+        _session.PreviewCutPlane = plane;
+
+        if (pressed)
+        {
+            _session.ApplyLoopCut(plane.Value);
         }
     }
 
@@ -521,9 +555,53 @@ public sealed class EditorApplication : IDisposable
             }
         }
 
+        AddCutPreview(lines);
+
         // The arrow already carries the object transform, so it is drawn in world space.
         lines.Transform = Matrix4x4.Identity;
         AddExtrudeArrow(lines);
+    }
+
+    /// <summary>Draws the loop cut plane as a rectangle spanning the object's bounds.</summary>
+    private void AddCutPreview(LineBatch lines)
+    {
+        if (_session.PreviewCutPlane is not { } plane
+            || _session.Scene.Focus is not { } focus
+            || !focus.Grid.TryGetBounds(out Int3 min, out Int3 max))
+        {
+            return;
+        }
+
+        int axis = plane.AxisIndex;
+        int uAxis = axis == 0 ? 1 : 0;
+        int vAxis = axis == 2 ? 1 : 2;
+
+        Vector3 Corner(float u, float v)
+        {
+            Span<float> parts = stackalloc float[3];
+            parts[axis] = plane.Coordinate;
+            parts[uAxis] = u;
+            parts[vAxis] = v;
+            return new Vector3(parts[0], parts[1], parts[2]);
+        }
+
+        float uMin = VoxelBox.Component(min, uAxis);
+        float uMax = VoxelBox.Component(max, uAxis) + 1f;
+        float vMin = VoxelBox.Component(min, vAxis);
+        float vMax = VoxelBox.Component(max, vAxis) + 1f;
+
+        Vector3 a = Corner(uMin, vMin);
+        Vector3 b = Corner(uMax, vMin);
+        Vector3 c = Corner(uMax, vMax);
+        Vector3 d = Corner(uMin, vMax);
+
+        lines.AddLine(a, b, CutPlaneColor);
+        lines.AddLine(b, c, CutPlaneColor);
+        lines.AddLine(c, d, CutPlaneColor);
+        lines.AddLine(d, a, CutPlaneColor);
+
+        // A diagonal makes the plane read as a surface rather than an empty frame.
+        lines.AddLine(a, c, CutPlaneColor);
     }
 
     private static void AddSelectionOutline(LineBatch lines, FaceSelection? selection, Color32 color)

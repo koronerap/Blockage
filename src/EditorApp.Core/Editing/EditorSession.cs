@@ -259,6 +259,41 @@ public sealed class EditorSession
         return true;
     }
 
+    // ---- Loop Cut ----------------------------------------------------------------------------
+
+    /// <summary>The plane the cursor is currently over, or null. Drawn as a preview.</summary>
+    public CutPlane? PreviewCutPlane { get; set; }
+
+    /// <summary>
+    /// Splits the focused object at the plane. Refused when one side would be empty — a cut has to
+    /// produce two objects, not one object and a ghost.
+    /// </summary>
+    public bool ApplyLoopCut(CutPlane plane)
+    {
+        if (Scene.Focus is not { } target)
+        {
+            return false;
+        }
+
+        (VoxelWorld low, VoxelWorld high) = LoopCut.Split(target.Grid, plane);
+        if (low.SolidCount == 0 || high.SolidCount == 0)
+        {
+            return false;
+        }
+
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var command = new LoopCutCommand(Scene, target, low, high);
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        PreviewCutPlane = null;
+        return true;
+    }
+
     // ---- History and palette -----------------------------------------------------------------
 
     public bool Undo()
