@@ -54,6 +54,9 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
     public void OpenRecent(string path) => GuardUnsaved("open another level", () => LoadFrom(path));
 
+    /// <summary>Asks before letting the editor close on unsaved work.</summary>
+    public void RequestExit(Action exit) => GuardUnsaved("exit", exit);
+
     /// <summary>Saves to the current path, or asks for one when the project has never been saved.</summary>
     public void Save()
     {

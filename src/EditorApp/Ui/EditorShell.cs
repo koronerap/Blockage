@@ -45,7 +45,8 @@ public sealed class EditorShell
     /// <summary>Draws the whole frame and returns the space left for the 3D view.</summary>
     public ViewportRect Draw(ShellContext context)
     {
-        float menuHeight = MainMenu.Draw(context.Session, context.Project, context.Export, context.OnExit);
+        float menuHeight = MainMenu.Draw(
+            context.Session, context.Project, context.Export, context.View, context.OnExit);
 
         Vector2 screen = ImGui.GetIO().DisplaySize;
         float optionsHeight = ImGui.GetFrameHeight() + ImGui.GetStyle().WindowPadding.Y * 2f;
@@ -162,6 +163,8 @@ public sealed class ShellContext
     public required Rendering.ReferenceModelRenderer ReferenceRenderer { get; init; }
 
     public required StatsOverlay Stats { get; init; }
+
+    public required ViewActions View { get; init; }
 
     public required Action OnExit { get; init; }
 

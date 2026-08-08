@@ -8,7 +8,12 @@ namespace EditorApp.Ui;
 public static class MainMenu
 {
     /// <summary>Draws the menu bar and returns its height, so the shell can lay out beneath it.</summary>
-    public static float Draw(EditorSession session, ProjectController project, ExportController export, Action onExit)
+    public static float Draw(
+        EditorSession session,
+        ProjectController project,
+        ExportController export,
+        ViewActions view,
+        Action onExit)
     {
         if (!ImGui.BeginMainMenuBar())
         {
@@ -58,6 +63,8 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
+        DrawViewMenu(view);
+
         if (ImGui.BeginMenu("Edit"))
         {
             if (ImGui.MenuItem($"Undo {session.History.NextUndoName ?? string.Empty}", "Ctrl+Z", false, session.History.CanUndo))
@@ -78,6 +85,48 @@ public static class MainMenu
         float height = ImGui.GetWindowSize().Y;
         ImGui.EndMainMenuBar();
         return height;
+    }
+
+    private static void DrawViewMenu(ViewActions view)
+    {
+        if (!ImGui.BeginMenu("View"))
+        {
+            return;
+        }
+
+        if (ImGui.MenuItem("Frame Level", "Home"))
+        {
+            view.FrameLevel();
+        }
+
+        if (ImGui.MenuItem("Frame Focused Object", "F"))
+        {
+            view.FrameFocused();
+        }
+
+        if (ImGui.MenuItem("Move View to Center"))
+        {
+            view.LookAtCenter();
+        }
+
+        if (ImGui.MenuItem("Reset Camera"))
+        {
+            view.ResetCamera();
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Ground Grid", "G", view.GridVisible()))
+        {
+            view.ToggleGrid();
+        }
+
+        if (ImGui.MenuItem("Measurements", "D", view.MeasurementsVisible()))
+        {
+            view.ToggleMeasurements();
+        }
+
+        ImGui.EndMenu();
     }
 
     private static void DrawRecentMenu(ProjectController project)

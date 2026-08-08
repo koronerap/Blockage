@@ -51,6 +51,22 @@ public sealed class FlyCamera
         Pitch = Math.Clamp(Pitch - mouseDelta.Y * LookSensitivity, -MaxPitch, MaxPitch);
     }
 
+    /// <summary>
+    /// Slides the camera sideways and vertically, keeping its direction. The conversion is exact
+    /// rather than a tuned constant: at a given distance the view covers
+    /// <c>2 * distance * tan(fov / 2)</c> of world height, so a pixel of cursor travel maps to a
+    /// definite number of world units and the model stays glued to the cursor while panning.
+    /// </summary>
+    public void Pan(Vector2 mouseDelta, float distance, Vector2 viewportSize)
+    {
+        float worldPerPixel = 2f * MathF.Max(distance, 0.1f) * MathF.Tan(FieldOfView * 0.5f)
+            / MathF.Max(viewportSize.Y, 1f);
+
+        // Content follows the cursor, so the camera moves the opposite way on X, and screen Y runs
+        // down while world up runs the other way.
+        Position += Right * (-mouseDelta.X * worldPerPixel) + Up * (mouseDelta.Y * worldPerPixel);
+    }
+
     /// <param name="movement">X = right, Y = up, Z = forward, each in [-1, 1].</param>
     public void Move(Vector3 movement, float deltaSeconds, float speedMultiplier = 1f)
     {
@@ -116,6 +132,20 @@ public sealed class FlyCamera
             (1f - (ndc.Y * 0.5f + 0.5f)) * viewportSize.Y);
 
         return true;
+    }
+
+    /// <summary>Turns to face a point without moving.</summary>
+    public void LookAt(Vector3 target)
+    {
+        Vector3 direction = target - Position;
+        if (direction.LengthSquared() < 1e-6f)
+        {
+            return;
+        }
+
+        direction = Vector3.Normalize(direction);
+        Pitch = Math.Clamp(MathF.Asin(direction.Y), -MaxPitch, MaxPitch);
+        Yaw = MathF.Atan2(direction.X, direction.Z);
     }
 
     /// <summary>Places the camera so the given box fills a comfortable part of the view.</summary>

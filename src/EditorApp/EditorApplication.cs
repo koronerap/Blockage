@@ -73,6 +73,9 @@ public sealed class EditorApplication : IDisposable
 
     private Vector2 _previousMousePosition;
     private bool _looking;
+    private bool _panning;
+    private bool _confirmedClose;
+    private ViewActions? _viewActions;
     private bool _leftButtonWasDown;
     private ExtrudeInteraction? _extrude;
     private TransformInteraction? _transform;
@@ -218,6 +221,8 @@ public sealed class EditorApplication : IDisposable
             _camera.Look(mouseDelta);
         }
 
+        UpdatePan(mouse, mouseDelta, io);
+
         if (io.WantCaptureKeyboard)
         {
             return;
@@ -246,6 +251,42 @@ public sealed class EditorApplication : IDisposable
 
         float multiplier = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight) ? 4f : 1f;
         _camera.Move(movement, deltaSeconds, multiplier);
+    }
+
+    /// <summary>
+    /// Middle-button drag slides the view. Panning is scaled by the distance to what is being
+    /// looked at, so it feels the same whether the camera is on top of a wall or across the level.
+    /// </summary>
+    private void UpdatePan(IMouse mouse, Vector2 mouseDelta, ImGuiIOPtr io)
+    {
+        bool middleDown = mouse.IsButtonPressed(MouseButton.Middle);
+
+        if (middleDown && !_panning && !io.WantCaptureMouse && _viewport.Contains(mouse.Position))
+        {
+            _panning = true;
+        }
+        else if (!middleDown)
+        {
+            _panning = false;
+        }
+
+        if (_panning)
+        {
+            _camera.Pan(mouseDelta, DistanceToSubject(), _viewport.Size);
+        }
+    }
+
+    /// <summary>How far away the thing being worked on is — the focused object, or the whole scene.</summary>
+    private float DistanceToSubject()
+    {
+        if (_session.Scene.Focus is { } focus && !focus.IsEmpty)
+        {
+            return Vector3.Distance(_camera.Position, focus.WorldCentre());
+        }
+
+        return _session.Scene.TryGetWorldBounds(out Vector3 min, out Vector3 max)
+            ? Vector3.Distance(_camera.Position, (min + max) * 0.5f)
+            : 20f;
     }
 
     private void UpdateHover()
@@ -966,6 +1007,7 @@ public sealed class EditorApplication : IDisposable
             Reference = _referencePanel,
             ReferenceRenderer = _renderer!.Reference,
             Stats = _stats,
+            View = _viewActions ??= CreateViewActions(),
             OnExit = _window.Close,
             Hover = _hover,
             DragReadout = CurrentDragReadout(),
@@ -991,6 +1033,39 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
+    private ViewActions CreateViewActions() => new()
+    {
+        FrameLevel = FrameLevel,
+        FrameFocused = FrameFocused,
+        LookAtCenter = () => _camera.LookAt(Vector3.Zero),
+        ResetCamera = () =>
+        {
+            _camera.Position = new Vector3(-24f, 24f, -24f);
+            _camera.Yaw = 45f * (MathF.PI / 180f);
+            _camera.Pitch = -30f * (MathF.PI / 180f);
+        },
+        GridVisible = () => _showGrid,
+        ToggleGrid = () => _showGrid = !_showGrid,
+        MeasurementsVisible = () => _showMeasurements,
+        ToggleMeasurements = () => _showMeasurements = !_showMeasurements,
+    };
+
+    private void FrameLevel()
+    {
+        if (_session.Scene.TryGetWorldBounds(out Vector3 min, out Vector3 max))
+        {
+            _camera.FrameBox(min, max);
+        }
+    }
+
+    private void FrameFocused()
+    {
+        if (_session.Scene.Focus is { } focus && focus.TryGetWorldBounds(out Vector3 min, out Vector3 max))
+        {
+            _camera.FrameBox(min, max);
+        }
+    }
+
     /// <summary>Whatever number the gesture in progress is producing, or nothing.</summary>
     private string CurrentDragReadout()
     {
@@ -1005,8 +1080,24 @@ public sealed class EditorApplication : IDisposable
     private void OnFramebufferResize(Vector2D<int> size) =>
         _gl?.Viewport(0, 0, (uint)Math.Max(size.X, 1), (uint)Math.Max(size.Y, 1));
 
+    /// <summary>
+    /// Closing is vetoable: unsaved work must not disappear because a window button was clicked.
+    /// The same guard covers the Exit menu item, since that closes the window too.
+    /// </summary>
     private void OnClosing()
     {
+        if (!_confirmedClose && _session.HasUnsavedChanges && _project is not null)
+        {
+            _window.IsClosing = false;
+            _project.RequestExit(() =>
+            {
+                _confirmedClose = true;
+                _window.Close();
+            });
+
+            return;
+        }
+
         _imgui?.Dispose();
         _renderer?.Dispose();
         _input?.Dispose();
