@@ -47,7 +47,7 @@ public sealed class UndoStack
         TrimToBudget();
     }
 
-    public bool Undo(VoxelWorld world)
+    public bool Undo()
     {
         if (_undo.Count == 0)
         {
@@ -56,13 +56,13 @@ public sealed class UndoStack
 
         ICommand command = _undo[^1];
         _undo.RemoveAt(_undo.Count - 1);
-        command.Undo(world);
+        command.Undo();
 
         _redo.Add(command);
         return true;
     }
 
-    public bool Redo(VoxelWorld world)
+    public bool Redo()
     {
         if (_redo.Count == 0)
         {
@@ -71,7 +71,7 @@ public sealed class UndoStack
 
         ICommand command = _redo[^1];
         _redo.RemoveAt(_redo.Count - 1);
-        command.Redo(world);
+        command.Redo();
 
         _undo.Add(command);
         return true;

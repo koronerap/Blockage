@@ -1,5 +1,5 @@
 using EditorApp.Core.Commands;
-using EditorApp.Core.Editing;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Tests;
@@ -8,10 +8,10 @@ public class UndoStackTests
 {
     private static VoxelEditCommand Paint(VoxelWorld world, string name, byte index, params Int3[] cells)
     {
-        var command = new VoxelEditCommand(name);
+        var command = new VoxelEditCommand(name, world);
         foreach (Int3 cell in cells)
         {
-            command.Apply(world, cell, index);
+            command.Apply(cell, index);
         }
 
         return command;
@@ -28,10 +28,10 @@ public class UndoStackTests
         stack.Push(Paint(world, "edit", 9, new Int3(1, 0, 0), new Int3(5, 5, 5)));
         Assert.NotEqual(before, world.ContentHash());
 
-        Assert.True(stack.Undo(world));
+        Assert.True(stack.Undo());
         Assert.Equal(before, world.ContentHash());
 
-        Assert.True(stack.Redo(world));
+        Assert.True(stack.Redo());
         Assert.Equal(9, world.GetVoxel(1, 0, 0));
         Assert.Equal(9, world.GetVoxel(5, 5, 5));
     }
@@ -47,7 +47,7 @@ public class UndoStackTests
         stack.Push(Paint(world, "delete", Palette.EmptyIndex, new Int3(4, 4, 4)));
         Assert.False(world.IsSolid(4, 4, 4));
 
-        stack.Undo(world);
+        stack.Undo();
         Assert.Equal(7, world.GetVoxel(4, 4, 4));
         Assert.Equal(before, world.ContentHash());
     }
@@ -58,16 +58,16 @@ public class UndoStackTests
         var world = new VoxelWorld();
         world.SetVoxel(0, 0, 0, 3);
 
-        var command = new VoxelEditCommand("drag");
-        command.Apply(world, new Int3(0, 0, 0), 4);
-        command.Apply(world, new Int3(0, 0, 0), 5);
+        var command = new VoxelEditCommand("drag", world);
+        command.Apply(new Int3(0, 0, 0), 4);
+        command.Apply(new Int3(0, 0, 0), 5);
 
         Assert.Equal(1, command.RetainedCells);
 
-        command.Undo(world);
+        command.Undo();
         Assert.Equal(3, world.GetVoxel(0, 0, 0));
 
-        command.Redo(world);
+        command.Redo();
         Assert.Equal(5, world.GetVoxel(0, 0, 0));
     }
 
@@ -78,7 +78,7 @@ public class UndoStackTests
         var stack = new UndoStack();
 
         stack.Push(Paint(world, "a", 1, new Int3(0, 0, 0)));
-        stack.Undo(world);
+        stack.Undo();
         Assert.True(stack.CanRedo);
 
         stack.Push(Paint(world, "b", 2, new Int3(1, 0, 0)));
@@ -117,28 +117,47 @@ public class UndoStackTests
         stack.Push(Paint(world, "big extrude", 1, cells));
 
         Assert.Equal(1, stack.UndoCount);
-        Assert.True(stack.Undo(world));
+        Assert.True(stack.Undo());
         Assert.Equal(0, world.SolidCount);
     }
 
     [Fact]
-    public void PaletteEditIsUndoable()
+    public void PaletteEditIsUndoableAcrossTheWholeScene()
     {
-        var world = new VoxelWorld();
-        world.SetVoxel(0, 0, 0, 20);
+        var scene = new VoxelScene();
+        var grid = new VoxelWorld();
+        grid.SetVoxel(0, 0, 0, 20);
+        scene.Add(grid, ObjectTransform.Identity);
 
-        Color32 before = world.Palette[20];
+        Color32 before = scene.Palette[20];
         var after = new Color32(1, 2, 3);
 
         var stack = new UndoStack();
-        world.Palette[20] = after;
-        stack.Push(new PaletteEditCommand(20, before, after));
+        scene.Palette[20] = after;
+        stack.Push(new PaletteEditCommand(scene, 20, before, after));
 
-        stack.Undo(world);
-        Assert.Equal(before, world.Palette[20]);
+        stack.Undo();
+        Assert.Equal(before, grid.Palette[20]);
 
-        stack.Redo(world);
-        Assert.Equal(after, world.Palette[20]);
+        stack.Redo();
+        Assert.Equal(after, grid.Palette[20]);
+    }
+
+    [Fact]
+    public void UndoReachesTheObjectTheEditWasMadeOn()
+    {
+        // Focus moving after an edit must not send its undo to a different object.
+        var first = new VoxelWorld();
+        var second = new VoxelWorld();
+        second.SetVoxel(0, 0, 0, 4);
+
+        var stack = new UndoStack();
+        stack.Push(Paint(first, "on the first object", 7, new Int3(0, 0, 0)));
+
+        stack.Undo();
+
+        Assert.Equal(0, first.SolidCount);
+        Assert.Equal(4, second.GetVoxel(0, 0, 0));
     }
 
     // Flood fill now belongs to Paint's Bucket sub-mode and is tested in PaintOperationsTests.
@@ -153,10 +172,10 @@ public class UndoStackTests
         Assert.Equal(2, world.Chunks.Count);
 
         ulong afterEdit = world.ContentHash();
-        stack.Undo(world);
+        stack.Undo();
         Assert.Equal(0, world.SolidCount);
 
-        stack.Redo(world);
+        stack.Redo();
         Assert.Equal(afterEdit, world.ContentHash());
     }
 }

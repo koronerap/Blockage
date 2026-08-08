@@ -71,14 +71,14 @@ public class RegionOperationsTests
     public void FillWritesEveryCellIncludingEmptyOnes()
     {
         var world = new VoxelWorld();
-        var command = new VoxelEditCommand("fill");
+        var command = new VoxelEditCommand("fill", world);
 
-        int changed = RegionOperations.Fill(world, new VoxelBox(Int3.Zero, new Int3(2, 2, 2)), 7, command);
+        int changed = RegionOperations.Fill(new VoxelBox(Int3.Zero, new Int3(2, 2, 2)), 7, command);
 
         Assert.Equal(27, changed);
         Assert.Equal(27, world.SolidCount);
 
-        command.Undo(world);
+        command.Undo();
         Assert.Equal(0, world.SolidCount);
     }
 
@@ -88,8 +88,8 @@ public class RegionOperationsTests
         VoxelWorld world = Slab(3, 1, 3);
         world.SetVoxel(1, 0, 1, Palette.EmptyIndex);   // a hole in the middle
 
-        var command = new VoxelEditCommand("paint");
-        int changed = RegionOperations.Paint(world, new VoxelBox(Int3.Zero, new Int3(2, 0, 2)), 9, command);
+        var command = new VoxelEditCommand("paint", world);
+        int changed = RegionOperations.Paint(new VoxelBox(Int3.Zero, new Int3(2, 0, 2)), 9, command);
 
         Assert.Equal(8, changed);
         Assert.False(world.IsSolid(1, 0, 1));
@@ -102,12 +102,12 @@ public class RegionOperationsTests
         VoxelWorld world = Slab(4, 4, 4);
         ulong before = world.ContentHash();
 
-        var command = new VoxelEditCommand("delete");
-        RegionOperations.Delete(world, new VoxelBox(new Int3(1, 1, 1), new Int3(2, 2, 2)), command);
+        var command = new VoxelEditCommand("delete", world);
+        RegionOperations.Delete(new VoxelBox(new Int3(1, 1, 1), new Int3(2, 2, 2)), command);
 
         Assert.Equal(64 - 8, world.SolidCount);
 
-        command.Undo(world);
+        command.Undo();
         Assert.Equal(before, world.ContentHash());
     }
 
@@ -119,14 +119,14 @@ public class RegionOperationsTests
         world.SetVoxel(1, 0, 0, 2);
         world.SetVoxel(2, 0, 0, 3);
 
-        var command = new VoxelEditCommand("mirror");
-        RegionOperations.Mirror(world, new VoxelBox(Int3.Zero, new Int3(2, 0, 0)), Axis.X, command);
+        var command = new VoxelEditCommand("mirror", world);
+        RegionOperations.Mirror(new VoxelBox(Int3.Zero, new Int3(2, 0, 0)), Axis.X, command);
 
         Assert.Equal(3, world.GetVoxel(0, 0, 0));
         Assert.Equal(2, world.GetVoxel(1, 0, 0));
         Assert.Equal(1, world.GetVoxel(2, 0, 0));
 
-        command.Undo(world);
+        command.Undo();
         Assert.Equal(1, world.GetVoxel(0, 0, 0));
         Assert.Equal(3, world.GetVoxel(2, 0, 0));
     }
@@ -139,8 +139,8 @@ public class RegionOperationsTests
         ulong before = world.ContentHash();
 
         var box = new VoxelBox(Int3.Zero, new Int3(4, 2, 3));
-        RegionOperations.Mirror(world, box, Axis.Z, new VoxelEditCommand("a"));
-        RegionOperations.Mirror(world, box, Axis.Z, new VoxelEditCommand("b"));
+        RegionOperations.Mirror(box, Axis.Z, new VoxelEditCommand("a", world));
+        RegionOperations.Mirror(box, Axis.Z, new VoxelEditCommand("b", world));
 
         Assert.Equal(before, world.ContentHash());
     }
@@ -154,8 +154,8 @@ public class RegionOperationsTests
             world.SetVoxel(x, 0, 0, (byte)(x + 1));
         }
 
-        var command = new VoxelEditCommand("move");
-        RegionOperations.Move(world, new VoxelBox(Int3.Zero, new Int3(3, 0, 0)), new Int3(2, 0, 0), command);
+        var command = new VoxelEditCommand("move", world);
+        RegionOperations.Move(new VoxelBox(Int3.Zero, new Int3(3, 0, 0)), new Int3(2, 0, 0), command);
 
         // Shifted two along X: the source cells that are not overlapped must be empty.
         Assert.False(world.IsSolid(0, 0, 0));
@@ -173,14 +173,14 @@ public class RegionOperationsTests
         var world = new VoxelWorld();
         var stack = new UndoStack();
 
-        var command = new VoxelEditCommand("big fill");
-        RegionOperations.Fill(world, new VoxelBox(Int3.Zero, new Int3(19, 19, 19)), 3, command);
+        var command = new VoxelEditCommand("big fill", world);
+        RegionOperations.Fill(new VoxelBox(Int3.Zero, new Int3(19, 19, 19)), 3, command);
         stack.Push(command);
 
         Assert.Equal(1, stack.UndoCount);
         Assert.Equal(8000, stack.RetainedCells);
 
-        stack.Undo(world);
+        stack.Undo();
         Assert.Equal(0, world.SolidCount);
     }
 }
@@ -203,8 +203,8 @@ public class VoxelClipTests
         Assert.Equal(new Int3(3, 2, 1), clip.Size);
         Assert.Equal(6, clip.SolidCount);
 
-        var command = new VoxelEditCommand("paste");
-        clip.Paste(world, new Int3(10, 0, 0), command);
+        var command = new VoxelEditCommand("paste", world);
+        clip.Paste(new Int3(10, 0, 0), command);
 
         for (int x = 0; x < 3; x++)
         {
@@ -225,8 +225,8 @@ public class VoxelClipTests
         VoxelClip clip = VoxelClip.Copy(world, new VoxelBox(Int3.Zero, new Int3(1, 0, 0)));
 
         world.SetVoxel(11, 0, 0, 99);   // must survive a paste that lands on it
-        var command = new VoxelEditCommand("paste");
-        clip.Paste(world, new Int3(10, 0, 0), command, skipEmpty: true);
+        var command = new VoxelEditCommand("paste", world);
+        clip.Paste(new Int3(10, 0, 0), command, skipEmpty: true);
 
         Assert.Equal(1, world.GetVoxel(10, 0, 0));
         Assert.Equal(99, world.GetVoxel(11, 0, 0));
@@ -240,8 +240,8 @@ public class VoxelClipTests
         VoxelClip clip = VoxelClip.Copy(world, new VoxelBox(Int3.Zero, new Int3(1, 0, 0)));
 
         world.SetVoxel(11, 0, 0, 99);
-        var command = new VoxelEditCommand("paste");
-        clip.Paste(world, new Int3(10, 0, 0), command, skipEmpty: false);
+        var command = new VoxelEditCommand("paste", world);
+        clip.Paste(new Int3(10, 0, 0), command, skipEmpty: false);
 
         Assert.False(world.IsSolid(11, 0, 0));
     }

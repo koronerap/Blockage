@@ -81,7 +81,7 @@ public sealed class VoxelClip
     /// into an existing level should do. False writes the empty cells too, which is what mirror and
     /// move need so they do not leave the original behind.
     /// </param>
-    public int Paste(VoxelWorld world, Int3 origin, VoxelEditCommand command, bool skipEmpty = true)
+    public int Paste(Int3 origin, VoxelEditCommand command, bool skipEmpty = true)
     {
         int changed = 0;
 
@@ -97,7 +97,7 @@ public sealed class VoxelClip
                         continue;
                     }
 
-                    if (command.Apply(world, origin + new Int3(x, y, z), index))
+                    if (command.Apply(origin + new Int3(x, y, z), index))
                     {
                         changed++;
                     }

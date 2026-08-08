@@ -12,7 +12,7 @@ public static class ExtrudeOperation
     /// <summary>
     /// Applies a whole-number number of steps at once. Returns the number of cells changed.
     /// </summary>
-    public static int Apply(VoxelWorld world, FaceSelection selection, int steps, VoxelEditCommand command)
+    public static int Apply(FaceSelection selection, int steps, VoxelEditCommand command)
     {
         if (steps == 0 || selection.IsEmpty)
         {
@@ -22,23 +22,18 @@ public static class ExtrudeOperation
         Int3 offset = FaceInfo.Offset(selection.Direction);
 
         return steps > 0
-            ? PullOut(world, selection, offset, steps, command)
-            : PushIn(world, selection, offset, -steps, command);
+            ? PullOut(selection, offset, steps, command)
+            : PushIn(selection, offset, -steps, command);
     }
 
-    private static int PullOut(
-        VoxelWorld world,
-        FaceSelection selection,
-        Int3 offset,
-        int layers,
-        VoxelEditCommand command)
+    private static int PullOut(FaceSelection selection, Int3 offset, int layers, VoxelEditCommand command)
     {
         // Snapshot the colours first: once the first layer is written, the source voxels are no
         // longer the only thing the later layers would read.
         var colours = new Dictionary<Int3, byte>(selection.Count);
         foreach (Int3 voxel in selection.Voxels)
         {
-            byte colour = world.GetVoxel(voxel);
+            byte colour = command.Target.GetVoxel(voxel);
             if (colour != Palette.EmptyIndex)
             {
                 colours[voxel] = colour;
@@ -50,7 +45,7 @@ public static class ExtrudeOperation
         {
             foreach ((Int3 voxel, byte colour) in colours)
             {
-                if (command.Apply(world, voxel + offset * layer, colour))
+                if (command.Apply(voxel + offset * layer, colour))
                 {
                     changed++;
                 }
@@ -60,12 +55,7 @@ public static class ExtrudeOperation
         return changed;
     }
 
-    private static int PushIn(
-        VoxelWorld world,
-        FaceSelection selection,
-        Int3 offset,
-        int layers,
-        VoxelEditCommand command)
+    private static int PushIn(FaceSelection selection, Int3 offset, int layers, VoxelEditCommand command)
     {
         int changed = 0;
 
@@ -74,7 +64,7 @@ public static class ExtrudeOperation
         {
             foreach (Int3 voxel in selection.Voxels)
             {
-                if (command.Apply(world, voxel - offset * layer, Palette.EmptyIndex))
+                if (command.Apply(voxel - offset * layer, Palette.EmptyIndex))
                 {
                     changed++;
                 }

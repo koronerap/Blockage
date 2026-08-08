@@ -33,13 +33,9 @@ public static class PaintOperations
     /// Paints every visible voxel within a 3D euclidean radius of the centre. Radius 0 is exactly
     /// one voxel — the distance test is inclusive, so the centre always qualifies.
     /// </summary>
-    public static int Brush(
-        VoxelWorld world,
-        Int3 centre,
-        float radius,
-        byte paletteIndex,
-        VoxelEditCommand command)
+    public static int Brush(Int3 centre, float radius, byte paletteIndex, VoxelEditCommand command)
     {
+        VoxelWorld world = command.Target;
         int extent = (int)MathF.Floor(MathF.Max(radius, 0f));
         float radiusSquared = radius * radius;
 
@@ -58,7 +54,7 @@ public static class PaintOperations
                     }
 
                     var cell = centre + new Int3(dx, dy, dz);
-                    if (IsVisible(world, cell) && command.Apply(world, cell, paletteIndex))
+                    if (IsVisible(world, cell) && command.Apply(cell, paletteIndex))
                     {
                         changed++;
                     }
@@ -74,13 +70,14 @@ public static class PaintOperations
     /// <paramref name="threshold"/> of the seed's. A threshold of 0 means an exact match.
     /// </summary>
     public static int Bucket(
-        VoxelWorld world,
         Int3 seed,
         byte paletteIndex,
         int threshold,
         VoxelEditCommand command,
         int limit = 2_000_000)
     {
+        VoxelWorld world = command.Target;
+
         if (!IsVisible(world, seed))
         {
             return 0;
@@ -101,7 +98,7 @@ public static class PaintOperations
                 continue;
             }
 
-            if (command.Apply(world, cell, paletteIndex))
+            if (command.Apply(cell, paletteIndex))
             {
                 changed++;
             }

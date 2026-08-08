@@ -108,7 +108,9 @@ public sealed class EditorSession
     /// </summary>
     public void BeginStroke()
     {
-        _stroke ??= new VoxelEditCommand(ActiveTool.ToString());
+        // Bound to the focused grid here, once: focus is locked for the rest of the gesture, and
+        // undo has to reach this object even if focus has moved on by then.
+        _stroke ??= new VoxelEditCommand(ActiveTool.ToString(), World);
     }
 
     public void EndStroke()
@@ -135,7 +137,7 @@ public sealed class EditorSession
     {
         EndStroke();
 
-        var command = new VoxelEditCommand(name);
+        var command = new VoxelEditCommand(name, World);
         if (operation(command) == 0 || command.IsEmpty)
         {
             return false;
@@ -190,7 +192,7 @@ public sealed class EditorSession
             return;
         }
 
-        _extrudePreview?.Undo(World);
+        _extrudePreview?.Undo();
         ExtrudeSteps = steps;
 
         if (steps == 0)
@@ -199,8 +201,8 @@ public sealed class EditorSession
             return;
         }
 
-        var preview = new VoxelEditCommand($"Extrude {steps:+0;-0}");
-        ExtrudeOperation.Apply(World, selection, steps, preview);
+        var preview = new VoxelEditCommand($"Extrude {steps:+0;-0}", World);
+        ExtrudeOperation.Apply(selection, steps, preview);
         _extrudePreview = preview.IsEmpty ? null : preview;
     }
 
@@ -225,7 +227,7 @@ public sealed class EditorSession
     /// <summary>Throws the drag away and puts the world back exactly as it was.</summary>
     public void CancelExtrude()
     {
-        _extrudePreview?.Undo(World);
+        _extrudePreview?.Undo();
         _extrudePreview = null;
         ExtrudeSteps = 0;
     }
@@ -240,8 +242,8 @@ public sealed class EditorSession
         return PaintMode switch
         {
             PaintMode.Bucket => PaintOperations.Bucket(
-                World, hit.Voxel, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
-            _ => PaintOperations.Brush(World, hit.Voxel, BrushRadius, ActiveColorIndex, _stroke!) > 0,
+                hit.Voxel, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
+            _ => PaintOperations.Brush(hit.Voxel, BrushRadius, ActiveColorIndex, _stroke!) > 0,
         };
     }
 
@@ -264,7 +266,7 @@ public sealed class EditorSession
         CancelExtrude();
         EndStroke();
 
-        if (!History.Undo(World))
+        if (!History.Undo())
         {
             return false;
         }
@@ -278,7 +280,7 @@ public sealed class EditorSession
         CancelExtrude();
         EndStroke();
 
-        if (!History.Redo(World))
+        if (!History.Redo())
         {
             return false;
         }
@@ -303,7 +305,7 @@ public sealed class EditorSession
             return;
         }
 
-        History.Push(new PaletteEditCommand(index, before, after));
+        History.Push(new PaletteEditCommand(Scene, index, before, after));
         HasUnsavedChanges = true;
     }
 

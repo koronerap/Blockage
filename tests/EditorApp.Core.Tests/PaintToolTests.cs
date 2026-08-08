@@ -38,9 +38,9 @@ public class PaintOperationsTests
     public void RadiusZeroPaintsExactlyOneVoxel()
     {
         VoxelWorld world = SolidCube(3);
-        var command = new VoxelEditCommand("paint");
+        var command = new VoxelEditCommand("paint", world);
 
-        int changed = PaintOperations.Brush(world, new Int3(1, 2, 1), 0f, 9, command);
+        int changed = PaintOperations.Brush(new Int3(1, 2, 1), 0f, 9, command);
 
         Assert.Equal(1, changed);
         Assert.Equal(9, world.GetVoxel(1, 2, 1));
@@ -53,9 +53,9 @@ public class PaintOperationsTests
         // A cube brush of radius 1 would take all 27 cells; a sphere takes the 7-cell plus shape,
         // and here the centre is buried, so only the 6 face neighbours qualify.
         VoxelWorld world = SolidCube(3);
-        var command = new VoxelEditCommand("paint");
+        var command = new VoxelEditCommand("paint", world);
 
-        PaintOperations.Brush(world, new Int3(1, 1, 1), 1f, 9, command);
+        PaintOperations.Brush(new Int3(1, 1, 1), 1f, 9, command);
 
         Assert.Equal(9, world.GetVoxel(0, 1, 1));       // distance 1, visible
         Assert.Equal(5, world.GetVoxel(0, 0, 1));       // distance sqrt(2), outside the radius
@@ -68,8 +68,8 @@ public class PaintOperationsTests
         VoxelWorld world = SolidCube(2);
         int before = world.SolidCount;
 
-        var command = new VoxelEditCommand("paint");
-        PaintOperations.Brush(world, new Int3(0, 0, 0), 4f, 12, command);
+        var command = new VoxelEditCommand("paint", world);
+        PaintOperations.Brush(new Int3(0, 0, 0), 4f, 12, command);
 
         Assert.Equal(before, world.SolidCount);
         Assert.True(world.Chunks.Count <= 1);
@@ -87,8 +87,8 @@ public class PaintOperationsTests
         world.SetVoxel(2, 0, 0, 4);            // splits the run
         world.SetVoxel(50, 0, 0, 3);           // same colour, disconnected
 
-        var command = new VoxelEditCommand("bucket");
-        int changed = PaintOperations.Bucket(world, Int3.Zero, 8, threshold: 0, command);
+        var command = new VoxelEditCommand("bucket", world);
+        int changed = PaintOperations.Bucket(Int3.Zero, 8, 0, command);
 
         Assert.Equal(2, changed);
         Assert.Equal(8, world.GetVoxel(1, 0, 0));
@@ -109,12 +109,12 @@ public class PaintOperationsTests
         world.SetVoxel(1, 0, 0, 11);
         world.SetVoxel(2, 0, 0, 12);
 
-        var exact = new VoxelEditCommand("exact");
-        Assert.Equal(1, PaintOperations.Bucket(world, Int3.Zero, 20, threshold: 0, exact));
-        exact.Undo(world);
+        var exact = new VoxelEditCommand("exact", world);
+        Assert.Equal(1, PaintOperations.Bucket(Int3.Zero, 20, 0, exact));
+        exact.Undo();
 
-        var loose = new VoxelEditCommand("loose");
-        Assert.Equal(2, PaintOperations.Bucket(world, Int3.Zero, 20, threshold: 8, loose));
+        var loose = new VoxelEditCommand("loose", world);
+        Assert.Equal(2, PaintOperations.Bucket(Int3.Zero, 20, 8, loose));
         Assert.Equal(12, world.GetVoxel(2, 0, 0));
     }
 
@@ -124,8 +124,8 @@ public class PaintOperationsTests
         // Two exposed shells joined only through the inside of a solid block: fill must not tunnel.
         VoxelWorld world = SolidCube(4, index: 3);
 
-        var command = new VoxelEditCommand("bucket");
-        PaintOperations.Bucket(world, Int3.Zero, 9, threshold: 0, command);
+        var command = new VoxelEditCommand("bucket", world);
+        PaintOperations.Bucket(Int3.Zero, 9, 0, command);
 
         Assert.Equal(9, world.GetVoxel(0, 0, 0));
         Assert.Equal(3, world.GetVoxel(1, 1, 1));    // interior untouched

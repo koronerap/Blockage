@@ -11,13 +11,13 @@ namespace EditorApp.Core.Editing;
 /// implementation. A second one would be exactly the duplicate mental model the spec rules out for
 /// Place and Erase.
 ///
-/// Every operation writes through a <see cref="VoxelEditCommand"/>, so a region edit of any size is
-/// a single undo step, which is the case the cell-based undo budget exists for.
+/// Reads and writes both go through the command's target grid, so the two cannot end up pointing at
+/// different objects.
 /// </summary>
 public static class RegionOperations
 {
     /// <summary>Sets every cell in the box, empty ones included.</summary>
-    public static int Fill(VoxelWorld world, VoxelBox box, byte paletteIndex, VoxelEditCommand command)
+    public static int Fill(VoxelBox box, byte paletteIndex, VoxelEditCommand command)
     {
         int changed = 0;
         for (int y = box.Min.Y; y <= box.Max.Y; y++)
@@ -26,7 +26,7 @@ public static class RegionOperations
             {
                 for (int x = box.Min.X; x <= box.Max.X; x++)
                 {
-                    if (command.Apply(world, new Int3(x, y, z), paletteIndex))
+                    if (command.Apply(new Int3(x, y, z), paletteIndex))
                     {
                         changed++;
                     }
@@ -37,11 +37,11 @@ public static class RegionOperations
         return changed;
     }
 
-    public static int Delete(VoxelWorld world, VoxelBox box, VoxelEditCommand command) =>
-        Fill(world, box, Palette.EmptyIndex, command);
+    public static int Delete(VoxelBox box, VoxelEditCommand command) =>
+        Fill(box, Palette.EmptyIndex, command);
 
     /// <summary>Recolors the solid cells in the box, leaving the shape alone.</summary>
-    public static int Paint(VoxelWorld world, VoxelBox box, byte paletteIndex, VoxelEditCommand command)
+    public static int Paint(VoxelBox box, byte paletteIndex, VoxelEditCommand command)
     {
         int changed = 0;
         for (int y = box.Min.Y; y <= box.Max.Y; y++)
@@ -51,7 +51,7 @@ public static class RegionOperations
                 for (int x = box.Min.X; x <= box.Max.X; x++)
                 {
                     var cell = new Int3(x, y, z);
-                    if (world.GetVoxel(cell) != Palette.EmptyIndex && command.Apply(world, cell, paletteIndex))
+                    if (command.Target.GetVoxel(cell) != Palette.EmptyIndex && command.Apply(cell, paletteIndex))
                     {
                         changed++;
                     }
@@ -66,27 +66,26 @@ public static class RegionOperations
     /// Mirrors the contents of the box in place across its own centre. Reads the whole region first,
     /// so a mirror never reads cells it has already overwritten.
     /// </summary>
-    public static int Mirror(VoxelWorld world, VoxelBox box, Axis axis, VoxelEditCommand command)
+    public static int Mirror(VoxelBox box, Axis axis, VoxelEditCommand command)
     {
-        VoxelClip source = VoxelClip.Copy(world, box);
-        VoxelClip mirrored = source.Mirrored(axis);
-        return mirrored.Paste(world, box.Min, command, skipEmpty: false);
+        VoxelClip source = VoxelClip.Copy(command.Target, box);
+        return source.Mirrored(axis).Paste(box.Min, command, skipEmpty: false);
     }
 
     /// <summary>
     /// Moves the region by a delta: the source box is cleared and the contents written at the
     /// offset. Overlapping source and destination is handled because the read happens up front.
     /// </summary>
-    public static int Move(VoxelWorld world, VoxelBox box, Int3 delta, VoxelEditCommand command)
+    public static int Move(VoxelBox box, Int3 delta, VoxelEditCommand command)
     {
         if (delta == Int3.Zero)
         {
             return 0;
         }
 
-        VoxelClip clip = VoxelClip.Copy(world, box);
-        int changed = Delete(world, box, command);
-        changed += clip.Paste(world, box.Min + delta, command, skipEmpty: false);
+        VoxelClip clip = VoxelClip.Copy(command.Target, box);
+        int changed = Delete(box, command);
+        changed += clip.Paste(box.Min + delta, command, skipEmpty: false);
         return changed;
     }
 }

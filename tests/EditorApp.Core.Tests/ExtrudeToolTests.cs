@@ -161,15 +161,15 @@ public class ExtrudeOperationTests
         world.SetVoxel(0, 0, 0, 11);
         world.SetVoxel(1, 0, 0, 22);
 
-        var command = new VoxelEditCommand("extrude");
-        int changed = ExtrudeOperation.Apply(world, TopOf(world, 2, 1), 2, command);
+        var command = new VoxelEditCommand("extrude", world);
+        int changed = ExtrudeOperation.Apply(TopOf(world, 2, 1), 2, command);
 
         Assert.Equal(4, changed);
         Assert.Equal(11, world.GetVoxel(0, 1, 0));
         Assert.Equal(11, world.GetVoxel(0, 2, 0));
         Assert.Equal(22, world.GetVoxel(1, 2, 0));
 
-        command.Undo(world);
+        command.Undo();
         Assert.Equal(2, world.SolidCount);
     }
 
@@ -184,8 +184,8 @@ public class ExtrudeOperationTests
 
         FaceSelection top = FaceSelection.Box(world, Face.PosY, 3, new Int3(0, 3, 0), new Int3(0, 3, 0));
 
-        var command = new VoxelEditCommand("intrude");
-        ExtrudeOperation.Apply(world, top, -2, command);
+        var command = new VoxelEditCommand("intrude", world);
+        ExtrudeOperation.Apply(top, -2, command);
 
         Assert.Equal(2, world.SolidCount);
         Assert.False(world.IsSolid(0, 3, 0));
@@ -197,9 +197,9 @@ public class ExtrudeOperationTests
     public void ZeroStepsChangesNothing()
     {
         VoxelWorld world = Plate(3, 3);
-        var command = new VoxelEditCommand("none");
+        var command = new VoxelEditCommand("none", world);
 
-        Assert.Equal(0, ExtrudeOperation.Apply(world, TopOf(world, 3, 3), 0, command));
+        Assert.Equal(0, ExtrudeOperation.Apply(TopOf(world, 3, 3), 0, command));
         Assert.True(command.IsEmpty);
     }
 
@@ -209,8 +209,8 @@ public class ExtrudeOperationTests
         VoxelWorld world = Plate(1, 3, index: 8);
         FaceSelection side = FaceSelection.Box(world, Face.PosX, 0, Int3.Zero, new Int3(0, 0, 2));
 
-        var command = new VoxelEditCommand("extrude");
-        ExtrudeOperation.Apply(world, side, 3, command);
+        var command = new VoxelEditCommand("extrude", world);
+        ExtrudeOperation.Apply(side, 3, command);
 
         Assert.Equal(12, world.SolidCount);
         Assert.Equal(8, world.GetVoxel(3, 0, 2));
@@ -222,8 +222,8 @@ public class ExtrudeOperationTests
         VoxelWorld world = Plate(2, 2);
         FaceSelection selection = TopOf(world, 2, 2);
 
-        var command = new VoxelEditCommand("extrude");
-        ExtrudeOperation.Apply(world, selection, 2, command);
+        var command = new VoxelEditCommand("extrude", world);
+        ExtrudeOperation.Apply(selection, 2, command);
         FaceSelection advanced = ExtrudeOperation.Advance(selection, 2);
 
         Assert.Equal(2, advanced.Plane);
