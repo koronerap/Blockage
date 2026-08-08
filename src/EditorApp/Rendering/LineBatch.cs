@@ -252,13 +252,25 @@ public sealed class LineBatch : IDisposable
     }
 
     /// <summary>A ground grid on the Y = 0 plane, with every tenth line emphasised.</summary>
-    public void AddGroundGrid(int halfExtent, Color32 minor, Color32 major)
+    /// <param name="halfCells">How far the grid reaches from the origin, counted in cells.</param>
+    /// <param name="spacing">Width of one cell, in voxels. See <see cref="GroundGrid"/>.</param>
+    public void AddGroundGrid(int halfCells, float spacing, Color32 minor, Color32 major)
     {
-        for (int i = -halfExtent; i <= halfExtent; i++)
+        if (spacing <= 0f || !float.IsFinite(spacing))
         {
+            return;
+        }
+
+        halfCells = Math.Min(halfCells, GroundGrid.MaxLinesPerAxis);
+        float extent = halfCells * spacing;
+
+        for (int i = -halfCells; i <= halfCells; i++)
+        {
+            float offset = i * spacing;
             Color32 color = i % 10 == 0 ? major : minor;
-            AddLine(new Vector3(i, 0, -halfExtent), new Vector3(i, 0, halfExtent), color);
-            AddLine(new Vector3(-halfExtent, 0, i), new Vector3(halfExtent, 0, i), color);
+
+            AddLine(new Vector3(offset, 0, -extent), new Vector3(offset, 0, extent), color);
+            AddLine(new Vector3(-extent, 0, offset), new Vector3(extent, 0, offset), color);
         }
     }
 

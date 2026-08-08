@@ -73,5 +73,10 @@ public static class LevelPanel
         ImGui.TextColored(
             Theme.Highlight,
             $"Exports  {world.X:0.###} x {world.Y:0.###} x {world.Z:0.###}");
+
+        // What the ground grid is measuring, so the cells the model sits on can be read as a number.
+        float spacing = Rendering.GroundGrid.Spacing(scene.VoxelSize);
+        ImGui.TextDisabled(
+            $"Grid cell  {spacing:0.###} vx  =  {Rendering.GroundGrid.WorldUnitsPerCell(scene.VoxelSize):0.###}");
     }
 }

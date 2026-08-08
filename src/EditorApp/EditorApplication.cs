@@ -774,7 +774,11 @@ public sealed class EditorApplication : IDisposable
 
         if (_showGrid)
         {
-            lines.AddGroundGrid(64, GridMinor, GridMajor);
+            lines.AddGroundGrid(
+                GroundGrid.HalfExtentCells,
+                GroundGrid.Spacing(_session.Scene.VoxelSize),
+                GridMinor,
+                GridMajor);
         }
 
         // Everything from here on is expressed in the focused object's own space.
