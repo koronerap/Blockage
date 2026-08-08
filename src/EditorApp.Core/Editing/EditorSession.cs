@@ -87,6 +87,9 @@ public sealed class EditorSession
     /// <summary>How far two colours may differ and still be filled together.</summary>
     public int BucketThreshold { get; set; }
 
+    /// <summary>The tiled image Pattern samples, or null when none has been loaded.</summary>
+    public PatternSource? Pattern { get; set; }
+
     /// <summary>True when the world has changed since the last save.</summary>
     public bool HasUnsavedChanges { get; set; }
 
@@ -282,6 +285,13 @@ public sealed class EditorSession
         {
             PaintMode.Bucket => PaintOperations.Bucket(
                 hit.Voxel, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
+
+            // With no pattern loaded there is nothing to sample, so Pattern falls back to a plain
+            // fill rather than doing nothing and looking broken.
+            PaintMode.Pattern => Pattern is { } pattern
+                ? PaintOperations.Pattern(hit.Voxel, hit.Face, pattern, BucketThreshold, _stroke!) > 0
+                : PaintOperations.Bucket(hit.Voxel, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
+
             _ => PaintOperations.Brush(hit.Voxel, BrushRadius, ActiveColorIndex, _stroke!) > 0,
         };
     }
@@ -445,6 +455,9 @@ public sealed class EditorSession
     {
         Scene.Palette[index] = color;
         Scene.MarkAllDirty();
+
+        // A pattern caches which palette entry each of its colours matched; that answer just changed.
+        Pattern?.InvalidateMatches();
         HasUnsavedChanges = true;
     }
 

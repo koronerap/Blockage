@@ -122,11 +122,62 @@ public static class ToolOptions
 
         if (session.PaintMode == PaintMode.Pattern)
         {
-            ImGui.SameLine(0f, 18f);
-            ImGui.AlignTextToFramePadding();
-            ImGui.TextColored(Theme.Highlight, "Not built yet");
+            DrawPatternControls(session);
         }
     }
+
+    /// <summary>The pattern browser lives here rather than in a panel: it belongs to one sub-mode.</summary>
+    private static readonly FileBrowserDialog PatternBrowser = new();
+
+    private static string _patternStatus = string.Empty;
+
+    public static void DrawDialogs() => PatternBrowser.Draw();
+
+    private static void DrawPatternControls(EditorSession session)
+    {
+        ImGui.SameLine(0f, 18f);
+
+        if (ImGui.Button("Load pattern..."))
+        {
+            PatternBrowser.Show(
+                FileBrowserMode.Open,
+                "Load a tiled pattern (.png)",
+                ".png",
+                PatternBrowser.CurrentDirectory,
+                suggestedName: null,
+                LoadPattern(session));
+        }
+
+        ImGui.SameLine(0f, 12f);
+        ImGui.AlignTextToFramePadding();
+
+        if (_patternStatus.Length > 0)
+        {
+            ImGui.TextColored(Theme.Danger, _patternStatus);
+        }
+        else if (session.Pattern is { } pattern)
+        {
+            ImGui.TextDisabled($"{pattern.Name}  {pattern.Width}x{pattern.Height}  ·  the clicked voxel takes its top-left pixel");
+        }
+        else
+        {
+            ImGui.TextDisabled("No pattern loaded - filling with the active colour instead.");
+        }
+    }
+
+    private static Action<string> LoadPattern(EditorSession session) => path =>
+    {
+        try
+        {
+            session.Pattern = PatternSource.Load(path);
+            _patternStatus = string.Empty;
+        }
+        catch (Exception exception) when (exception is Core.Import.ImageDecodeException or IOException)
+        {
+            session.Pattern = null;
+            _patternStatus = exception.Message;
+        }
+    };
 
     /// <summary>
     /// A joined run of buttons rather than a row of radio circles — the same choice, but it reads as

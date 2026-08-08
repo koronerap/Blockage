@@ -53,6 +53,12 @@ public static class Theme
     public static readonly Vector4 Danger = Rgb(0xD9584A);
     public static readonly Vector4 Success = Rgb(0x7FBF6A);
 
+    // The three axes, shared by the gizmo, the axis indicator and the dimension labels, so a colour
+    // means the same axis everywhere in the interface.
+    public static readonly Vector4 AxisX = Rgb(0xEB5A5A);
+    public static readonly Vector4 AxisY = Rgb(0x78DC6E);
+    public static readonly Vector4 AxisZ = Rgb(0x6496FA);
+
     /// <summary>The 3D viewport's clear colour. Slightly lighter than the chrome so the model sits in it.</summary>
     public static readonly Vector4 Viewport = Rgb(0x393939);
 

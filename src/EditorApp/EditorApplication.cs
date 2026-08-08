@@ -33,9 +33,11 @@ public sealed class EditorApplication : IDisposable
     private static readonly Color32 SelectionSubtractColor = new(255, 110, 110);
     private static readonly Color32 ArrowColor = new(255, 210, 90);
     private static readonly Color32 CutPlaneColor = new(255, 130, 220);
-    private static readonly Color32 GizmoXColor = new(235, 90, 90);
-    private static readonly Color32 GizmoYColor = new(120, 220, 110);
-    private static readonly Color32 GizmoZColor = new(100, 150, 250);
+    // Straight from the theme, so an axis is the same colour in the gizmo, the corner indicator and
+    // the dimension labels.
+    private static readonly Color32 GizmoXColor = Color32.FromVector4(Theme.AxisX);
+    private static readonly Color32 GizmoYColor = Color32.FromVector4(Theme.AxisY);
+    private static readonly Color32 GizmoZColor = Color32.FromVector4(Theme.AxisZ);
     private static readonly Color32 GizmoEdgeColor = new(150, 150, 165);
     private static readonly Color32 GizmoActiveColor = new(255, 240, 140);
 
@@ -966,16 +968,19 @@ public sealed class EditorApplication : IDisposable
             Stats = _stats,
             OnExit = _window.Close,
             Hover = _hover,
-            DragReadout = _transform?.Readout ?? string.Empty,
+            DragReadout = CurrentDragReadout(),
             FrameSeconds = _lastDelta,
         };
 
         _viewport = _shell.Draw(context);
 
+        ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout);
+
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
         _export!.Draw();
         _referencePanel.DrawDialogs();
+        ToolOptions.DrawDialogs();
 
         // The asterisk in the title is the only always-visible unsaved-changes indicator.
         string title = _project.WindowTitle;
@@ -984,6 +989,17 @@ public sealed class EditorApplication : IDisposable
             _windowTitle = title;
             _window.Title = title;
         }
+    }
+
+    /// <summary>Whatever number the gesture in progress is producing, or nothing.</summary>
+    private string CurrentDragReadout()
+    {
+        if (_transform is { Readout.Length: > 0 } transform)
+        {
+            return transform.Readout;
+        }
+
+        return _session.IsExtruding ? $"{_session.ExtrudeSteps:+0;-0} units" : string.Empty;
     }
 
     private void OnFramebufferResize(Vector2D<int> size) =>

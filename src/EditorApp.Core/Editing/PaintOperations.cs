@@ -116,6 +116,58 @@ public static class PaintOperations
         return changed;
     }
 
+    /// <summary>
+    /// The same connected fill as <see cref="Bucket"/>, but each voxel takes its colour from a
+    /// tiled pattern projected onto the plane of the clicked face.
+    /// </summary>
+    public static int Pattern(
+        Int3 seed,
+        Face face,
+        PatternSource pattern,
+        int threshold,
+        VoxelEditCommand command,
+        int limit = 2_000_000)
+    {
+        VoxelWorld world = command.Target;
+
+        if (!IsVisible(world, seed))
+        {
+            return 0;
+        }
+
+        Color32 target = world.Palette[world.GetVoxel(seed)];
+
+        var visited = new HashSet<Int3> { seed };
+        var queue = new Queue<Int3>();
+        queue.Enqueue(seed);
+
+        int changed = 0;
+        while (queue.Count > 0 && changed < limit)
+        {
+            Int3 cell = queue.Dequeue();
+            if (!IsVisible(world, cell) || !IsWithinThreshold(world.Palette[world.GetVoxel(cell)], target, threshold))
+            {
+                continue;
+            }
+
+            if (command.Apply(cell, pattern.Sample(world.Palette, cell, seed, face)))
+            {
+                changed++;
+            }
+
+            for (int f = 0; f < FaceInfo.Count; f++)
+            {
+                Int3 neighbour = cell + FaceInfo.Offset((Face)f);
+                if (visited.Add(neighbour))
+                {
+                    queue.Enqueue(neighbour);
+                }
+            }
+        }
+
+        return changed;
+    }
+
     /// <summary>Chebyshev distance in RGB — cheap, and predictable to reason about on a slider.</summary>
     private static bool IsWithinThreshold(Color32 candidate, Color32 target, int threshold) =>
         Math.Abs(candidate.R - target.R) <= threshold
