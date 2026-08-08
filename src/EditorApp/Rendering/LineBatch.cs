@@ -147,6 +147,65 @@ public sealed class LineBatch : IDisposable
         _quads.Add(d);
     }
 
+    /// <summary>
+    /// A solid cone, for arrow heads. Four crossed barbs read as a bundle of sticks from most
+    /// angles; a cone reads as a direction from all of them.
+    ///
+    /// The shader has no lighting, so each side facet is shaded by how much it faces the camera —
+    /// enough to keep the cone from flattening into a coloured triangle.
+    /// </summary>
+    public void AddCone(Vector3 tip, Vector3 baseCentre, float radius, Color32 color, int segments = 12)
+    {
+        Vector3 worldTip = Vector3.Transform(tip, Transform);
+        Vector3 worldBase = Vector3.Transform(baseCentre, Transform);
+
+        Vector3 axis = worldTip - worldBase;
+        if (axis.LengthSquared() < 1e-10f)
+        {
+            return;
+        }
+
+        axis = Vector3.Normalize(axis);
+
+        Vector3 reference = MathF.Abs(axis.Y) > 0.9f ? Vector3.UnitX : Vector3.UnitY;
+        Vector3 u = Vector3.Normalize(Vector3.Cross(axis, reference)) * radius;
+        Vector3 v = Vector3.Normalize(Vector3.Cross(axis, u)) * radius;
+
+        Vector3 toCamera = Vector3.Normalize(CameraPosition - worldBase);
+
+        for (int i = 0; i < segments; i++)
+        {
+            float a0 = i / (float)segments * MathF.Tau;
+            float a1 = (i + 1) / (float)segments * MathF.Tau;
+
+            Vector3 p0 = worldBase + u * MathF.Cos(a0) + v * MathF.Sin(a0);
+            Vector3 p1 = worldBase + u * MathF.Cos(a1) + v * MathF.Sin(a1);
+
+            Vector3 outward = Vector3.Normalize((p0 + p1) * 0.5f - worldBase);
+            uint facet = Shade(color, 0.72f + 0.28f * MathF.Max(Vector3.Dot(outward, toCamera), 0f));
+
+            AddTriangle(worldTip, p0, p1, facet);
+
+            // The base cap, a touch darker, so the cone still has an edge seen from behind.
+            AddTriangle(worldBase, p1, p0, Shade(color, 0.55f));
+        }
+    }
+
+    private void AddTriangle(Vector3 a, Vector3 b, Vector3 c, uint rgba)
+    {
+        _quads.Add(new LineVertex(a, rgba));
+        _quads.Add(new LineVertex(b, rgba));
+        _quads.Add(new LineVertex(c, rgba));
+    }
+
+    private static uint Shade(Color32 color, float amount)
+    {
+        static byte Scale(byte channel, float amount) =>
+            (byte)Math.Clamp(channel * amount, 0f, 255f);
+
+        return new Color32(Scale(color.R, amount), Scale(color.G, amount), Scale(color.B, amount), color.A).Rgba;
+    }
+
     /// <summary>Outlines one face of a voxel, pushed slightly outward so it does not z-fight.</summary>
     public void AddVoxelFace(Int3 voxel, Face face, Color32 color, float offset = 0.004f, float width = 0f)
     {

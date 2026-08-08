@@ -224,6 +224,28 @@ public sealed class GlRenderer : IDisposable
     /// space the shell actually leaves it rather than on the whole window. Coordinates are in
     /// framebuffer pixels with the origin at the top left, as the UI sees them.
     /// </summary>
+    /// <summary>
+    /// How strongly each object reads as focused, eased towards its target every frame so focus
+    /// moving between objects is a fade rather than a jump.
+    /// </summary>
+    private readonly Dictionary<int, float> _focusAmount = new();
+
+    /// <summary>Seconds for the focus fade to substantially complete.</summary>
+    public float FocusFadeSeconds { get; set; } = 0.12f;
+
+    public void AdvanceFocusFade(VoxelScene scene, float deltaSeconds)
+    {
+        // Frame-rate independent easing: the same fade whether the editor runs at 60 or 300 fps.
+        float blend = 1f - MathF.Exp(-deltaSeconds / MathF.Max(FocusFadeSeconds, 1e-4f));
+
+        foreach (VoxelObject o in scene.Objects)
+        {
+            float target = o.Id == scene.FocusId ? 1f : 0f;
+            float current = _focusAmount.GetValueOrDefault(o.Id, target);
+            _focusAmount[o.Id] = current + (target - current) * blend;
+        }
+    }
+
     public void Render(VoxelScene scene, FlyCamera camera, Vector2 framebufferSize, Vector2 viewportPosition, Vector2 viewportSize)
     {
         uint width = (uint)MathF.Max(viewportSize.X, 1f);
@@ -258,6 +280,7 @@ public sealed class GlRenderer : IDisposable
             }
 
             _voxelShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            _voxelShader.SetFloat("uFocus", _focusAmount.GetValueOrDefault(o.Id, o.Id == scene.FocusId ? 1f : 0f));
             DrawObjectChunks(o, chunks, frustum);
         }
 

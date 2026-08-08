@@ -322,16 +322,16 @@ public sealed class EditorSession
     // ---- Transform ---------------------------------------------------------------------------
 
     /// <summary>
-    /// Moves the focused object without recording history — used live during a gizmo drag, where
+    /// Moves a specific object without recording history — used live during a gizmo drag, where
     /// every frame would otherwise become its own undo step.
+    ///
+    /// The target is explicit rather than "whatever has focus": a drag that passed over another
+    /// object used to start moving that one instead, mid-gesture.
     /// </summary>
-    public void ApplyTransform(ObjectTransform transform)
+    public void ApplyTransform(VoxelObject target, ObjectTransform transform)
     {
-        if (Scene.Focus is { } focus)
-        {
-            focus.Transform = transform;
-            HasUnsavedChanges = true;
-        }
+        target.Transform = transform;
+        HasUnsavedChanges = true;
     }
 
     /// <summary>Records a finished gizmo drag as one undo step.</summary>
@@ -506,19 +506,24 @@ public sealed class EditorSession
     public const int StarterCubeSize = 8;
 
     /// <summary>
-    /// A new level starts as an 8³ white cube at the origin. With no Place tool there has to be
-    /// something to extrude from, and a cube gives every one of the six directions a real surface to
-    /// pull on from the first click. White keeps the first thing on screen about shape, not colour.
+    /// A new level starts as an 8x8x8 white cube. With no Place tool there has to be something to
+    /// extrude from, and a cube gives every one of the six directions a real surface to pull on from
+    /// the first click. White keeps the first thing on screen about shape, not colour.
+    ///
+    /// It is centred on the origin horizontally and rests on the ground plane, so it sits where the
+    /// grid says the middle of the world is rather than off in one quadrant.
     /// </summary>
     public static VoxelWorld CreateStarterWorld(byte paletteIndex = Palette.WhiteIndex)
     {
         var world = new VoxelWorld();
 
-        for (int x = 0; x < StarterCubeSize; x++)
+        const int half = StarterCubeSize / 2;
+
+        for (int x = -half; x < half; x++)
         {
             for (int y = 0; y < StarterCubeSize; y++)
             {
-                for (int z = 0; z < StarterCubeSize; z++)
+                for (int z = -half; z < half; z++)
                 {
                     world.SetVoxel(x, y, z, paletteIndex);
                 }

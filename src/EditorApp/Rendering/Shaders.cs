@@ -18,11 +18,21 @@ public static class Shaders
         // aligned in its own space.
         uniform mat4 uModel;
 
+        // 0 for a background object, 1 for the one being edited. Eased on the CPU so focus moves
+        // as a fade rather than a jump.
+        uniform float uFocus;
+
         out vec4 vColor;
 
         void main()
         {
-            vColor = vec4(aColor.rgb * aShade, aColor.a);
+            vec3 lit = aColor.rgb * aShade;
+
+            // Lift towards white rather than scaling: multiplying leaves an already-white model
+            // exactly as it was, which is the one case that has to read as focused.
+            lit = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
+
+            vColor = vec4(lit, aColor.a);
             gl_Position = uViewProjection * uModel * vec4(aPosition, 1.0);
         }
         """;

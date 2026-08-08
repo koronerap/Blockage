@@ -312,9 +312,12 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        // Focus follows whatever the cursor is over, but TryFocus refuses while a gesture is
-        // running — focus changing mid-drag would hand the rest of the drag to another object.
-        _session.TryFocus(pick.Object.Id);
+        // Focus follows whatever the cursor is over, except while a gesture is running. TryFocus
+        // guards strokes and extrudes itself; a gizmo drag has no stroke, so it is guarded here.
+        if (_transform is not { IsDragging: true })
+        {
+            _session.TryFocus(pick.Object.Id);
+        }
 
         // The hit is in the picked object's own space, which is only what the tools edit when that
         // object actually holds focus.
@@ -581,6 +584,10 @@ public sealed class EditorApplication : IDisposable
 
         _extrude.Confirm();
         _session.EndStroke();
+
+        // Every tool's transient preview belongs to that tool. Left behind, a cut plane from Loop
+        // Cut keeps drawing over the model long after Extrude has taken over.
+        _session.PreviewCutPlane = null;
         _session.ActiveTool = tool;
     }
 
@@ -660,6 +667,7 @@ public sealed class EditorApplication : IDisposable
         DrawUi();
 
         _renderer.SyncDirtyChunks(_session.Scene);
+        _renderer.AdvanceFocusFade(_session.Scene, _lastDelta);
         BuildOverlayLines();
 
         var framebuffer = new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y);
@@ -829,7 +837,7 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    /// <summary>Four barbs at the tip, so a move axis reads as a direction rather than a stick.</summary>
+    /// <summary>A solid cone at the tip, so a move axis reads as a direction from any angle.</summary>
     private static void AddArrowHead(LineBatch lines, Vector3 start, Vector3 end, Color32 color)
     {
         Vector3 along = end - start;
@@ -840,21 +848,9 @@ public sealed class EditorApplication : IDisposable
         }
 
         Vector3 direction = along / length;
-        Vector3 side = Vector3.Cross(direction, Vector3.UnitY);
-        if (side.LengthSquared() < 1e-4f)
-        {
-            side = Vector3.Cross(direction, Vector3.UnitX);
-        }
+        float coneLength = length * 0.28f;
 
-        float barb = length * 0.22f;
-        side = Vector3.Normalize(side) * barb;
-        Vector3 other = Vector3.Normalize(Vector3.Cross(direction, side)) * barb;
-        Vector3 barbBase = end - direction * (barb * 1.6f);
-
-        lines.AddThickLine(end, barbBase + side, color, GizmoWidth);
-        lines.AddThickLine(end, barbBase - side, color, GizmoWidth);
-        lines.AddThickLine(end, barbBase + other, color, GizmoWidth);
-        lines.AddThickLine(end, barbBase - other, color, GizmoWidth);
+        lines.AddCone(end, end - direction * coneLength, coneLength * 0.42f, color);
     }
 
     private static Color32 ColorFor(GizmoHandle handle) => handle.Kind switch
@@ -871,7 +867,9 @@ public sealed class EditorApplication : IDisposable
     /// <summary>Draws the loop cut plane as a rectangle spanning the object's bounds.</summary>
     private void AddCutPreview(LineBatch lines)
     {
-        if (_session.PreviewCutPlane is not { } plane
+        // Gated on the tool as well as on the plane: a preview must never outlive its own tool.
+        if (_session.ActiveTool != EditorTool.LoopCut
+            || _session.PreviewCutPlane is not { } plane
             || _session.Scene.Focus is not { } focus
             || !focus.Grid.TryGetBounds(out Int3 min, out Int3 max))
         {
@@ -940,23 +938,7 @@ public sealed class EditorApplication : IDisposable
         }
 
         lines.AddThickLine(arrow.Start, arrow.End, ArrowColor, ArrowWidth);
-
-        // A simple four-barbed head, so the arrow reads as a direction from any angle.
-        Vector3 direction = Vector3.Normalize(arrow.End - arrow.Start);
-        Vector3 side = Vector3.Cross(direction, Vector3.UnitY);
-        if (side.LengthSquared() < 1e-4f)
-        {
-            side = Vector3.Cross(direction, Vector3.UnitX);
-        }
-
-        side = Vector3.Normalize(side) * 0.35f;
-        Vector3 other = Vector3.Normalize(Vector3.Cross(direction, side)) * 0.35f;
-        Vector3 barbBase = arrow.End - direction * 0.8f;
-
-        lines.AddThickLine(arrow.End, barbBase + side, ArrowColor, ArrowWidth);
-        lines.AddThickLine(arrow.End, barbBase - side, ArrowColor, ArrowWidth);
-        lines.AddThickLine(arrow.End, barbBase + other, ArrowColor, ArrowWidth);
-        lines.AddThickLine(arrow.End, barbBase - other, ArrowColor, ArrowWidth);
+        AddArrowHead(lines, arrow.Start, arrow.End, ArrowColor);
     }
 
     /// <summary>Shows where a Shift or Ctrl drag would land before it is committed.</summary>

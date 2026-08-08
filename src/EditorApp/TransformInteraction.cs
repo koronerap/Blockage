@@ -356,7 +356,7 @@ public sealed class TransformInteraction(EditorSession session)
             moved = moved with { Position = ObjectTransform.SnapPosition(moved.Position) };
         }
 
-        session.ApplyTransform(moved);
+        session.ApplyTransform(_target!, moved);
 
         Vector3 delta = moved.Position - _startTransform.Position;
         Readout = $"{delta.X:+0.##;-0.##;0}, {delta.Y:+0.##;-0.##;0}, {delta.Z:+0.##;-0.##;0}";
@@ -377,7 +377,7 @@ public sealed class TransformInteraction(EditorSession session)
 
         // Screen Y runs down, so a clockwise drag has to turn the object the same way it looks.
         Quaternion delta = Quaternion.CreateFromAxisAngle(_grabbed.Direction, -degrees * (MathF.PI / 180f));
-        session.ApplyTransform(_startTransform.RotatedAbout(_grabbed.Pivot, delta));
+        session.ApplyTransform(_target!, _startTransform.RotatedAbout(_grabbed.Pivot, delta));
 
         Readout = $"{degrees:0.#}°";
     }
@@ -429,9 +429,9 @@ public sealed class TransformInteraction(EditorSession session)
 
     public void Cancel()
     {
-        if (_target is not null)
+        if (_target is { } target)
         {
-            session.ApplyTransform(_startTransform);
+            session.ApplyTransform(target, _startTransform);
         }
 
         _target = null;

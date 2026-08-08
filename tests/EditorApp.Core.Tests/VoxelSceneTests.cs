@@ -390,9 +390,10 @@ public class VoxelSceneTests
         Assert.Equal(8 * 8 * 8, scene.SolidCount);
         Assert.NotNull(scene.Focus);
 
+        // Centred over the origin, standing on the grid.
         Assert.True(scene.TryGetWorldBounds(out Vector3 min, out Vector3 max));
-        Assert.Equal(Vector3.Zero, min);
-        Assert.Equal(new Vector3(8f, 8f, 8f), max);
+        Assert.Equal(new Vector3(-4f, 0f, -4f), min);
+        Assert.Equal(new Vector3(4f, 8f, 4f), max);
     }
 
     [Fact]

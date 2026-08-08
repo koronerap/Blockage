@@ -384,12 +384,15 @@ public class ExtrudeSessionTests
         Assert.Equal(Palette.WhiteIndex, starter.GetVoxel(0, 0, 0));
         Assert.Equal(new Color32(255, 255, 255), starter.Palette[Palette.WhiteIndex]);
 
+        // Centred on the origin horizontally, resting on the ground plane.
+        Assert.True(starter.TryGetBounds(out Int3 min, out Int3 max));
+        Assert.Equal(new Int3(-side / 2, 0, -side / 2), min);
+        Assert.Equal(new Int3(side / 2 - 1, side - 1, side / 2 - 1), max);
+
         for (int f = 0; f < FaceInfo.Count; f++)
         {
             var face = (Face)f;
-            Int3 corner = FaceInfo.IsPositive(face)
-                ? new Int3(side - 1, side - 1, side - 1)
-                : Int3.Zero;
+            Int3 corner = FaceInfo.IsPositive(face) ? max : min;
 
             Assert.True(
                 FaceSelection.IsFaceExposed(starter, corner, face),

@@ -30,7 +30,7 @@ public readonly record struct ViewportRect(Vector2 Position, Vector2 Size)
 /// </summary>
 public sealed class EditorShell
 {
-    private const float ToolColumnWidth = ToolColumn.Width;
+    private static readonly float ToolColumnWidth = ToolColumn.Width;
     private const float PropertiesColumnWidth = 340f;
 
     private const ImGuiWindowFlags PanelFlags =
