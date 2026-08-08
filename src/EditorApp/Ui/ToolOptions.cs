@@ -52,7 +52,7 @@ public static class ToolOptions
 
         ImGui.SameLine(0f, 18f);
         ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled("Snap on — hold Shift for free movement");
+        ImGui.TextDisabled("Snap on - hold Shift for free movement");
     }
 
     private static void DrawExtrude(EditorSession session)
@@ -78,11 +78,11 @@ public static class ToolOptions
 
         if (session.IsExtruding)
         {
-            ImGui.TextColored(Theme.Highlight, $"{session.ExtrudeSteps:+0;-0} units — Enter confirms, Esc cancels");
+            ImGui.TextColored(Theme.Highlight, $"{session.ExtrudeSteps:+0;-0} units - Enter confirms, Esc cancels");
         }
         else if (session.Selection is { IsEmpty: false } selection)
         {
-            ImGui.TextDisabled($"{selection.Count} face(s) selected — drag the arrow");
+            ImGui.TextDisabled($"{selection.Count} face(s) selected - drag the arrow");
         }
         else
         {

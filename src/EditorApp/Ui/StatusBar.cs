@@ -23,7 +23,7 @@ public static class StatusBar
         }
         else
         {
-            ImGui.TextDisabled("—");
+            ImGui.TextDisabled("-");
         }
 
         if (session.Scene.Focus is { } focus)

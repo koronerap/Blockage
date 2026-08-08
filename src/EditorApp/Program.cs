@@ -9,6 +9,7 @@ int smokeFrames = 0;
 int stressHalfExtent = 0;
 string? exportDirectory = null;
 string? levelPath = null;
+string? screenshotPath = null;
 
 foreach (string argument in args)
 {
@@ -38,6 +39,10 @@ foreach (string argument in args)
     {
         levelPath = argument["--level=".Length..];
     }
+    else if (argument.StartsWith("--screenshot=", StringComparison.Ordinal))
+    {
+        screenshotPath = argument["--screenshot=".Length..];
+    }
 }
 
 if (stressHalfExtent > 0)
@@ -50,6 +55,6 @@ if (exportDirectory is not null)
     return HeadlessExport.Run(exportDirectory, levelPath);
 }
 
-using var application = new EditorApplication(smokeFrames);
+using var application = new EditorApplication(smokeFrames, screenshotPath);
 application.Run();
 return 0;

@@ -56,13 +56,13 @@ public sealed class ReferencePanel
 
         if (reference.Mesh is not { } mesh)
         {
-            ImGui.TextDisabled("Nothing imported. A reference is a visual guide only —");
+            ImGui.TextDisabled("Nothing imported. A reference is a visual guide only -");
             ImGui.TextDisabled("it is never voxelised, saved or exported.");
             return;
         }
 
         ImGui.Separator();
-        ImGui.Text($"{mesh.Name} — {mesh.TriangleCount:N0} triangles");
+        ImGui.Text($"{mesh.Name} - {mesh.TriangleCount:N0} triangles");
 
         (Vector3 min, Vector3 max) = mesh.Bounds();
         Vector3 size = max - min;

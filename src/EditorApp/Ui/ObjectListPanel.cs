@@ -63,7 +63,10 @@ public static class ObjectListPanel
 
         if (focused)
         {
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            // The focused object is the one every tool acts on, so it is the one thing in the
+            // interface that earns the accent.
+            ImGui.PushStyleColor(ImGuiCol.Header, Theme.Accent);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Text);
         }
 
         if (ImGui.Selectable($"{o.Name}##name", focused, ImGuiSelectableFlags.AllowDoubleClick))
@@ -79,7 +82,7 @@ public static class ObjectListPanel
 
         if (focused)
         {
-            ImGui.PopStyleColor();
+            ImGui.PopStyleColor(2);
         }
 
         if (ImGui.IsItemHovered())
@@ -124,7 +127,7 @@ public static class ObjectListPanel
 
         if (isLast && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
-            ImGui.SetTooltip("The last object cannot be deleted — there would be nothing to extrude from.");
+            ImGui.SetTooltip("The last object cannot be deleted - there would be nothing to extrude from.");
         }
 
         ImGui.EndPopup();

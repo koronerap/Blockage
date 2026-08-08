@@ -198,17 +198,33 @@ public sealed class TransformInteraction(EditorSession session)
 
     private GizmoHandle? Pick(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
+        // Arrows and rings are tried first and win outright. A box edge runs the length of the
+        // model and passes close to the gizmo at the centre, so sharing one nearest-wins test let
+        // the hinge steal grabs from the move axes almost everywhere.
+        if (PickAmong(mouse, viewport, camera, edges: false) is { } primary)
+        {
+            return primary;
+        }
+
+        return PickAmong(mouse, viewport, camera, edges: true);
+    }
+
+    private GizmoHandle? PickAmong(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool edges)
+    {
         GizmoHandle? best = null;
         float bestDistance = GrabPixels;
 
         foreach (GizmoHandle handle in Handles(camera))
         {
+            if (handle.Kind == GizmoKind.EdgeHinge != edges)
+            {
+                continue;
+            }
+
             float distance = handle.Kind == GizmoKind.RotateRing
                 ? DistanceToRing(handle, mouse, viewport, camera)
                 : DistanceToSegment(handle, mouse, viewport, camera);
 
-            // Arrows and rings sit at the centre where several handles overlap; the nearest in
-            // pixels is the one the user is pointing at.
             if (distance < bestDistance)
             {
                 bestDistance = distance;
@@ -218,6 +234,35 @@ public sealed class TransformInteraction(EditorSession session)
 
         return best;
     }
+
+    /// <summary>
+    /// Whether a handle should be drawn. Move axes and rings are always on show; the twelve box
+    /// edges only appear under the cursor, because drawing all of them outlines the model in grey
+    /// and buries the gizmo they surround.
+    /// </summary>
+    public bool ShouldDraw(GizmoHandle handle)
+    {
+        if (handle.Kind != GizmoKind.EdgeHinge)
+        {
+            return true;
+        }
+
+        if (IsDragging)
+        {
+            return Matches(_grabbed, handle);
+        }
+
+        return Hovered is { } hovered && Matches(hovered, handle);
+    }
+
+    /// <summary>True when the hovered or grabbed handle is highlighted.</summary>
+    public bool IsHighlighted(GizmoHandle handle) =>
+        IsDragging ? Matches(_grabbed, handle) : Hovered is { } hovered && Matches(hovered, handle);
+
+    private static bool Matches(GizmoHandle a, GizmoHandle b) =>
+        a.Kind == b.Kind
+        && a.Axis == b.Axis
+        && Vector3.DistanceSquared(a.Origin, b.Origin) < 1e-6f;
 
     private float DistanceToSegment(GizmoHandle handle, Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {

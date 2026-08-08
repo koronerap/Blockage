@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Export;
 using EditorApp.Core.Raycast;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
@@ -41,11 +42,12 @@ public sealed class EditorApplication : IDisposable
     /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
     private const int MaxOutlinedFaces = 3000;
 
-    // Overlay stroke widths, as multiples of the batch's screen-constant thickness.
-    private const float SelectionWidth = 1.6f;
-    private const float GizmoWidth = 4.5f;
-    private const float GizmoEdgeWidth = 2.5f;
-    private const float ArrowWidth = 4f;
+    // Overlay stroke widths, as multiples of the batch's screen-constant thickness. Heavy enough to
+    // grab, light enough not to become the thing you look at.
+    private const float SelectionWidth = 1.1f;
+    private const float GizmoWidth = 1.8f;
+    private const float GizmoEdgeWidth = 1.5f;
+    private const float ArrowWidth = 1.8f;
 
     private readonly IWindow _window;
     private readonly int _smokeFrames;
@@ -80,15 +82,19 @@ public sealed class EditorApplication : IDisposable
     private int _frameCount;
     private float _lastDelta = 1f / 60f;
 
+    private readonly string? _screenshotPath;
+
     /// <param name="smokeFrames">When positive, the window closes after this many frames (used for automated smoke runs).</param>
-    public EditorApplication(int smokeFrames = 0)
+    /// <param name="screenshotPath">When set, the last frame is written here as a PNG before closing.</param>
+    public EditorApplication(int smokeFrames = 0, string? screenshotPath = null)
     {
-        _smokeFrames = smokeFrames;
+        _screenshotPath = screenshotPath;
+        _smokeFrames = screenshotPath is not null && smokeFrames <= 0 ? 10 : smokeFrames;
 
         WindowOptions options = WindowOptions.Default with
         {
             Size = new Vector2D<int>(1600, 900),
-            Title = "EditorApp — Voxel Level Editor",
+            Title = "EditorApp - Voxel Level Editor",
             // 3.3 core covers everything this tool needs and runs on the widest range of drivers.
             API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(3, 3)),
             VSync = true,
@@ -626,15 +632,57 @@ public sealed class EditorApplication : IDisposable
             _viewport.Position * scale,
             _viewport.Size * scale);
 
+        // Put the viewport back before ImGui draws. Rendering the scene leaves GL clipped to the
+        // 3D view's rectangle, and the UI would otherwise be squeezed into that same rectangle —
+        // the whole shell drawn, shrunk, inside itself.
+        _gl.Viewport(0, 0, (uint)MathF.Max(framebuffer.X, 1f), (uint)MathF.Max(framebuffer.Y, 1f));
+
         _imgui.Render();
 
         _frameCount++;
         if (_smokeFrames > 0 && _frameCount >= _smokeFrames)
         {
+            if (_screenshotPath is not null)
+            {
+                CaptureScreenshot(_screenshotPath, (int)framebuffer.X, (int)framebuffer.Y);
+            }
+
             Console.WriteLine($"Smoke run complete: {_frameCount} frames, "
                 + $"{_renderer.TotalVertices:N0} vertices, {_renderer.DrawnTriangles:N0} triangles drawn.");
             _window.Close();
         }
+    }
+
+    /// <summary>
+    /// Reads the finished frame back and writes it as a PNG. Lets the interface be checked without
+    /// a human at the screen, which is the only way to catch a layout that renders into the wrong
+    /// rectangle.
+    /// </summary>
+    private unsafe void CaptureScreenshot(string path, int width, int height)
+    {
+        var pixels = new byte[width * height * 4];
+
+        fixed (byte* destination = pixels)
+        {
+            _gl!.ReadPixels(0, 0, (uint)width, (uint)height, PixelFormat.Rgba, PixelType.UnsignedByte, destination);
+        }
+
+        // GL hands back rows bottom-up; PNG wants them top-down.
+        var flipped = new byte[pixels.Length];
+        int stride = width * 4;
+        for (int row = 0; row < height; row++)
+        {
+            Array.Copy(pixels, (height - 1 - row) * stride, flipped, row * stride, stride);
+        }
+
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        PngWriter.WriteRgba(path, flipped, width, height);
+        Console.WriteLine($"Wrote {path} ({width}x{height}).");
     }
 
     private void BuildOverlayLines()
@@ -693,14 +741,14 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        GizmoHandle? hovered = _transform.Hovered;
-
         foreach (GizmoHandle handle in _transform.Handles(_camera))
         {
-            bool active = hovered is { } h && h.Kind == handle.Kind && h.Axis == handle.Axis
-                && Vector3.DistanceSquared(h.Origin, handle.Origin) < 1e-6f;
+            if (!_transform.ShouldDraw(handle))
+            {
+                continue;
+            }
 
-            Color32 color = active ? GizmoActiveColor : ColorFor(handle);
+            Color32 color = _transform.IsHighlighted(handle) ? GizmoActiveColor : ColorFor(handle);
 
             if (handle.Kind == GizmoKind.RotateRing)
             {

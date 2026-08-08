@@ -14,7 +14,7 @@ public static class StressCheck
 {
     public static int Run(int halfExtent)
     {
-        Console.WriteLine($"Stress check — terrain half-extent {halfExtent} ({halfExtent * 2}x{halfExtent * 2} footprint)");
+        Console.WriteLine($"Stress check - terrain half-extent {halfExtent} ({halfExtent * 2}x{halfExtent * 2} footprint)");
         Console.WriteLine();
 
         RunCase("Terrain", () =>
@@ -28,7 +28,7 @@ public static class StressCheck
 
         // A solid block is the memory worst case: every chunk fully populated.
         int side = Math.Max(halfExtent, 32);
-        RunCase($"Solid {side}³ block", () =>
+        RunCase($"Solid {side}x{side}x{side} block", () =>
         {
             var world = new VoxelWorld();
             for (int x = 0; x < side; x++)

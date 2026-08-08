@@ -31,7 +31,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     public bool IsError { get; private set; }
 
     public string WindowTitle =>
-        $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} — EditorApp";
+        $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} - EditorApp";
 
     public void NewProject() => GuardUnsaved("start a new level", () =>
     {
@@ -39,7 +39,8 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         // surface for Extrude to pull on, in every direction.
         session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
         onWorldReplaced();
-        Report($"New level — {EditorSession.StarterCubeSize}³ white cube to extrude from.", isError: false);
+        int side = EditorSession.StarterCubeSize;
+        Report($"New level - {side}x{side}x{side} white cube to extrude from.", isError: false);
     });
 
     public void OpenProject() => GuardUnsaved("open another level", () =>
@@ -87,7 +88,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             onWorldReplaced();
             Recent.Add(path);
             Report(
-                $"Opened {Path.GetFileName(path)} — {scene.SolidCount:N0} voxels in {scene.Objects.Count} object(s).",
+                $"Opened {Path.GetFileName(path)} - {scene.SolidCount:N0} voxels in {scene.Objects.Count} object(s).",
                 isError: false);
         }
         catch (Exception exception) when (exception is VxLevelFormatException or IOException or UnauthorizedAccessException or InvalidDataException)

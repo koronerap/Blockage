@@ -161,9 +161,11 @@ public static class Theme
         Set(style, ImGuiCol.ButtonHovered, ControlHovered);
         Set(style, ImGuiCol.ButtonActive, Accent);
 
-        Set(style, ImGuiCol.Header, Accent);
-        Set(style, ImGuiCol.HeaderHovered, AccentHovered);
-        Set(style, ImGuiCol.HeaderActive, AccentActive);
+        // Section headers and list rows share this colour. Accent here would paint every collapsing
+        // header a solid blue bar and drown the one thing selection is meant to point at.
+        Set(style, ImGuiCol.Header, SurfaceRaised);
+        Set(style, ImGuiCol.HeaderHovered, Control);
+        Set(style, ImGuiCol.HeaderActive, ControlActive);
 
         Set(style, ImGuiCol.Separator, Border);
         Set(style, ImGuiCol.SeparatorHovered, Accent);
