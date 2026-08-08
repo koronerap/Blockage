@@ -1,5 +1,12 @@
 using EditorApp;
 
+// Only when there is something to report. Launching the editor normally has no arguments and wants
+// nothing to do with a terminal.
+if (args.Length > 0)
+{
+    NativeConsole.AttachToParentTerminal();
+}
+
 // --smoke[=frames]        opens the window, renders a few frames and exits. Lets a build pipeline
 //                         verify GL context creation, shader compilation and the first upload.
 // --export-to=<dir>       runs the whole export chain with no window and exits. Add --level=<path>
