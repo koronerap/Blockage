@@ -55,12 +55,16 @@ public readonly record struct ObjectTransform(Vector3 Position, Quaternion Rotat
     /// and rotation on a fixed angle step.
     /// </summary>
     public static Vector3 SnapPosition(Vector3 position) => new(
-        MathF.Round(position.X),
-        MathF.Round(position.Y),
-        MathF.Round(position.Z));
+        Snap(position.X),
+        Snap(position.Y),
+        Snap(position.Z));
 
     public const float DefaultAngleStepDegrees = 15f;
 
     public static float SnapAngleDegrees(float degrees, float step = DefaultAngleStepDegrees) =>
-        step <= 0f ? degrees : MathF.Round(degrees / step) * step;
+        step <= 0f ? degrees : Snap(degrees / step) * step;
+
+    // Away from zero at the midpoint, not to even: on a snap grid, 12.5 landing on 12 while 13.5
+    // lands on 14 feels arbitrary from behind the cursor.
+    private static float Snap(float value) => MathF.Round(value, MidpointRounding.AwayFromZero);
 }

@@ -84,12 +84,47 @@ public static class ToolPanel
                 break;
 
             case EditorTool.Transform:
-                ImGui.TextDisabled("Not built yet — see R5 in TODO.md.");
+                DrawTransformModes(session);
                 break;
 
             default:
                 ImGui.TextDisabled("Camera only.");
                 break;
+        }
+    }
+
+    private static void DrawTransformModes(EditorSession session)
+    {
+        ImGui.Text("Mode (F)");
+        foreach (TransformMode mode in new[] { TransformMode.Move, TransformMode.Rotate })
+        {
+            ImGui.SameLine();
+            if (ImGui.RadioButton($"{mode}##transform", session.TransformMode == mode))
+            {
+                session.TransformMode = mode;
+            }
+        }
+
+        ImGui.BeginDisabled(session.TransformMode != TransformMode.Move);
+        ImGui.Text("Space (X)");
+        foreach (TransformSpace space in new[] { TransformSpace.Global, TransformSpace.Local })
+        {
+            ImGui.SameLine();
+            if (ImGui.RadioButton($"{space}##space", session.TransformSpace == space))
+            {
+                session.TransformSpace = space;
+            }
+        }
+
+        ImGui.EndDisabled();
+
+        ImGui.TextDisabled("Drag an arrow to move, a box edge to hinge about the nearest corner.");
+        ImGui.TextDisabled("Snap is always on; hold Shift for free movement.");
+
+        if (session.Scene.Focus is { } focus)
+        {
+            Vector3 position = focus.Transform.Position;
+            ImGui.Text($"{focus.Name}  at {position.X:0.##}, {position.Y:0.##}, {position.Z:0.##}");
         }
     }
 

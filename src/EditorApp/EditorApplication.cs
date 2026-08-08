@@ -32,6 +32,11 @@ public sealed class EditorApplication : IDisposable
     private static readonly Color32 SelectionSubtractColor = new(255, 110, 110);
     private static readonly Color32 ArrowColor = new(255, 210, 90);
     private static readonly Color32 CutPlaneColor = new(255, 130, 220);
+    private static readonly Color32 GizmoXColor = new(235, 90, 90);
+    private static readonly Color32 GizmoYColor = new(120, 220, 110);
+    private static readonly Color32 GizmoZColor = new(100, 150, 250);
+    private static readonly Color32 GizmoEdgeColor = new(150, 150, 165);
+    private static readonly Color32 GizmoActiveColor = new(255, 240, 140);
 
     /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
     private const int MaxOutlinedFaces = 3000;
@@ -56,6 +61,7 @@ public sealed class EditorApplication : IDisposable
     private bool _looking;
     private bool _leftButtonWasDown;
     private ExtrudeInteraction? _extrude;
+    private TransformInteraction? _transform;
     private RaycastHit? _hover;
     private bool _showGrid = true;
     private bool _showMeasurements = true;
@@ -96,11 +102,11 @@ public sealed class EditorApplication : IDisposable
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());
         _export = new ExportController(_session);
         _extrude = new ExtrudeInteraction(_session);
+        _transform = new TransformInteraction(_session);
 
         // The editor opens on the same thing New gives you: an 8³ white cube to extrude from.
         _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
         _session.ActiveColorIndex = Palette.WhiteIndex;
-        _session.ActiveTool = EditorTool.Extrude;
 
         if (_session.World.TryGetBounds(out Int3 min, out Int3 max))
         {
@@ -249,6 +255,10 @@ public sealed class EditorApplication : IDisposable
 
         switch (_session.ActiveTool)
         {
+            case EditorTool.Transform:
+                UpdateTransform(mouse.Position, viewport, leftDown, pressed, released);
+                break;
+
             case EditorTool.Extrude:
                 UpdateExtrude(mouse.Position, viewport, leftDown, pressed, released);
                 break;
@@ -264,6 +274,26 @@ public sealed class EditorApplication : IDisposable
             // Transform and Loop Cut need the multi-object scene first (R4-R6); View never edits.
             default:
                 break;
+        }
+    }
+
+    private void UpdateTransform(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released)
+    {
+        _transform!.UpdateHover(mouse, viewport, _camera);
+
+        if (pressed)
+        {
+            _transform.OnPress(mouse, viewport, _camera);
+        }
+        else if (leftDown && _transform.IsDragging)
+        {
+            // Shift releases snap; without it movement lands on whole voxels and rotation on a
+            // fixed angle step.
+            _transform.OnDrag(mouse, viewport, _camera, freeform: IsShiftHeld());
+        }
+        else if (released)
+        {
+            _transform.OnRelease();
         }
     }
 
@@ -433,7 +463,7 @@ public sealed class EditorApplication : IDisposable
 
     private void SwitchTool(EditorTool tool)
     {
-        if (_extrude!.IsBusy)
+        if (_extrude!.IsBusy || _transform!.IsDragging)
         {
             return;   // never swap tools out from under a running drag
         }
@@ -446,6 +476,12 @@ public sealed class EditorApplication : IDisposable
     /// <summary>Esc cancels a drag if one is running, otherwise it returns to Transform.</summary>
     private void OnEscape()
     {
+        if (_transform!.IsDragging)
+        {
+            _transform.Cancel();
+            return;
+        }
+
         if (_session.IsExtruding || _extrude!.IsBusy)
         {
             _extrude!.Cancel();
@@ -557,10 +593,69 @@ public sealed class EditorApplication : IDisposable
 
         AddCutPreview(lines);
 
-        // The arrow already carries the object transform, so it is drawn in world space.
+        // Everything below is already in world space.
         lines.Transform = Matrix4x4.Identity;
         AddExtrudeArrow(lines);
+        AddTransformGizmo(lines);
     }
+
+    /// <summary>Draws the move arrows, the box edges and the rotate rings.</summary>
+    private void AddTransformGizmo(LineBatch lines)
+    {
+        if (_session.ActiveTool != EditorTool.Transform || _transform is null)
+        {
+            return;
+        }
+
+        GizmoHandle? hovered = _transform.Hovered;
+
+        foreach (GizmoHandle handle in _transform.Handles(_camera))
+        {
+            bool active = hovered is { } h && h.Kind == handle.Kind && h.Axis == handle.Axis
+                && Vector3.DistanceSquared(h.Origin, handle.Origin) < 1e-6f;
+
+            Color32 color = active ? GizmoActiveColor : ColorFor(handle);
+
+            if (handle.Kind == GizmoKind.RotateRing)
+            {
+                Vector3? previous = null;
+                foreach (Vector3 point in _transform.RingPoints(handle, _camera))
+                {
+                    if (previous is { } from)
+                    {
+                        lines.AddLine(from, point, color);
+                    }
+
+                    previous = point;
+                }
+
+                continue;
+            }
+
+            (Vector3 start, Vector3 end) = _transform.Segment(handle, _camera);
+            lines.AddLine(start, end, color);
+        }
+
+        // The pivot a rotation is turning about, so a hinge is not a mystery mid-drag.
+        if (_input is { Mice.Count: > 0 }
+            && _transform.ActivePivot(_input.Mice[0].Position, new Vector2(_window.Size.X, _window.Size.Y), _camera)
+                is { } pivot)
+        {
+            var size = new Vector3(0.25f);
+            lines.AddBox(pivot - size, pivot + size, GizmoActiveColor);
+        }
+    }
+
+    private static Color32 ColorFor(GizmoHandle handle) => handle.Kind switch
+    {
+        GizmoKind.EdgeHinge => GizmoEdgeColor,
+        _ => handle.Axis switch
+        {
+            0 => GizmoXColor,
+            1 => GizmoYColor,
+            _ => GizmoZColor,
+        },
+    };
 
     /// <summary>Draws the loop cut plane as a rectangle spanning the object's bounds.</summary>
     private void AddCutPreview(LineBatch lines)

@@ -259,6 +259,34 @@ public sealed class EditorSession
         return true;
     }
 
+    // ---- Transform ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// Moves the focused object without recording history — used live during a gizmo drag, where
+    /// every frame would otherwise become its own undo step.
+    /// </summary>
+    public void ApplyTransform(ObjectTransform transform)
+    {
+        if (Scene.Focus is { } focus)
+        {
+            focus.Transform = transform;
+            HasUnsavedChanges = true;
+        }
+    }
+
+    /// <summary>Records a finished gizmo drag as one undo step.</summary>
+    public bool PushTransformEdit(VoxelObject target, ObjectTransform before, string name)
+    {
+        if (before == target.Transform)
+        {
+            return false;
+        }
+
+        History.Push(new TransformCommand(target, before, target.Transform, name));
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     // ---- Loop Cut ----------------------------------------------------------------------------
 
     /// <summary>The plane the cursor is currently over, or null. Drawn as a preview.</summary>
