@@ -117,7 +117,17 @@ public sealed class EditorApplication : IDisposable
             Size = new Vector2D<int>(1600, 900),
             Title = "Blockage - Voxel Level Editor",
             // 3.3 core covers everything this tool needs and runs on the widest range of drivers.
-            API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(3, 3)),
+            //
+            // Forward-compatible is not optional: macOS hands out a core profile above 3.1 only for
+            // a forward-compatible context, and without the flag window creation there fails
+            // outright. It costs nothing elsewhere — it drops functionality already removed from the
+            // core profile, and the one call that would have minded, glLineWidth, is not made at all
+            // (thick lines are camera-facing quads, see LineBatch).
+            API = new GraphicsAPI(
+                ContextAPI.OpenGL,
+                ContextProfile.Core,
+                ContextFlags.ForwardCompatible,
+                new APIVersion(3, 3)),
             VSync = true,
             PreferredDepthBufferBits = 24,
         };
