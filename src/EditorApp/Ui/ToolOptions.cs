@@ -117,7 +117,7 @@ public static class ToolOptions
         {
             int threshold = session.BucketThreshold;
             ImGui.SetNextItemWidth(160f);
-            if (ImGui.DragInt("Colour threshold", ref threshold, 1f, 0, 128))
+            if (ImGui.DragInt("Colour match", ref threshold, 1f, 0, 128, threshold == 0 ? "exact" : "within %d"))
             {
                 session.BucketThreshold = threshold;
             }
@@ -126,7 +126,7 @@ public static class ToolOptions
         {
             float radius = session.BrushRadius;
             ImGui.SetNextItemWidth(160f);
-            if (ImGui.DragFloat("Radius", ref radius, 0.1f, 0f, 12f, "%.1f voxels"))
+            if (ImGui.DragFloat("Radius", ref radius, 0.1f, 0f, 12f, radius < 0.5f ? "one face" : "%.1f vx"))
             {
                 session.BrushRadius = radius;
             }

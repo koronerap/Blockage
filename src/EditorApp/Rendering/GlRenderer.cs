@@ -28,6 +28,10 @@ public sealed class GlRenderer : IDisposable
     private readonly Queue<ChunkKey> _pendingOrder = new();
     private readonly ShaderProgram _voxelShader;
     private readonly ShaderProgram _lineShader;
+    private readonly ShaderProgram _backgroundShader;
+
+    /// <summary>Core profile refuses to draw without a bound VAO, even for a vertex-less shader.</summary>
+    private readonly uint _emptyVao;
 
     /// <summary>Depth-tested overlays: the grid, selections, the hovered face.</summary>
     public LineBatch Lines { get; }
@@ -65,13 +69,19 @@ public sealed class GlRenderer : IDisposable
 
     public double LastUploadMilliseconds { get; private set; }
 
+    /// <summary>The gradient's lower colour, and what the framebuffer is cleared to.</summary>
     public Color32 BackgroundColor { get; set; } = new(38, 42, 48);
+
+    /// <summary>The gradient's upper colour. Kept close to the lower one — this is a backdrop.</summary>
+    public Color32 BackgroundTopColor { get; set; } = new(52, 56, 62);
 
     public GlRenderer(GL gl)
     {
         _gl = gl;
         _voxelShader = new ShaderProgram(gl, Shaders.VoxelVertex, Shaders.VoxelFragment);
         _lineShader = new ShaderProgram(gl, Shaders.LineVertex, Shaders.LineFragment);
+        _backgroundShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.BackgroundFragment);
+        _emptyVao = gl.GenVertexArray();
         Lines = new LineBatch(gl);
         GizmoLines = new LineBatch(gl);
         Reference = new ReferenceModelRenderer(gl);
@@ -263,6 +273,8 @@ public sealed class GlRenderer : IDisposable
         int glY = (int)(framebufferSize.Y - (viewportPosition.Y + viewportSize.Y));
         _gl.Viewport((int)viewportPosition.X, glY, width, height);
 
+        DrawBackgroundGradient();
+
         Matrix4x4 viewProjection = camera.ViewProjection(viewportSize.X / MathF.Max(viewportSize.Y, 1f));
         Frustum frustum = Frustum.FromViewProjection(viewProjection);
 
@@ -288,6 +300,34 @@ public sealed class GlRenderer : IDisposable
         DrawOverlays(viewProjection);
 
         _gl.BindVertexArray(0);
+    }
+
+    /// <summary>
+    /// Fills the viewport with a vertical gradient before anything else. Drawn rather than cleared
+    /// because a clear can only be one flat colour, and it writes no depth, so the scene lands on
+    /// top of it normally.
+    /// </summary>
+    private void DrawBackgroundGradient()
+    {
+        _backgroundShader.Use();
+        _backgroundShader.SetVector3("uTop", ToRgb(BackgroundTopColor));
+        _backgroundShader.SetVector3("uBottom", ToRgb(BackgroundColor));
+
+        _gl.Disable(EnableCap.DepthTest);
+        _gl.DepthMask(false);
+
+        _gl.BindVertexArray(_emptyVao);
+        _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
+        _gl.BindVertexArray(0);
+
+        _gl.DepthMask(true);
+        _gl.Enable(EnableCap.DepthTest);
+    }
+
+    private static Vector3 ToRgb(Color32 color)
+    {
+        Vector4 value = color.ToVector4();
+        return new Vector3(value.X, value.Y, value.Z);
     }
 
     private void DrawOverlays(Matrix4x4 viewProjection)
@@ -394,6 +434,8 @@ public sealed class GlRenderer : IDisposable
         Reference.Dispose();
         Lines.Dispose();
         GizmoLines.Dispose();
+        _backgroundShader.Dispose();
+        _gl.DeleteVertexArray(_emptyVao);
         _voxelShader.Dispose();
         _lineShader.Dispose();
     }

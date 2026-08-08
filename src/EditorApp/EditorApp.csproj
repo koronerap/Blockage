@@ -16,6 +16,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The UI font travels with the build, so the editor looks the same on every machine instead
+         of falling back to whatever the OS happens to provide. Inter, SIL Open Font License. -->
+    <Content Include="..\..\assets\fonts\**" LinkBase="assets\fonts" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\EditorApp.Core\EditorApp.Core.csproj" />
   </ItemGroup>
 

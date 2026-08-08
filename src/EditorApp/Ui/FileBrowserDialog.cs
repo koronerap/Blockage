@@ -77,8 +77,7 @@ public sealed class FileBrowserDialog
             return;
         }
 
-        ImGui.Text(_title);
-        ImGui.Separator();
+        ImGui.SeparatorText(_title);
         DrawPathBar();
         DrawEntryList();
         DrawFooter();
@@ -170,13 +169,13 @@ public sealed class FileBrowserDialog
         }
 
         string confirmLabel = _mode == FileBrowserMode.Save ? "Save" : "Open";
-        if (ImGui.Button(confirmLabel, new Vector2(120f, 0f)))
+        if (ImGui.Button(confirmLabel, Theme.ModalButton))
         {
             Confirm();
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Cancel", new Vector2(120f, 0f)))
+        if (ImGui.Button("Cancel", Theme.ModalButton))
         {
             Close();
         }

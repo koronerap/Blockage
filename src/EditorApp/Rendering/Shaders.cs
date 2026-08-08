@@ -49,6 +49,40 @@ public static class Shaders
         """;
 
     /// <summary>
+    /// A full-screen triangle built from <c>gl_VertexID</c> alone — no vertex buffer, no attributes,
+    /// just three vertices covering the viewport. Used for the background gradient.
+    /// </summary>
+    public const string BackgroundVertex = """
+        #version 330 core
+
+        out vec2 vUv;
+
+        void main()
+        {
+            vec2 corner = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+            vUv = corner;
+            gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
+        }
+        """;
+
+    public const string BackgroundFragment = """
+        #version 330 core
+        in vec2 vUv;
+
+        uniform vec3 uTop;
+        uniform vec3 uBottom;
+
+        out vec4 fragColor;
+
+        void main()
+        {
+            // A little lighter towards the top. Enough to give the scene a horizon without the
+            // background becoming something the eye looks at.
+            fragColor = vec4(mix(uBottom, uTop, vUv.y), 1.0);
+        }
+        """;
+
+    /// <summary>
     /// Reference models are drawn translucent with a soft two-sided lambert term, so a guide reads
     /// as a shape without ever being mistaken for level geometry.
     /// </summary>

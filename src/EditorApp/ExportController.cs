@@ -115,12 +115,15 @@ public sealed class ExportController(EditorSession session)
             return;
         }
 
+        ImGui.SeparatorText("Export mesh");
         DrawFormatPicker();
-        ImGui.Separator();
+        ImGui.Spacing();
         DrawPathPicker();
-        ImGui.Separator();
+
+        ImGui.SeparatorText("Result");
         DrawAnalysis();
-        ImGui.Separator();
+
+        ImGui.Spacing();
         DrawActions();
 
         ImGui.EndPopup();
@@ -222,7 +225,7 @@ public sealed class ExportController(EditorSession session)
         }
 
         ImGui.BeginDisabled(_analysis is null || _outputPath.Trim().Length == 0);
-        if (ImGui.Button("Export", new Vector2(140f, 0f)))
+        if (ImGui.Button("Export", Theme.ModalButton))
         {
             RunExport();
         }
@@ -230,7 +233,7 @@ public sealed class ExportController(EditorSession session)
         ImGui.EndDisabled();
 
         ImGui.SameLine();
-        if (ImGui.Button("Close", new Vector2(140f, 0f)))
+        if (ImGui.Button("Close", Theme.ModalButton))
         {
             _isOpen = false;
             ImGui.CloseCurrentPopup();

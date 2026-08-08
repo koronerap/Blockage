@@ -127,6 +127,7 @@ public sealed class EditorApplication : IDisposable
         _renderer = new GlRenderer(_gl)
         {
             BackgroundColor = Color32.FromVector4(Theme.Viewport),
+            BackgroundTopColor = Color32.FromVector4(Theme.ViewportTop),
         };
 
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());

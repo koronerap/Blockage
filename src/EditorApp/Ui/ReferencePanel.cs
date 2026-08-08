@@ -81,23 +81,24 @@ public sealed class ReferencePanel
             reference.Wireframe = wireframe;
         }
 
-        float opacity = reference.Opacity;
+        // Drag values with their units written in, so a number never has to be guessed at.
+        float opacity = reference.Opacity * 100f;
         ImGui.SetNextItemWidth(200f);
-        if (ImGui.SliderFloat("Opacity", ref opacity, 0.05f, 1f))
+        if (ImGui.DragFloat("Opacity", ref opacity, 1f, 5f, 100f, "%.0f%%"))
         {
-            reference.Opacity = opacity;
+            reference.Opacity = opacity / 100f;
         }
 
         float scale = reference.Scale;
         ImGui.SetNextItemWidth(200f);
-        if (ImGui.DragFloat("Scale", ref scale, 0.01f, 0.001f, 1000f))
+        if (ImGui.DragFloat("Scale", ref scale, 0.01f, 0.001f, 1000f, "%.2fx"))
         {
             reference.Scale = scale;
         }
 
         Vector3 offset = reference.Offset;
         ImGui.SetNextItemWidth(280f);
-        if (ImGui.DragFloat3("Offset", ref offset, 0.25f))
+        if (ImGui.DragFloat3("Offset", ref offset, 0.25f, 0f, 0f, "%.1f vx"))
         {
             reference.Offset = offset;
         }

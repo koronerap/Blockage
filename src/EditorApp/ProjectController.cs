@@ -151,11 +151,12 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             return;
         }
 
+        ImGui.SeparatorText("Unsaved changes");
         ImGui.Text($"{session.ProjectName} has unsaved changes.");
         ImGui.Text($"Discard them and {_pendingDescription}?");
-        ImGui.Separator();
+        ImGui.Spacing();
 
-        if (ImGui.Button("Save first", new Vector2(120f, 0f)))
+        if (ImGui.Button("Save first", Theme.ModalButton))
         {
             ImGui.CloseCurrentPopup();
             Action? pending = _pendingAction;
@@ -170,7 +171,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Discard", new Vector2(120f, 0f)))
+        if (ImGui.Button("Discard", Theme.ModalButton))
         {
             ImGui.CloseCurrentPopup();
             Action? pending = _pendingAction;
@@ -179,7 +180,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("Cancel", new Vector2(120f, 0f)))
+        if (ImGui.Button("Cancel", Theme.ModalButton))
         {
             _pendingAction = null;
             ImGui.CloseCurrentPopup();

@@ -59,8 +59,13 @@ public static class Theme
     public static readonly Vector4 AxisY = Rgb(0x78DC6E);
     public static readonly Vector4 AxisZ = Rgb(0x6496FA);
 
-    /// <summary>The 3D viewport's clear colour. Slightly lighter than the chrome so the model sits in it.</summary>
-    public static readonly Vector4 Viewport = Rgb(0x393939);
+    /// <summary>The 3D viewport's gradient, lighter at the top so the scene reads as having a horizon.</summary>
+    public static readonly Vector4 Viewport = Rgb(0x323232);
+
+    public static readonly Vector4 ViewportTop = Rgb(0x434547);
+
+    /// <summary>Every modal's action buttons are this wide, so they line up across dialogs.</summary>
+    public static readonly Vector2 ModalButton = new(128f, 0f);
 
     // ---- Metrics -----------------------------------------------------------------------------
 
