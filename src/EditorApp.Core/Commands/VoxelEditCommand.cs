@@ -11,10 +11,14 @@ namespace EditorApp.Core.Commands;
 /// </summary>
 public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
 {
-    private readonly record struct CellChange(Int3 Position, byte Before, byte After);
+    /// <summary>
+    /// One recorded write. <paramref name="Face"/> is null for a whole-voxel change and set when a
+    /// single face was painted, so undo puts back exactly what the gesture replaced.
+    /// </summary>
+    private readonly record struct CellChange(Int3 Position, Face? Face, byte Before, byte After);
 
     private readonly List<CellChange> _changes = [];
-    private readonly HashSet<Int3> _touched = [];
+    private readonly HashSet<(Int3 Position, Face? Face)> _touched = [];
 
     public string Name { get; } = name;
 
@@ -45,41 +49,55 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
     public bool Apply(Int3 position, byte paletteIndex)
     {
         byte before = Target.GetVoxel(position);
-        if (before == paletteIndex)
+        if (before == paletteIndex || !Target.SetVoxel(position, paletteIndex))
         {
             return false;
         }
 
-        if (!Target.SetVoxel(position, paletteIndex))
+        Record(position, face: null, before, paletteIndex);
+        return true;
+    }
+
+    /// <summary>
+    /// Paints a single face. Returns false when nothing changed.
+    /// </summary>
+    public bool ApplyFace(Int3 position, Face face, byte paletteIndex)
+    {
+        byte before = Target.GetFaceColor(position, face);
+        if (before == paletteIndex || !Target.SetFaceColor(position, face, paletteIndex))
         {
             return false;
         }
 
-        if (_touched.Add(position))
+        Record(position, face, before, paletteIndex);
+        return true;
+    }
+
+    private void Record(Int3 position, Face? face, byte before, byte after)
+    {
+        if (_touched.Add((position, face)))
         {
-            _changes.Add(new CellChange(position, before, paletteIndex));
+            _changes.Add(new CellChange(position, face, before, after));
+            return;
         }
-        else
+
+        // Already recorded: keep the original before, update the after, so undoing a drag that
+        // crossed itself still restores the state from before the drag.
+        for (int i = _changes.Count - 1; i >= 0; i--)
         {
-            // Already recorded: keep the original before, update the after.
-            for (int i = _changes.Count - 1; i >= 0; i--)
+            if (_changes[i].Position == position && _changes[i].Face == face)
             {
-                if (_changes[i].Position == position)
-                {
-                    _changes[i] = _changes[i] with { After = paletteIndex };
-                    break;
-                }
+                _changes[i] = _changes[i] with { After = after };
+                break;
             }
         }
-
-        return true;
     }
 
     public void Redo()
     {
         foreach (CellChange change in _changes)
         {
-            Target.SetVoxel(change.Position, change.After);
+            Write(change, change.After);
         }
     }
 
@@ -87,8 +105,19 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
     {
         for (int i = _changes.Count - 1; i >= 0; i--)
         {
-            CellChange change = _changes[i];
-            Target.SetVoxel(change.Position, change.Before);
+            Write(_changes[i], _changes[i].Before);
+        }
+    }
+
+    private void Write(CellChange change, byte value)
+    {
+        if (change.Face is { } face)
+        {
+            Target.SetFaceColor(change.Position, face, value);
+        }
+        else
+        {
+            Target.SetVoxel(change.Position, value);
         }
     }
 }

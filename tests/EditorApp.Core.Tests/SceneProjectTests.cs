@@ -89,14 +89,14 @@ public class SceneProjectTests : IDisposable
     }
 
     [Fact]
-    public void ManifestReportsVersionTwoAndItsObjects()
+    public void ManifestReportsTheCurrentVersionAndItsObjects()
     {
         string path = PathFor("manifest");
         VxLevelFile.Save(TwoObjectScene(), path, name: "My Level");
 
         LevelManifest manifest = VxLevelFile.ReadManifest(path);
 
-        Assert.Equal(2, manifest.Version);
+        Assert.Equal(VxLevelFile.CurrentVersion, manifest.Version);
         Assert.Equal("My Level", manifest.Name);
         Assert.NotNull(manifest.Objects);
         Assert.Equal(2, manifest.Objects!.Length);

@@ -81,6 +81,7 @@ public sealed class EditorApplication : IDisposable
     private TransformInteraction? _transform;
     private RaycastHit? _hover;
     private Int3? _paintShapeStart;
+    private Face _paintShapeFace;
     private bool _paintShapeIsBox;
     private bool _showGrid = true;
     private bool _showMeasurements = true;
@@ -414,6 +415,9 @@ public sealed class EditorApplication : IDisposable
             // The shape modifier is read once, when the drag starts.
             _paintShapeIsBox = IsControlHeld();
             _paintShapeStart = (IsShiftHeld() || _paintShapeIsBox) && _hover is { } start ? start.Voxel : null;
+
+            // The shape paints the direction the drag started on, so it stays on one surface.
+            _paintShapeFace = _hover?.Face ?? Face.PosY;
         }
 
         if (_hover is not { } hit)
@@ -443,7 +447,7 @@ public sealed class EditorApplication : IDisposable
         {
             if (released)
             {
-                _session.PaintShape(anchor, hit.Voxel, _paintShapeIsBox);
+                _session.PaintShape(anchor, hit.Voxel, _paintShapeFace, _paintShapeIsBox);
                 _paintShapeStart = null;
             }
 

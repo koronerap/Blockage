@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
 using System.Numerics;
@@ -24,7 +25,10 @@ namespace EditorApp.Core.Project;
 /// </summary>
 public static class VxLevelFile
 {
-    public const int CurrentVersion = 2;
+    /// <summary>
+    /// 1: a single grid. 2: objects with transforms. 3: per-face colours.
+    /// </summary>
+    public const int CurrentVersion = 3;
 
     public const string Extension = ".vxlevel";
 
@@ -110,11 +114,16 @@ public static class VxLevelFile
 
             foreach (ChunkCoord coord in coordinates)
             {
-                byte[] encoded = Rle.Encode(o.Grid.Chunks[coord].Indices);
+                Chunk chunk = o.Grid.Chunks[coord];
 
                 ZipArchiveEntry entry = archive.CreateEntry(ChunkEntryName(o.Id, coord), CompressionLevel.Optimal);
-                using Stream chunkStream = entry.Open();
-                chunkStream.Write(encoded, 0, encoded.Length);
+                using (Stream chunkStream = entry.Open())
+                {
+                    byte[] encoded = Rle.Encode(chunk.Indices);
+                    chunkStream.Write(encoded, 0, encoded.Length);
+                }
+
+                WriteFaceOverrides(archive, o.Id, coord, chunk);
             }
         }
 
@@ -129,6 +138,62 @@ public static class VxLevelFile
         ZipArchiveEntry manifestEntry = archive.CreateEntry(ManifestEntry, CompressionLevel.Optimal);
         using Stream manifestStream = manifestEntry.Open();
         JsonSerializer.Serialize(manifestStream, manifest, JsonOptions);
+    }
+
+    /// <summary>
+    /// Painted faces go in their own entry, written only when a chunk has any. Keeping them out of
+    /// the index blob means the run-length stream stays exactly what version 1 and 2 wrote, and a
+    /// chunk with no painted faces costs nothing at all.
+    ///
+    /// Each record is five bytes: the voxel's linear index, the face, the palette index.
+    /// </summary>
+    private static void WriteFaceOverrides(ZipArchive archive, int objectId, ChunkCoord coord, Chunk chunk)
+    {
+        if (chunk.FaceOverrideCount == 0)
+        {
+            return;
+        }
+
+        var records = new List<(int Linear, Face Face, byte PaletteIndex)>(chunk.FaceOverrides());
+
+        // Stable order, so saving the same level twice produces identical bytes.
+        records.Sort(static (a, b) =>
+        {
+            int compare = a.Linear.CompareTo(b.Linear);
+            return compare != 0 ? compare : ((int)a.Face).CompareTo((int)b.Face);
+        });
+
+        ZipArchiveEntry entry = archive.CreateEntry(FaceEntryName(objectId, coord), CompressionLevel.Optimal);
+        using Stream stream = entry.Open();
+
+        Span<byte> record = stackalloc byte[5];
+        foreach ((int linear, Face face, byte paletteIndex) in records)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(record[..4], (linear * FaceInfo.Count) + (int)face);
+            record[4] = paletteIndex;
+            stream.Write(record);
+        }
+    }
+
+    private static void ReadFaceOverrides(ZipArchive archive, int objectId, ChunkCoord coord, Chunk chunk)
+    {
+        ZipArchiveEntry? entry = archive.GetEntry(FaceEntryName(objectId, coord));
+        if (entry is null)
+        {
+            return;
+        }
+
+        byte[] data = ReadAll(entry);
+        if (data.Length % 5 != 0)
+        {
+            throw new VxLevelFormatException("Corrupt face colour data: the record length does not divide evenly.");
+        }
+
+        for (int offset = 0; offset < data.Length; offset += 5)
+        {
+            int key = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset, 4));
+            chunk.LoadFaceOverride(key / FaceInfo.Count, (Face)(key % FaceInfo.Count), data[offset + 4]);
+        }
     }
 
     /// <summary>Stable order keeps two saves of the same level byte-comparable.</summary>
@@ -194,7 +259,10 @@ public static class VxLevelFile
         {
             foreach (LevelManifest.ObjectEntry entry in objects)
             {
-                scene.Add(ReadGrid(archive, entry.Chunks, coord => ChunkEntryName(entry.Id, coord)), ReadTransform(entry), entry.Name);
+                scene.Add(
+                    ReadGrid(archive, entry.Chunks, coord => ChunkEntryName(entry.Id, coord), entry.Id),
+                    ReadTransform(entry),
+                    entry.Name);
             }
         }
         else
@@ -228,7 +296,11 @@ public static class VxLevelFile
             Quaternion.Normalize(rotation));
     }
 
-    private static VoxelWorld ReadGrid(ZipArchive archive, int[][] chunks, Func<ChunkCoord, string> entryName)
+    private static VoxelWorld ReadGrid(
+        ZipArchive archive,
+        int[][] chunks,
+        Func<ChunkCoord, string> entryName,
+        int? objectId = null)
     {
         var grid = new VoxelWorld();
         var indices = new byte[Chunk.VoxelCount];
@@ -247,7 +319,14 @@ public static class VxLevelFile
                 ?? throw new VxLevelFormatException($"Manifest lists {name}, but the file does not contain it.");
 
             Rle.Decode(ReadAll(entry), indices);
-            grid.GetOrCreateChunk(coord).LoadIndices(indices);
+            Chunk chunk = grid.GetOrCreateChunk(coord);
+            chunk.LoadIndices(indices);
+
+            // Absent for versions 1 and 2, and for any chunk whose faces are all its base colour.
+            if (objectId is { } id)
+            {
+                ReadFaceOverrides(archive, id, coord, chunk);
+            }
         }
 
         return grid;
@@ -276,6 +355,9 @@ public static class VxLevelFile
 
     private static string ChunkEntryName(int objectId, ChunkCoord coord) =>
         $"objects/{objectId}/chunks/{coord.X}_{coord.Y}_{coord.Z}.bin";
+
+    private static string FaceEntryName(int objectId, ChunkCoord coord) =>
+        $"objects/{objectId}/faces/{coord.X}_{coord.Y}_{coord.Z}.bin";
 
     private static byte[] ReadAll(ZipArchiveEntry entry)
     {

@@ -36,6 +36,17 @@ public struct VoxelReader(VoxelWorld world)
 
     public bool IsSolid(Int3 position) => IsSolid(position.X, position.Y, position.Z);
 
+    /// <summary>The colour of one face, through the same cached chunk as everything else.</summary>
+    public byte GetFace(int x, int y, int z, Face face)
+    {
+        Chunk? chunk = ChunkFor(x, y, z);
+        return chunk is null
+            ? Palette.EmptyIndex
+            : chunk.GetFace(x & Chunk.SizeMask, y & Chunk.SizeMask, z & Chunk.SizeMask, face);
+    }
+
+    public byte GetFace(Int3 position, Face face) => GetFace(position.X, position.Y, position.Z, face);
+
     private Chunk? ChunkFor(int x, int y, int z)
     {
         ChunkCoord coord = ChunkCoord.FromWorld(x, y, z);

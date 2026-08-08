@@ -35,31 +35,66 @@ public class PaintOperationsTests
     }
 
     [Fact]
-    public void RadiusZeroPaintsExactlyOneVoxel()
+    public void RadiusZeroPaintsExactlyOneFace()
     {
         VoxelWorld world = SolidCube(3);
         var command = new VoxelEditCommand("paint", world);
 
-        int changed = PaintOperations.Brush(new Int3(1, 2, 1), 0f, 9, command);
+        int changed = PaintOperations.Brush(new Int3(1, 2, 1), Face.PosY, 0f, 9, command);
 
         Assert.Equal(1, changed);
-        Assert.Equal(9, world.GetVoxel(1, 2, 1));
-        Assert.Equal(5, world.GetVoxel(0, 2, 1));
+        Assert.Equal(9, world.GetFaceColor(new Int3(1, 2, 1), Face.PosY));
+
+        // The rest of that voxel keeps its own colour — the whole point of painting a face.
+        Assert.Equal(5, world.GetFaceColor(new Int3(1, 2, 1), Face.PosX));
+        Assert.Equal(5, world.GetVoxel(1, 2, 1));
+    }
+
+    [Fact]
+    public void AnEdgeVoxelCanCarryADifferentColourOnEachSide()
+    {
+        VoxelWorld world = SolidCube(2);
+        var corner = new Int3(0, 0, 0);
+
+        var command = new VoxelEditCommand("paint", world);
+        command.ApplyFace(corner, Face.NegX, 20);
+        command.ApplyFace(corner, Face.NegY, 30);
+        command.ApplyFace(corner, Face.NegZ, 40);
+
+        Assert.Equal(20, world.GetFaceColor(corner, Face.NegX));
+        Assert.Equal(30, world.GetFaceColor(corner, Face.NegY));
+        Assert.Equal(40, world.GetFaceColor(corner, Face.NegZ));
+
+        command.Undo();
+        for (int f = 0; f < FaceInfo.Count; f++)
+        {
+            Assert.Equal(5, world.GetFaceColor(corner, (Face)f));
+        }
+    }
+
+    [Fact]
+    public void BrushOnlyPaintsFacesPointingTheSameWay()
+    {
+        // A brush aimed at the top of a block must not wrap onto its sides.
+        VoxelWorld world = SolidCube(3);
+        var command = new VoxelEditCommand("paint", world);
+
+        PaintOperations.Brush(new Int3(1, 2, 1), Face.PosY, 2f, 9, command);
+
+        Assert.Equal(9, world.GetFaceColor(new Int3(0, 2, 0), Face.PosY));
+        Assert.Equal(5, world.GetFaceColor(new Int3(0, 2, 0), Face.NegX));
     }
 
     [Fact]
     public void BrushIsEuclideanNotACube()
     {
-        // A cube brush of radius 1 would take all 27 cells; a sphere takes the 7-cell plus shape,
-        // and here the centre is buried, so only the 6 face neighbours qualify.
-        VoxelWorld world = SolidCube(3);
+        VoxelWorld world = SolidCube(5);
         var command = new VoxelEditCommand("paint", world);
 
-        PaintOperations.Brush(new Int3(1, 1, 1), 1f, 9, command);
+        PaintOperations.Brush(new Int3(2, 4, 2), Face.PosY, 1f, 9, command);
 
-        Assert.Equal(9, world.GetVoxel(0, 1, 1));       // distance 1, visible
-        Assert.Equal(5, world.GetVoxel(0, 0, 1));       // distance sqrt(2), outside the radius
-        Assert.Equal(5, world.GetVoxel(1, 1, 1));       // the centre itself is buried
+        Assert.Equal(9, world.GetFaceColor(new Int3(1, 4, 2), Face.PosY));   // distance 1
+        Assert.Equal(5, world.GetFaceColor(new Int3(1, 4, 1), Face.PosY));   // distance sqrt(2)
     }
 
     [Fact]
@@ -69,7 +104,7 @@ public class PaintOperationsTests
         int before = world.SolidCount;
 
         var command = new VoxelEditCommand("paint", world);
-        PaintOperations.Brush(new Int3(0, 0, 0), 4f, 12, command);
+        PaintOperations.Brush(new Int3(0, 0, 0), Face.NegY, 4f, 12, command);
 
         Assert.Equal(before, world.SolidCount);
         Assert.True(world.Chunks.Count <= 1);
@@ -88,13 +123,13 @@ public class PaintOperationsTests
         world.SetVoxel(50, 0, 0, 3);           // same colour, disconnected
 
         var command = new VoxelEditCommand("bucket", world);
-        int changed = PaintOperations.Bucket(Int3.Zero, 8, 0, command);
+        int changed = PaintOperations.Bucket(Int3.Zero, Face.PosY, 8, 0, command);
 
         Assert.Equal(2, changed);
-        Assert.Equal(8, world.GetVoxel(1, 0, 0));
-        Assert.Equal(4, world.GetVoxel(2, 0, 0));
-        Assert.Equal(3, world.GetVoxel(3, 0, 0));
-        Assert.Equal(3, world.GetVoxel(50, 0, 0));
+        Assert.Equal(8, world.GetFaceColor(new Int3(1, 0, 0), Face.PosY));
+        Assert.Equal(4, world.GetFaceColor(new Int3(2, 0, 0), Face.PosY));
+        Assert.Equal(3, world.GetFaceColor(new Int3(3, 0, 0), Face.PosY));
+        Assert.Equal(3, world.GetFaceColor(new Int3(50, 0, 0), Face.PosY));
     }
 
     [Fact]
@@ -110,36 +145,53 @@ public class PaintOperationsTests
         world.SetVoxel(2, 0, 0, 12);
 
         var exact = new VoxelEditCommand("exact", world);
-        Assert.Equal(1, PaintOperations.Bucket(Int3.Zero, 20, 0, exact));
+        Assert.Equal(1, PaintOperations.Bucket(Int3.Zero, Face.PosY, 20, 0, exact));
         exact.Undo();
 
         var loose = new VoxelEditCommand("loose", world);
-        Assert.Equal(2, PaintOperations.Bucket(Int3.Zero, 20, 8, loose));
-        Assert.Equal(12, world.GetVoxel(2, 0, 0));
+        Assert.Equal(2, PaintOperations.Bucket(Int3.Zero, Face.PosY, 20, 8, loose));
+        Assert.Equal(12, world.GetFaceColor(new Int3(2, 0, 0), Face.PosY));
     }
 
     [Fact]
-    public void BucketDoesNotSpreadThroughBuriedVoxels()
+    public void BucketStaysOnTheSurfaceItStartedOn()
     {
-        // Two exposed shells joined only through the inside of a solid block: fill must not tunnel.
+        // A fill on the top of a cube must not turn the corner onto its sides.
         VoxelWorld world = SolidCube(4, index: 3);
 
         var command = new VoxelEditCommand("bucket", world);
-        PaintOperations.Bucket(Int3.Zero, 9, 0, command);
+        int changed = PaintOperations.Bucket(new Int3(0, 3, 0), Face.PosY, 9, 0, command);
 
-        Assert.Equal(9, world.GetVoxel(0, 0, 0));
-        Assert.Equal(3, world.GetVoxel(1, 1, 1));    // interior untouched
-        Assert.Equal(3, world.GetVoxel(2, 2, 2));
+        Assert.Equal(16, changed);   // the 4x4 top, and nothing else
+        Assert.Equal(9, world.GetFaceColor(new Int3(3, 3, 3), Face.PosY));
+        Assert.Equal(3, world.GetFaceColor(new Int3(0, 3, 0), Face.NegX));
     }
 
     [Fact]
-    public void SampleReturnsNullOnEmptySpace()
+    public void SampleReadsTheFaceUnderTheCursor()
     {
         var world = new VoxelWorld();
         world.SetVoxel(0, 0, 0, 42);
 
-        Assert.Equal((byte)42, PaintOperations.Sample(world, Int3.Zero));
-        Assert.Null(PaintOperations.Sample(world, new Int3(5, 5, 5)));
+        var command = new VoxelEditCommand("paint", world);
+        command.ApplyFace(Int3.Zero, Face.PosY, 77);
+
+        Assert.Equal((byte)77, PaintOperations.Sample(world, Int3.Zero, Face.PosY));
+        Assert.Equal((byte)42, PaintOperations.Sample(world, Int3.Zero, Face.PosX));
+        Assert.Null(PaintOperations.Sample(world, new Int3(5, 5, 5), Face.PosY));
+    }
+
+    [Fact]
+    public void RecolouringAVoxelForgetsWhatWasPaintedOnIt()
+    {
+        // The overrides described the colour it used to be.
+        VoxelWorld world = SolidCube(2);
+        var command = new VoxelEditCommand("paint", world);
+        command.ApplyFace(Int3.Zero, Face.NegY, 60);
+
+        world.SetVoxel(0, 0, 0, 7);
+
+        Assert.Equal(7, world.GetFaceColor(Int3.Zero, Face.NegY));
     }
 }
 
@@ -175,10 +227,10 @@ public class PaintSessionTests
         session.EndStroke();
 
         Assert.Equal(1, session.History.UndoCount);
-        Assert.Equal(20, session.World.GetVoxel(4, 0, 0));
+        Assert.Equal(20, session.World.GetFaceColor(new Int3(4, 0, 0), Face.PosY));
 
         session.Undo();
-        Assert.Equal(5, session.World.GetVoxel(4, 0, 0));
+        Assert.Equal(5, session.World.GetFaceColor(new Int3(4, 0, 0), Face.PosY));
     }
 
     [Fact]
@@ -191,8 +243,8 @@ public class PaintSessionTests
         session.Paint(new RaycastHit(new Int3(2, 0, 2), Face.PosY, 1f));
         session.EndStroke();
 
-        Assert.Equal(30, session.World.GetVoxel(0, 0, 0));
-        Assert.Equal(30, session.World.GetVoxel(4, 0, 4));
+        Assert.Equal(30, session.World.GetFaceColor(new Int3(0, 0, 0), Face.PosY));
+        Assert.Equal(30, session.World.GetFaceColor(new Int3(4, 0, 4), Face.PosY));
         Assert.Equal(1, session.History.UndoCount);
     }
 

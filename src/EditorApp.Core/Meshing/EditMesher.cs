@@ -39,7 +39,6 @@ public static class EditMesher
                         continue;
                     }
 
-                    uint rgba = palette[chunk.Get(x, y, z)].Rgba;
                     var worldPosition = new Int3(origin.X + x, origin.Y + y, origin.Z + z);
 
                     for (int f = 0; f < FaceInfo.Count; f++)
@@ -50,7 +49,9 @@ public static class EditMesher
                             continue;
                         }
 
-                        EmitFace(builder, worldPosition, face, rgba);
+                        // Per face, not per voxel: an edge voxel can carry a different colour on
+                        // each side it shows.
+                        EmitFace(builder, worldPosition, face, palette[chunk.GetFace(x, y, z, face)].Rgba);
                     }
                 }
             }

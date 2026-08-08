@@ -96,7 +96,7 @@ public static class GreedyMesher
 
         for (int slice = minimum[axis]; slice <= maximum[axis]; slice++)
         {
-            BuildMask(ref reader, mask, axis, uAxis, vAxis, slice, minimum, uCount, vCount, neighbourOffset, position);
+            BuildMask(ref reader, mask, face, axis, uAxis, vAxis, slice, minimum, uCount, vCount, neighbourOffset, position);
             EmitQuads(mesh, mask, face, axis, uAxis, vAxis, slice, minimum, uCount, vCount, normal, uvSelector);
         }
     }
@@ -108,6 +108,7 @@ public static class GreedyMesher
     private static void BuildMask(
         ref VoxelReader reader,
         byte[] mask,
+        Face face,
         int axis,
         int uAxis,
         int vAxis,
@@ -133,8 +134,7 @@ public static class GreedyMesher
                 position[uAxis] = minimum[uAxis] + u;
 
                 var voxel = new Int3(position[0], position[1], position[2]);
-                byte index = reader.Get(voxel);
-                if (index == Palette.EmptyIndex)
+                if (!reader.IsSolid(voxel))
                 {
                     continue;
                 }
@@ -142,6 +142,14 @@ public static class GreedyMesher
                 if (reader.IsSolid(voxel + neighbourOffset))
                 {
                     continue;   // interior face, never visible
+                }
+
+                // The mask has always held a colour per face; now that colour can differ from the
+                // voxel's own, which changes nothing about how merging works.
+                byte index = reader.GetFace(voxel, face);
+                if (index == Palette.EmptyIndex)
+                {
+                    continue;
                 }
 
                 mask[rowBase + u] = index;

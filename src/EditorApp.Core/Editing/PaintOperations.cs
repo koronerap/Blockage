@@ -5,8 +5,11 @@ namespace EditorApp.Core.Editing;
 
 /// <summary>
 /// Paint only ever recolors (EditorApp.md, "Paint"): it never creates a voxel and never removes
-/// one, and it only touches voxels that can actually be seen from outside. Painting a buried voxel
-/// would change nothing on screen and nothing in the export, so reaching them is not a feature.
+/// one, and it only touches faces that can actually be seen from outside.
+///
+/// It works a face at a time. An edge or corner voxel shows more than one side, and painting the
+/// voxel would change all of them at once — so the target is the face under the cursor, and the
+/// brush spreads across the surface that face belongs to rather than through the volume.
 /// </summary>
 public static class PaintOperations
 {
@@ -29,13 +32,21 @@ public static class PaintOperations
         return false;
     }
 
+    /// <summary>True when this particular face is on the outside.</summary>
+    public static bool IsFaceExposed(VoxelWorld world, Int3 cell, Face face) =>
+        world.IsSolid(cell) && !world.IsSolid(cell + FaceInfo.Offset(face));
+
     /// <summary>
-    /// Paints every visible voxel within a 3D euclidean radius of the centre. Radius 0 is exactly
-    /// one voxel — the distance test is inclusive, so the centre always qualifies.
+    /// Paints every exposed face pointing the same way as the one under the cursor, within a 3D
+    /// euclidean radius of it. Radius 0 is exactly one face.
+    ///
+    /// Only faces sharing the cursor's direction are painted: a brush aimed at the top of a wall
+    /// should not wrap around onto its sides just because they are within reach.
     /// </summary>
-    public static int Brush(Int3 centre, float radius, byte paletteIndex, VoxelEditCommand command)
+    public static int Brush(Int3 centre, Face face, float radius, byte paletteIndex, VoxelEditCommand command)
     {
         VoxelWorld world = command.Target;
+
         int extent = (int)MathF.Floor(MathF.Max(radius, 0f));
         float radiusSquared = radius * radius;
 
@@ -48,13 +59,13 @@ public static class PaintOperations
                 {
                     // Euclidean, not a cube: a cube brush at radius 3 would reach 5.2 voxels into
                     // the corners and paint a shape the cursor never suggested.
-                    if (dx * dx + dy * dy + dz * dz > radiusSquared)
+                    if ((dx * dx) + (dy * dy) + (dz * dz) > radiusSquared)
                     {
                         continue;
                     }
 
                     var cell = centre + new Int3(dx, dy, dz);
-                    if (IsVisible(world, cell) && command.Apply(cell, paletteIndex))
+                    if (IsFaceExposed(world, cell, face) && command.ApplyFace(cell, face, paletteIndex))
                     {
                         changed++;
                     }
@@ -66,11 +77,12 @@ public static class PaintOperations
     }
 
     /// <summary>
-    /// Bucket fill: the connected run of visible voxels whose colour is within
+    /// Bucket fill: the connected run of exposed faces pointing the same way whose colour is within
     /// <paramref name="threshold"/> of the seed's. A threshold of 0 means an exact match.
     /// </summary>
     public static int Bucket(
         Int3 seed,
+        Face face,
         byte paletteIndex,
         int threshold,
         VoxelEditCommand command,
@@ -78,38 +90,19 @@ public static class PaintOperations
     {
         VoxelWorld world = command.Target;
 
-        if (!IsVisible(world, seed))
+        if (!IsFaceExposed(world, seed, face))
         {
             return 0;
         }
 
-        Color32 target = world.Palette[world.GetVoxel(seed)];
-
-        var visited = new HashSet<Int3> { seed };
-        var queue = new Queue<Int3>();
-        queue.Enqueue(seed);
+        Color32 target = world.Palette[world.GetFaceColor(seed, face)];
 
         int changed = 0;
-        while (queue.Count > 0 && changed < limit)
+        foreach (Int3 cell in Surface(world, seed, face, target, threshold, limit))
         {
-            Int3 cell = queue.Dequeue();
-            if (!IsVisible(world, cell) || !IsWithinThreshold(world.Palette[world.GetVoxel(cell)], target, threshold))
-            {
-                continue;
-            }
-
-            if (command.Apply(cell, paletteIndex))
+            if (command.ApplyFace(cell, face, paletteIndex))
             {
                 changed++;
-            }
-
-            for (int f = 0; f < FaceInfo.Count; f++)
-            {
-                Int3 neighbour = cell + FaceInfo.Offset((Face)f);
-                if (visited.Add(neighbour))
-                {
-                    queue.Enqueue(neighbour);
-                }
             }
         }
 
@@ -117,8 +110,8 @@ public static class PaintOperations
     }
 
     /// <summary>
-    /// The same connected fill as <see cref="Bucket"/>, but each voxel takes its colour from a
-    /// tiled pattern projected onto the plane of the clicked face.
+    /// The same connected surface as <see cref="Bucket"/>, but each face takes its colour from a
+    /// tiled pattern projected onto the plane it lies in.
     /// </summary>
     public static int Pattern(
         Int3 seed,
@@ -130,34 +123,66 @@ public static class PaintOperations
     {
         VoxelWorld world = command.Target;
 
-        if (!IsVisible(world, seed))
+        if (!IsFaceExposed(world, seed, face))
         {
             return 0;
         }
 
-        Color32 target = world.Palette[world.GetVoxel(seed)];
+        Color32 target = world.Palette[world.GetFaceColor(seed, face)];
 
+        int changed = 0;
+        foreach (Int3 cell in Surface(world, seed, face, target, threshold, limit))
+        {
+            if (command.ApplyFace(cell, face, pattern.Sample(world.Palette, cell, seed, face)))
+            {
+                changed++;
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Walks the connected patch of same-facing, similarly coloured, exposed faces around a seed.
+    /// Four-way connected within the face's own plane, which is what keeps a fill on the surface
+    /// it started on instead of turning a corner.
+    /// </summary>
+    private static List<Int3> Surface(
+        VoxelWorld world,
+        Int3 seed,
+        Face face,
+        Color32 target,
+        int threshold,
+        int limit)
+    {
+        int axis = FaceInfo.Axis(face);
+
+        var found = new List<Int3>();
         var visited = new HashSet<Int3> { seed };
         var queue = new Queue<Int3>();
         queue.Enqueue(seed);
 
-        int changed = 0;
-        while (queue.Count > 0 && changed < limit)
+        while (queue.Count > 0 && found.Count < limit)
         {
             Int3 cell = queue.Dequeue();
-            if (!IsVisible(world, cell) || !IsWithinThreshold(world.Palette[world.GetVoxel(cell)], target, threshold))
+
+            if (!IsFaceExposed(world, cell, face)
+                || !IsWithinThreshold(world.Palette[world.GetFaceColor(cell, face)], target, threshold))
             {
                 continue;
             }
 
-            if (command.Apply(cell, pattern.Sample(world.Palette, cell, seed, face)))
-            {
-                changed++;
-            }
+            found.Add(cell);
 
             for (int f = 0; f < FaceInfo.Count; f++)
             {
-                Int3 neighbour = cell + FaceInfo.Offset((Face)f);
+                var step = (Face)f;
+                if (FaceInfo.Axis(step) == axis)
+                {
+                    continue;   // stay in the plane
+                }
+
+                Int3 neighbour = cell + FaceInfo.Offset(step);
                 if (visited.Add(neighbour))
                 {
                     queue.Enqueue(neighbour);
@@ -165,35 +190,27 @@ public static class PaintOperations
             }
         }
 
-        return changed;
+        return found;
     }
 
-    /// <summary>Chebyshev distance in RGB — cheap, and predictable to reason about on a slider.</summary>
-    private static bool IsWithinThreshold(Color32 candidate, Color32 target, int threshold) =>
-        Math.Abs(candidate.R - target.R) <= threshold
-        && Math.Abs(candidate.G - target.G) <= threshold
-        && Math.Abs(candidate.B - target.B) <= threshold;
-
     /// <summary>
-    /// Paints a straight line between two cells, brushing at every step of a 3D Bresenham walk.
-    /// Applied once from the finished endpoints rather than as the cursor moves — a freehand path
-    /// would otherwise leave half-drawn strokes everywhere the cursor happened to pass.
+    /// Paints a straight line of faces between two cells, brushing at every step of a 3D Bresenham
+    /// walk. Applied once from the finished endpoints rather than as the cursor moves — a freehand
+    /// path would otherwise leave half-drawn strokes everywhere the cursor happened to pass.
     /// </summary>
-    public static int Line(Int3 from, Int3 to, float radius, byte paletteIndex, VoxelEditCommand command)
+    public static int Line(Int3 from, Int3 to, Face face, float radius, byte paletteIndex, VoxelEditCommand command)
     {
         int changed = 0;
         foreach (Int3 cell in Walk(from, to))
         {
-            changed += Brush(cell, radius, paletteIndex, command);
+            changed += Brush(cell, face, radius, paletteIndex, command);
         }
 
         return changed;
     }
 
-    /// <summary>
-    /// Paints the twelve edges of the box spanned by two cells — a hollow frame, not a filled box.
-    /// </summary>
-    public static int BoxFrame(Int3 from, Int3 to, float radius, byte paletteIndex, VoxelEditCommand command)
+    /// <summary>Paints the twelve edges of the box spanned by two cells — a hollow frame.</summary>
+    public static int BoxFrame(Int3 from, Int3 to, Face face, float radius, byte paletteIndex, VoxelEditCommand command)
     {
         VoxelBox box = VoxelBox.FromCorners(from, to);
 
@@ -208,9 +225,9 @@ public static class PaintOperations
         int changed = 0;
         for (int i = 0; i < 4; i++)
         {
-            changed += Line(corners[i], corners[(i + 1) & 3], radius, paletteIndex, command);
-            changed += Line(corners[i + 4], corners[((i + 1) & 3) + 4], radius, paletteIndex, command);
-            changed += Line(corners[i], corners[i + 4], radius, paletteIndex, command);
+            changed += Line(corners[i], corners[(i + 1) & 3], face, radius, paletteIndex, command);
+            changed += Line(corners[i + 4], corners[((i + 1) & 3) + 4], face, radius, paletteIndex, command);
+            changed += Line(corners[i], corners[i + 4], face, radius, paletteIndex, command);
         }
 
         return changed;
@@ -233,8 +250,8 @@ public static class PaintOperations
         // Step along whichever axis is longest and carry the error on the other two.
         if (dx >= dy && dx >= dz)
         {
-            int errorY = 2 * dy - dx;
-            int errorZ = 2 * dz - dx;
+            int errorY = (2 * dy) - dx;
+            int errorZ = (2 * dz) - dx;
 
             for (int i = 0; i < dx; i++)
             {
@@ -249,8 +266,8 @@ public static class PaintOperations
         }
         else if (dy >= dz)
         {
-            int errorX = 2 * dx - dy;
-            int errorZ = 2 * dz - dy;
+            int errorX = (2 * dx) - dy;
+            int errorZ = (2 * dz) - dy;
 
             for (int i = 0; i < dy; i++)
             {
@@ -265,8 +282,8 @@ public static class PaintOperations
         }
         else
         {
-            int errorX = 2 * dx - dz;
-            int errorY = 2 * dy - dz;
+            int errorX = (2 * dx) - dz;
+            int errorY = (2 * dy) - dz;
 
             for (int i = 0; i < dz; i++)
             {
@@ -281,10 +298,16 @@ public static class PaintOperations
         }
     }
 
-    /// <summary>The eyedropper: the colour under the cursor, or null when there is nothing to sample.</summary>
-    public static byte? Sample(VoxelWorld world, Int3 cell)
+    /// <summary>Chebyshev distance in RGB — cheap, and predictable to reason about on a slider.</summary>
+    private static bool IsWithinThreshold(Color32 candidate, Color32 target, int threshold) =>
+        Math.Abs(candidate.R - target.R) <= threshold
+        && Math.Abs(candidate.G - target.G) <= threshold
+        && Math.Abs(candidate.B - target.B) <= threshold;
+
+    /// <summary>The eyedropper: the colour of the face under the cursor, or null if there is none.</summary>
+    public static byte? Sample(VoxelWorld world, Int3 cell, Face face)
     {
-        byte index = world.GetVoxel(cell);
+        byte index = world.GetFaceColor(cell, face);
         return index == Palette.EmptyIndex ? null : index;
     }
 }

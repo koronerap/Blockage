@@ -40,6 +40,45 @@ public sealed class VoxelWorld
 
     public byte GetVoxel(Int3 position) => GetVoxel(position.X, position.Y, position.Z);
 
+    /// <summary>
+    /// The colour of one face — the voxel's own colour unless that face has been painted
+    /// separately. Only exposed faces can ever be painted, so the exceptions are bounded by the
+    /// model's surface, not by its volume.
+    /// </summary>
+    public byte GetFaceColor(int x, int y, int z, Face face)
+    {
+        ChunkCoord coord = ChunkCoord.FromWorld(x, y, z);
+        return _chunks.TryGetValue(coord, out Chunk? chunk)
+            ? chunk.GetFace(x & Chunk.SizeMask, y & Chunk.SizeMask, z & Chunk.SizeMask, face)
+            : Palette.EmptyIndex;
+    }
+
+    public byte GetFaceColor(Int3 position, Face face) =>
+        GetFaceColor(position.X, position.Y, position.Z, face);
+
+    /// <summary>Paints one face. Returns false when nothing changed.</summary>
+    public bool SetFaceColor(int x, int y, int z, Face face, byte paletteIndex)
+    {
+        ChunkCoord coord = ChunkCoord.FromWorld(x, y, z);
+        if (!_chunks.TryGetValue(coord, out Chunk? chunk))
+        {
+            return false;
+        }
+
+        if (!chunk.SetFace(x & Chunk.SizeMask, y & Chunk.SizeMask, z & Chunk.SizeMask, face, paletteIndex))
+        {
+            return false;
+        }
+
+        // Only this chunk's mesh changes: a face colour is invisible to the neighbours, unlike a
+        // voxel appearing or disappearing.
+        _dirty.Add(coord);
+        return true;
+    }
+
+    public bool SetFaceColor(Int3 position, Face face, byte paletteIndex) =>
+        SetFaceColor(position.X, position.Y, position.Z, face, paletteIndex);
+
     public bool IsSolid(int x, int y, int z) => GetVoxel(x, y, z) != Palette.EmptyIndex;
 
     public bool IsSolid(Int3 position) => IsSolid(position.X, position.Y, position.Z);

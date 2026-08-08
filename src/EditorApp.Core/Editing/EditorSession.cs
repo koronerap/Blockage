@@ -284,15 +284,15 @@ public sealed class EditorSession
         return PaintMode switch
         {
             PaintMode.Bucket => PaintOperations.Bucket(
-                hit.Voxel, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
+                hit.Voxel, hit.Face, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
 
             // With no pattern loaded there is nothing to sample, so Pattern falls back to a plain
             // fill rather than doing nothing and looking broken.
             PaintMode.Pattern => Pattern is { } pattern
                 ? PaintOperations.Pattern(hit.Voxel, hit.Face, pattern, BucketThreshold, _stroke!) > 0
-                : PaintOperations.Bucket(hit.Voxel, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
+                : PaintOperations.Bucket(hit.Voxel, hit.Face, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
 
-            _ => PaintOperations.Brush(hit.Voxel, BrushRadius, ActiveColorIndex, _stroke!) > 0,
+            _ => PaintOperations.Brush(hit.Voxel, hit.Face, BrushRadius, ActiveColorIndex, _stroke!) > 0,
         };
     }
 
@@ -300,17 +300,17 @@ public sealed class EditorSession
     /// Paints a straight line or a hollow box between two cells, as one step. Shift and Ctrl drags
     /// commit their shape on release rather than as the cursor travels.
     /// </summary>
-    public bool PaintShape(Int3 from, Int3 to, bool asBox) =>
+    public bool PaintShape(Int3 from, Int3 to, Face face, bool asBox) =>
         RunStep(
             asBox ? "Paint box" : "Paint line",
             c => asBox
-                ? PaintOperations.BoxFrame(from, to, BrushRadius, ActiveColorIndex, c)
-                : PaintOperations.Line(from, to, BrushRadius, ActiveColorIndex, c));
+                ? PaintOperations.BoxFrame(from, to, face, BrushRadius, ActiveColorIndex, c)
+                : PaintOperations.Line(from, to, face, BrushRadius, ActiveColorIndex, c));
 
     /// <summary>The eyedropper. Returns false when there is nothing to sample.</summary>
     public bool SampleColor(RaycastHit hit)
     {
-        if (PaintOperations.Sample(World, hit.Voxel) is not { } index)
+        if (PaintOperations.Sample(World, hit.Voxel, hit.Face) is not { } index)
         {
             return false;
         }

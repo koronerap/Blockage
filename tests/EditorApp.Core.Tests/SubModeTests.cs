@@ -62,14 +62,14 @@ public class BrushShapeTests
         VoxelWorld grid = Plate(6, 3);
         var command = new VoxelEditCommand("line", grid);
 
-        PaintOperations.Line(new Int3(0, 0, 0), new Int3(5, 0, 0), 0f, 9, command);
+        PaintOperations.Line(new Int3(0, 0, 0), new Int3(5, 0, 0), Face.PosY, 0f, 9, command);
 
         for (int x = 0; x <= 5; x++)
         {
-            Assert.Equal(9, grid.GetVoxel(x, 0, 0));
+            Assert.Equal(9, grid.GetFaceColor(new Int3(x, 0, 0), Face.PosY));
         }
 
-        Assert.Equal(5, grid.GetVoxel(0, 0, 1));   // the neighbouring row is untouched
+        Assert.Equal(5, grid.GetFaceColor(new Int3(0, 0, 1), Face.PosY));   // neighbouring row untouched
     }
 
     [Fact]
@@ -85,12 +85,12 @@ public class BrushShapeTests
         }
 
         var command = new VoxelEditCommand("box", grid);
-        PaintOperations.BoxFrame(new Int3(0, 0, 0), new Int3(4, 0, 4), 0f, 9, command);
+        PaintOperations.BoxFrame(new Int3(0, 0, 0), new Int3(4, 0, 4), Face.PosY, 0f, 9, command);
 
-        Assert.Equal(9, grid.GetVoxel(0, 0, 0));   // corner
-        Assert.Equal(9, grid.GetVoxel(2, 0, 0));   // edge
-        Assert.Equal(9, grid.GetVoxel(0, 0, 2));   // edge
-        Assert.Equal(5, grid.GetVoxel(2, 0, 2));   // middle of the face, not an edge
+        Assert.Equal(9, grid.GetFaceColor(new Int3(0, 0, 0), Face.PosY));   // corner
+        Assert.Equal(9, grid.GetFaceColor(new Int3(2, 0, 0), Face.PosY));   // edge
+        Assert.Equal(9, grid.GetFaceColor(new Int3(0, 0, 2), Face.PosY));   // edge
+        Assert.Equal(5, grid.GetFaceColor(new Int3(2, 0, 2), Face.PosY));   // middle, not an edge
     }
 
     [Fact]
@@ -101,11 +101,11 @@ public class BrushShapeTests
         scene.Add(Plate(8, 1), ObjectTransform.Identity);
         session.ReplaceScene(scene, projectPath: null);
 
-        Assert.True(session.PaintShape(new Int3(0, 0, 0), new Int3(7, 0, 0), asBox: false));
+        Assert.True(session.PaintShape(new Int3(0, 0, 0), new Int3(7, 0, 0), Face.PosY, asBox: false));
         Assert.Equal(1, session.History.UndoCount);
 
         session.Undo();
-        Assert.Equal(5, session.World.GetVoxel(3, 0, 0));
+        Assert.Equal(5, session.World.GetFaceColor(new Int3(3, 0, 0), Face.PosY));
     }
 }
 

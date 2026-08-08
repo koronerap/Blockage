@@ -153,7 +153,7 @@ public class PatternPaintTests
         PaintOperations.Pattern(new Int3(1, 0, 1), Face.PosY, pattern, 0, command);
 
         // Seed maps to pixel (0,0), which is the red entry.
-        Assert.Equal(100, grid.GetVoxel(1, 0, 1));
+        Assert.Equal(100, grid.GetFaceColor(new Int3(1, 0, 1), Face.PosY));
     }
 
     [Fact]
@@ -166,11 +166,11 @@ public class PatternPaintTests
         PaintOperations.Pattern(Int3.Zero, Face.PosY, pattern, 0, command);
 
         // Chequer on the Y-facing plane: X and Z both step through the image.
-        Assert.Equal(100, grid.GetVoxel(0, 0, 0));
-        Assert.Equal(101, grid.GetVoxel(1, 0, 0));
-        Assert.Equal(100, grid.GetVoxel(2, 0, 0));
-        Assert.Equal(101, grid.GetVoxel(0, 0, 1));
-        Assert.Equal(100, grid.GetVoxel(1, 0, 1));
+        Assert.Equal(100, grid.GetFaceColor(new Int3(0, 0, 0), Face.PosY));
+        Assert.Equal(101, grid.GetFaceColor(new Int3(1, 0, 0), Face.PosY));
+        Assert.Equal(100, grid.GetFaceColor(new Int3(2, 0, 0), Face.PosY));
+        Assert.Equal(101, grid.GetFaceColor(new Int3(0, 0, 1), Face.PosY));
+        Assert.Equal(100, grid.GetFaceColor(new Int3(1, 0, 1), Face.PosY));
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class PatternPaintTests
         var command = new VoxelEditCommand("pattern", grid);
         PaintOperations.Pattern(Int3.Zero, Face.PosY, pattern, 0, command);
 
-        Assert.Equal(77, grid.GetVoxel(0, 0, 0));
+        Assert.Equal(77, grid.GetFaceColor(new Int3(0, 0, 0), Face.PosY));
     }
 
     [Fact]
@@ -223,6 +223,6 @@ public class PatternPaintTests
         Assert.True(session.Paint(new Core.Raycast.RaycastHit(Int3.Zero, Face.PosY, 1f)));
         session.EndStroke();
 
-        Assert.Equal(33, session.World.GetVoxel(0, 0, 0));
+        Assert.Equal(33, session.World.GetFaceColor(new Int3(0, 0, 0), Face.PosY));
     }
 }
