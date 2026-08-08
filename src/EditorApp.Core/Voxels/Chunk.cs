@@ -21,8 +21,11 @@ public sealed class Chunk
     /// One bit per voxel: does this voxel have any face painted differently from its base colour.
     /// Meshing asks for a face colour six times per voxel, so the common answer — "no" — has to
     /// cost a bit test rather than a dictionary probe.
+    ///
+    /// Allocated only once something is painted. It is 4 KB, which on a level of thousands of
+    /// unpainted chunks would otherwise be a tenth of the world's memory bought for nothing.
     /// </summary>
-    private readonly ulong[] _hasFaceOverride = new ulong[OccupancyWords];
+    private ulong[]? _hasFaceOverride;
 
     /// <summary>
     /// Faces that differ from their voxel's base colour, keyed by <c>linear * 6 + face</c>.
@@ -139,10 +142,20 @@ public sealed class Chunk
     private static int FaceKey(int linear, Face face) => (linear * FaceInfo.Count) + (int)face;
 
     private bool HasOverride(int linear) =>
-        (_hasFaceOverride[linear >> 6] & (1UL << (linear & 63))) != 0;
+        _hasFaceOverride is { } bits && (bits[linear >> 6] & (1UL << (linear & 63))) != 0;
 
     private void SetOverrideBit(int linear, bool value)
     {
+        if (_hasFaceOverride is null)
+        {
+            if (!value)
+            {
+                return;
+            }
+
+            _hasFaceOverride = new ulong[OccupancyWords];
+        }
+
         ref ulong word = ref _hasFaceOverride[linear >> 6];
         ulong bit = 1UL << (linear & 63);
 
@@ -245,7 +258,7 @@ public sealed class Chunk
     private void RebuildOccupancy()
     {
         Array.Clear(_occupancy);
-        Array.Clear(_hasFaceOverride);
+        _hasFaceOverride = null;
         _faceOverrides = null;
         SolidCount = 0;
 
