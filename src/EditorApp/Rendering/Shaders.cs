@@ -1,8 +1,13 @@
 namespace EditorApp.Rendering;
 
 /// <summary>
-/// GLSL sources. One shader draws voxels (EditorApp.md §5: vertex color times a constant per-normal
-/// shade, no lighting math), one draws overlay lines for the hovered face and the ground grid.
+/// GLSL sources. One shader draws voxels, one draws overlay lines for the hovered face and the
+/// ground grid.
+///
+/// The voxel shader has two shading modes. Unlit is EditorApp.md §5 unchanged — vertex colour times
+/// a constant per-normal shade, no lighting math. Lit adds one fixed directional light so the way a
+/// level catches light can be judged in the editor. Neither reaches the exported file, which stays
+/// flat by design (§10.4).
 /// </summary>
 public static class Shaders
 {
@@ -10,7 +15,7 @@ public static class Shaders
         #version 330 core
         layout(location = 0) in vec3 aPosition;
         layout(location = 1) in vec4 aColor;
-        layout(location = 2) in float aShade;
+        layout(location = 2) in float aFace;
 
         uniform mat4 uViewProjection;
 
@@ -22,17 +27,47 @@ public static class Shaders
         // as a fade rather than a jump.
         uniform float uFocus;
 
+        // Per-face lookup tables, uploaded once from FaceInfo rather than written out again here,
+        // so there is only one place the constants can be wrong.
+        uniform vec3 uFaceNormal[6];
+        uniform float uFaceShade[6];
+
+        // 0 = lit, 1 = unlit.
+        uniform int uUnlit;
+
+        // Points towards the light, world space, unit length.
+        uniform vec3 uLightDirection;
+        uniform float uLightIntensity;
+        uniform float uAmbient;
+
         out vec4 vColor;
 
         void main()
         {
-            vec3 lit = aColor.rgb * aShade;
+            int face = int(aFace + 0.5);
+            float shade;
+
+            if (uUnlit != 0)
+            {
+                shade = uFaceShade[face];
+            }
+            else
+            {
+                // Rotated into the world, or turning an object would leave its shading behind.
+                vec3 normal = normalize(mat3(uModel) * uFaceNormal[face]);
+
+                // Computed per vertex, which costs nothing and loses nothing: a face normal is
+                // constant across a quad, so interpolating this gives the same value everywhere.
+                shade = uAmbient + uLightIntensity * max(dot(normal, uLightDirection), 0.0);
+            }
+
+            vec3 lit = aColor.rgb * shade;
 
             // Lift towards white rather than scaling: multiplying leaves an already-white model
             // exactly as it was, which is the one case that has to read as focused.
             lit = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
 
-            vColor = vec4(lit, aColor.a);
+            vColor = vec4(clamp(lit, 0.0, 1.0), aColor.a);
             gl_Position = uViewProjection * uModel * vec4(aPosition, 1.0);
         }
         """;

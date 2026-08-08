@@ -75,6 +75,9 @@ public sealed class GlRenderer : IDisposable
     /// <summary>The gradient's upper colour. Kept close to the lower one — this is a backdrop.</summary>
     public Color32 BackgroundTopColor { get; set; } = new(52, 56, 62);
 
+    /// <summary>How the viewport shades faces. A way of looking at the level, not part of it.</summary>
+    public SceneLighting Lighting { get; } = new();
+
     public GlRenderer(GL gl)
     {
         _gl = gl;
@@ -91,6 +94,12 @@ public sealed class GlRenderer : IDisposable
         _gl.Enable(EnableCap.CullFace);
         _gl.CullFace(TriangleFace.Back);
         _gl.FrontFace(FrontFaceDirection.Ccw);
+
+        // The per-face tables never change, and a uniform keeps its value for the life of the
+        // program, so they are uploaded once here instead of every frame.
+        _voxelShader.Use();
+        _voxelShader.SetVector3Array("uFaceNormal", FaceInfo.AllNormals);
+        _voxelShader.SetFloatArray("uFaceShade", FaceInfo.AllShades);
     }
 
     /// <summary>
@@ -280,6 +289,10 @@ public sealed class GlRenderer : IDisposable
 
         _voxelShader.Use();
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
+        _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : 1);
+        _voxelShader.SetVector3("uLightDirection", Lighting.Direction);
+        _voxelShader.SetFloat("uLightIntensity", Lighting.Intensity);
+        _voxelShader.SetFloat("uAmbient", Lighting.Ambient);
 
         VisibleChunks = 0;
         DrawnTriangles = 0;

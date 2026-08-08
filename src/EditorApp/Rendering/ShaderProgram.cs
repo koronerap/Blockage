@@ -104,5 +104,46 @@ public sealed class ShaderProgram : IDisposable
         }
     }
 
+    public void SetInt(string name, int value)
+    {
+        int location = Location(name);
+        if (location >= 0)
+        {
+            _gl.Uniform1(location, value);
+        }
+    }
+
+    /// <summary>
+    /// Fills a <c>float[n]</c> uniform. The name is the array's, without a subscript — GLSL gives
+    /// an array a single location its elements follow on from.
+    /// </summary>
+    public unsafe void SetFloatArray(string name, ReadOnlySpan<float> values)
+    {
+        int location = Location(name);
+        if (location < 0)
+        {
+            return;
+        }
+
+        fixed (float* first = values)
+        {
+            _gl.Uniform1(location, (uint)values.Length, first);
+        }
+    }
+
+    public unsafe void SetVector3Array(string name, ReadOnlySpan<Vector3> values)
+    {
+        int location = Location(name);
+        if (location < 0)
+        {
+            return;
+        }
+
+        fixed (Vector3* first = values)
+        {
+            _gl.Uniform3(location, (uint)values.Length, (float*)first);
+        }
+    }
+
     public void Dispose() => _gl.DeleteProgram(Handle);
 }

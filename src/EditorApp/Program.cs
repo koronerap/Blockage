@@ -5,11 +5,14 @@ using EditorApp;
 // --export-to=<dir>       runs the whole export chain with no window and exits. Add --level=<path>
 //                         to export an existing .vxlevel instead of the built-in demo scene.
 // --stress[=halfExtent]   measures build, mesh, greedy and file times on a large level and exits.
+// --shading=lit|unlit     which shading mode to start in. Mainly so a screenshot run can capture
+//                         either one, since a shading change is only ever visible in a picture.
 int smokeFrames = 0;
 int stressHalfExtent = 0;
 string? exportDirectory = null;
 string? levelPath = null;
 string? screenshotPath = null;
+bool startUnlit = false;
 
 foreach (string argument in args)
 {
@@ -43,6 +46,10 @@ foreach (string argument in args)
     {
         screenshotPath = argument["--screenshot=".Length..];
     }
+    else if (argument.StartsWith("--shading=", StringComparison.Ordinal))
+    {
+        startUnlit = argument["--shading=".Length..].Equals("unlit", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 if (stressHalfExtent > 0)
@@ -55,6 +62,6 @@ if (exportDirectory is not null)
     return HeadlessExport.Run(exportDirectory, levelPath);
 }
 
-using var application = new EditorApplication(smokeFrames, screenshotPath);
+using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit);
 application.Run();
 return 0;

@@ -91,7 +91,7 @@ public static class EditMesher
             basePosition + FaceInfo.Corner(face, 2).ToVector3(),
             basePosition + FaceInfo.Corner(face, 3).ToVector3(),
             rgba,
-            FaceInfo.Shade(face));
+            (int)face);
     }
 
     /// <summary>
@@ -121,7 +121,7 @@ public static class EditMesher
                 vertices[i + 2].Position,
                 vertices[i + 3].Position,
                 vertices[i].Rgba,
-                vertices[i].Shade);
+                vertices[i].FaceIndex);
         }
     }
 }

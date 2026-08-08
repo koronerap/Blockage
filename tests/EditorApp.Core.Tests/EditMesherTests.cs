@@ -27,6 +27,43 @@ public class EditMesherTests
     }
 
     [Fact]
+    public void EveryVertexCarriesTheIndexOfItsOwnFace()
+    {
+        // The renderer looks its normal and its flat shade up from this. A vertex on the wrong face
+        // is lit as though it pointed somewhere else, which no area or count assertion would catch.
+        var world = new VoxelWorld();
+        world.SetVoxel(0, 0, 0, 1);
+
+        MeshBuilder mesh = MeshOf(world, new ChunkCoord(0, 0, 0));
+        ReadOnlySpan<MeshVertex> vertices = mesh.Vertices;
+
+        var seen = new HashSet<int>();
+        for (int quad = 0; quad < mesh.QuadCount; quad++)
+        {
+            int face = (int)vertices[quad * 4].FaceIndex;
+            Assert.InRange(face, 0, FaceInfo.Count - 1);
+            Assert.True(seen.Add(face), $"Face {face} was emitted twice.");
+
+            // All four corners of a quad belong to the same face.
+            for (int corner = 1; corner < 4; corner++)
+            {
+                Assert.Equal(face, (int)vertices[(quad * 4) + corner].FaceIndex);
+            }
+
+            // The quad has to actually lie in the plane its index claims: a face index that merely
+            // happens to be unique would still pass everything above.
+            Vector3 a = vertices[quad * 4].Position;
+            Vector3 b = vertices[(quad * 4) + 1].Position;
+            Vector3 c = vertices[(quad * 4) + 2].Position;
+            Vector3 normal = Vector3.Normalize(Vector3.Cross(b - a, c - a));
+
+            Assert.Equal(1f, Vector3.Dot(normal, FaceInfo.Normal((Face)face)), 4);
+        }
+
+        Assert.Equal(FaceInfo.Count, seen.Count);
+    }
+
+    [Fact]
     public void SharedFaceBetweenTwoVoxelsIsCulled()
     {
         var world = new VoxelWorld();

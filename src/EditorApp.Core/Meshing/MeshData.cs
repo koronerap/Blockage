@@ -8,11 +8,18 @@ namespace EditorApp.Core.Meshing;
 /// Colors live per vertex because voxel color is per voxel and faces do not share vertices (§4a).
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public struct MeshVertex(Vector3 position, uint rgba, float shade)
+public struct MeshVertex(Vector3 position, uint rgba, float faceIndex)
 {
     public Vector3 Position = position;
     public uint Rgba = rgba;
-    public float Shade = shade;
+
+    /// <summary>
+    /// Which of the six faces this vertex belongs to, as a float because that is what a vertex
+    /// attribute is. It used to hold the flat shade for that face directly, but a brightness cannot
+    /// be turned back into a direction — the two side pairs share a value — so the shader could
+    /// never light the face. Carrying the index instead lets it look up both.
+    /// </summary>
+    public float FaceIndex = faceIndex;
 
     public const int SizeInBytes = 20;
 }
@@ -50,14 +57,14 @@ public sealed class MeshBuilder
         Vector3 corner2,
         Vector3 corner3,
         uint rgba,
-        float shade)
+        float faceIndex)
     {
         uint baseIndex = (uint)_vertices.Count;
 
-        _vertices.Add(new MeshVertex(corner0, rgba, shade));
-        _vertices.Add(new MeshVertex(corner1, rgba, shade));
-        _vertices.Add(new MeshVertex(corner2, rgba, shade));
-        _vertices.Add(new MeshVertex(corner3, rgba, shade));
+        _vertices.Add(new MeshVertex(corner0, rgba, faceIndex));
+        _vertices.Add(new MeshVertex(corner1, rgba, faceIndex));
+        _vertices.Add(new MeshVertex(corner2, rgba, faceIndex));
+        _vertices.Add(new MeshVertex(corner3, rgba, faceIndex));
 
         _indices.Add(baseIndex);
         _indices.Add(baseIndex + 1);

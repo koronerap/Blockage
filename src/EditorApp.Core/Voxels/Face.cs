@@ -34,8 +34,8 @@ public static class FaceInfo
     ];
 
     /// <summary>
-    /// Flat shade baked per face at mesh build time so a voxel volume reads as a volume without any
-    /// lighting math. Editor-only: it never reaches the exported file (see EditorApp.md §10.4).
+    /// Flat shade per face, so a voxel volume reads as a volume without any lighting math. This is
+    /// the unlit look. Editor-only: it never reaches the exported file (see EditorApp.md §10.4).
     /// </summary>
     private static readonly float[] Shades = [0.80f, 0.80f, 1.00f, 0.50f, 0.65f, 0.65f];
 
@@ -64,6 +64,15 @@ public static class FaceInfo
     public static Vector3 Normal(Face face) => Normals[(int)face];
 
     public static float Shade(Face face) => Shades[(int)face];
+
+    /// <summary>
+    /// All six normals and shades in face order, for a renderer that wants them as lookup tables on
+    /// the GPU. Handing over the tables keeps these constants defined once here rather than
+    /// transcribed a second time into GLSL, where nothing would notice them drifting apart.
+    /// </summary>
+    public static ReadOnlySpan<Vector3> AllNormals => Normals;
+
+    public static ReadOnlySpan<float> AllShades => Shades;
 
     public static Int3 Corner(Face face, int corner) => Corners[(int)face * 4 + corner];
 

@@ -117,6 +117,23 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         }
     }
 
+    /// <summary>True while the discard prompt is waiting for an answer.</summary>
+    public bool IsAwaitingConfirmation => _pendingAction is not null;
+
+    /// <summary>
+    /// Throws the unsaved work away and goes ahead. Separate from the button that calls it so the
+    /// decision can be driven without a mouse — the discard path ends in tearing down and rebuilding
+    /// the renderer's buffers, which is not something to leave only ever exercised by hand.
+    /// </summary>
+    public void ConfirmDiscard()
+    {
+        Action? pending = _pendingAction;
+        _pendingAction = null;
+        pending?.Invoke();
+    }
+
+    public void CancelPending() => _pendingAction = null;
+
     /// <summary>Runs an action immediately, or asks first when there is unsaved work.</summary>
     private void GuardUnsaved(string description, Action action)
     {
@@ -174,15 +191,13 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         if (ImGui.Button("Discard", Theme.ModalButton))
         {
             ImGui.CloseCurrentPopup();
-            Action? pending = _pendingAction;
-            _pendingAction = null;
-            pending?.Invoke();
+            ConfirmDiscard();
         }
 
         ImGui.SameLine();
         if (ImGui.Button("Cancel", Theme.ModalButton))
         {
-            _pendingAction = null;
+            CancelPending();
             ImGui.CloseCurrentPopup();
         }
 
@@ -190,7 +205,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
         if (!open)
         {
-            _pendingAction = null;
+            CancelPending();
         }
     }
 

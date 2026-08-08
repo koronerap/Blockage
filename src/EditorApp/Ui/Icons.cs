@@ -228,6 +228,30 @@ public static class Icons
         }
     }
 
+    /// <summary>Lit: a body with light falling on it.</summary>
+    public static void Lit(ImDrawListPtr drawList, Vector2 centre, float r, uint colour)
+    {
+        drawList.AddCircleFilled(centre, r * 0.46f, colour);
+
+        // Rays on one side only. Spread evenly they would read as a sun, which is a light source;
+        // gathered on the upper left they read as light arriving from somewhere.
+        for (int i = 0; i < 3; i++)
+        {
+            float angle = (-0.62f + i * 0.42f) * MathF.PI;
+            var direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+
+            drawList.AddLine(
+                centre + direction * r * 0.68f,
+                centre + direction * r * 0.98f,
+                colour,
+                Thickness * 0.9f);
+        }
+    }
+
+    /// <summary>Unlit: the same body, one flat tone, nothing shining on it.</summary>
+    public static void Unlit(ImDrawListPtr drawList, Vector2 centre, float r, uint colour) =>
+        drawList.AddCircleFilled(centre, r * 0.46f, colour);
+
     private static void Arrowhead(ImDrawListPtr drawList, Vector2 tip, Vector2 direction, float size, uint colour)
     {
         var side = new Vector2(-direction.Y, direction.X) * size * 0.55f;

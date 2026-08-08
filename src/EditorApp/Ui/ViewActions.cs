@@ -1,3 +1,5 @@
+using EditorApp.Rendering;
+
 namespace EditorApp.Ui;
 
 /// <summary>
@@ -23,4 +25,11 @@ public sealed class ViewActions
     public required Func<bool> MeasurementsVisible { get; init; }
 
     public required Action ToggleMeasurements { get; init; }
+
+    /// <summary>
+    /// How the viewport shades the level. Handed over as the object rather than as get/set pairs:
+    /// it is a small bag of settings that several controls edit directly, and wrapping each field
+    /// in a delegate would only add a layer to step through.
+    /// </summary>
+    public required SceneLighting Lighting { get; init; }
 }

@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Rendering;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -124,6 +125,23 @@ public static class MainMenu
         if (ImGui.MenuItem("Measurements", "D", view.MeasurementsVisible()))
         {
             view.ToggleMeasurements();
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.BeginMenu("Shading"))
+        {
+            if (ImGui.MenuItem("Lit", null, view.Lighting.IsLit))
+            {
+                view.Lighting.Mode = ShadingMode.Lit;
+            }
+
+            if (ImGui.MenuItem("Unlit", null, !view.Lighting.IsLit))
+            {
+                view.Lighting.Mode = ShadingMode.Unlit;
+            }
+
+            ImGui.EndMenu();
         }
 
         ImGui.EndMenu();

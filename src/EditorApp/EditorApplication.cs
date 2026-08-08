@@ -75,6 +75,13 @@ public sealed class EditorApplication : IDisposable
     private bool _looking;
     private bool _panning;
     private bool _confirmedClose;
+
+    /// <summary>
+    /// Closing is deferred to the end of the frame. Calling Close from a button handler runs
+    /// Closing — and therefore Dispose — in the middle of building the UI, and the rest of the
+    /// frame then draws through disposed GL and ImGui objects.
+    /// </summary>
+    private bool _closeRequested;
     private ViewActions? _viewActions;
     private bool _leftButtonWasDown;
     private ExtrudeInteraction? _extrude;
@@ -89,12 +96,15 @@ public sealed class EditorApplication : IDisposable
     private float _lastDelta = 1f / 60f;
 
     private readonly string? _screenshotPath;
+    private readonly bool _startUnlit;
 
     /// <param name="smokeFrames">When positive, the window closes after this many frames (used for automated smoke runs).</param>
     /// <param name="screenshotPath">When set, the last frame is written here as a PNG before closing.</param>
-    public EditorApplication(int smokeFrames = 0, string? screenshotPath = null)
+    /// <param name="startUnlit">Opens in unlit shading rather than lit.</param>
+    public EditorApplication(int smokeFrames = 0, string? screenshotPath = null, bool startUnlit = false)
     {
         _screenshotPath = screenshotPath;
+        _startUnlit = startUnlit;
         _smokeFrames = screenshotPath is not null && smokeFrames <= 0 ? 10 : smokeFrames;
 
         WindowOptions options = WindowOptions.Default with
@@ -129,6 +139,11 @@ public sealed class EditorApplication : IDisposable
             BackgroundColor = Color32.FromVector4(Theme.Viewport),
             BackgroundTopColor = Color32.FromVector4(Theme.ViewportTop),
         };
+
+        if (_startUnlit)
+        {
+            _renderer.Lighting.Mode = ShadingMode.Unlit;
+        }
 
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());
         _export = new ExportController(_session);
@@ -705,6 +720,12 @@ public sealed class EditorApplication : IDisposable
 
             Console.WriteLine($"Smoke run complete: {_frameCount} frames, "
                 + $"{_renderer.TotalVertices:N0} vertices, {_renderer.DrawnTriangles:N0} triangles drawn.");
+            _closeRequested = true;
+        }
+
+        if (_closeRequested)
+        {
+            _closeRequested = false;
             _window.Close();
         }
     }
@@ -1001,7 +1022,7 @@ public sealed class EditorApplication : IDisposable
             ReferenceRenderer = _renderer!.Reference,
             Stats = _stats,
             View = _viewActions ??= CreateViewActions(),
-            OnExit = _window.Close,
+            OnExit = () => _closeRequested = true,
             Hover = _hover,
             DragReadout = CurrentDragReadout(),
             FrameSeconds = _lastDelta,
@@ -1013,6 +1034,7 @@ public sealed class EditorApplication : IDisposable
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
+
         _export!.Draw();
         _referencePanel.DrawDialogs();
         ToolOptions.DrawDialogs();
@@ -1041,6 +1063,7 @@ public sealed class EditorApplication : IDisposable
         ToggleGrid = () => _showGrid = !_showGrid,
         MeasurementsVisible = () => _showMeasurements,
         ToggleMeasurements = () => _showMeasurements = !_showMeasurements,
+        Lighting = _renderer!.Lighting,
     };
 
     private void FrameLevel()
@@ -1084,8 +1107,10 @@ public sealed class EditorApplication : IDisposable
             _window.IsClosing = false;
             _project.RequestExit(() =>
             {
+                // Answered from inside a popup, so mid-frame. Closing here would dispose the
+                // renderer under the frame that is still being drawn.
                 _confirmedClose = true;
-                _window.Close();
+                _closeRequested = true;
             });
 
             return;
@@ -1095,6 +1120,13 @@ public sealed class EditorApplication : IDisposable
         _renderer?.Dispose();
         _input?.Dispose();
         _gl?.Dispose();
+
+        // Nulled so that any frame the loop still delivers after this bails out at the guard at the
+        // top of OnRender instead of drawing through disposed objects.
+        _imgui = null;
+        _renderer = null;
+        _input = null;
+        _gl = null;
     }
 
     public void Dispose() => _window.Dispose();

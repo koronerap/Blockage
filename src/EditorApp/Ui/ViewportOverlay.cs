@@ -27,7 +27,11 @@ public static class ViewportOverlay
         bool showMeasurements,
         string dragReadout)
     {
-        ImDrawListPtr drawList = ImGui.GetForegroundDrawList();
+        // The background list, not the foreground one. Both draw over the 3D scene, since all of
+        // ImGui is composited on top of GL — but the foreground list is submitted after every
+        // window, so labels punched through panels and dialogs alike. The background list is
+        // submitted first, which puts these marks over the model and under the interface.
+        ImDrawListPtr drawList = ImGui.GetBackgroundDrawList();
 
         DrawAxisIndicator(drawList, camera, viewport);
 

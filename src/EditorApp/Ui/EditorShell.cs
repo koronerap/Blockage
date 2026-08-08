@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
+using EditorApp.Rendering;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -107,7 +108,12 @@ public sealed class EditorShell
     private static void DrawOverlayToggles(ShellContext context, Vector2 size)
     {
         float button = ImGui.GetFrameHeight();
-        float width = button * 2f + ImGui.GetStyle().ItemSpacing.X;
+        float spacing = ImGui.GetStyle().ItemSpacing.X;
+
+        // Two groups: what is drawn over the scene, then how the scene itself is shaded. The wider
+        // gap between them is what says they are different kinds of switch.
+        const float GroupGap = 14f;
+        float width = (button * 4f) + (spacing * 2f) + GroupGap;
 
         ImGui.SameLine(size.X - width - ImGui.GetStyle().WindowPadding.X);
 
@@ -121,6 +127,22 @@ public sealed class EditorShell
         if (Icons.Button("measure", Icons.Measure, context.View.MeasurementsVisible(), "Measurements  (D)", button))
         {
             context.View.ToggleMeasurements();
+        }
+
+        SceneLighting lighting = context.View.Lighting;
+
+        ImGui.SameLine(0f, GroupGap);
+
+        if (Icons.Button("lit", Icons.Lit, lighting.IsLit, "Lit  -  one directional light", button))
+        {
+            lighting.Mode = ShadingMode.Lit;
+        }
+
+        ImGui.SameLine();
+
+        if (Icons.Button("unlit", Icons.Unlit, !lighting.IsLit, "Unlit  -  flat per-face shade", button))
+        {
+            lighting.Mode = ShadingMode.Unlit;
         }
     }
 
@@ -145,6 +167,11 @@ public sealed class EditorShell
         if (ImGui.CollapsingHeader("Palette", ImGuiTreeNodeFlags.DefaultOpen))
         {
             context.Palette.DrawContent(context.Session);
+        }
+
+        if (ImGui.CollapsingHeader("Shading"))
+        {
+            LightingPanel.DrawContent(context.View.Lighting);
         }
 
         if (ImGui.CollapsingHeader("Reference model"))
