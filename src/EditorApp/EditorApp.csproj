@@ -8,7 +8,11 @@
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>EditorApp</RootNamespace>
-    <AssemblyName>EditorApp</AssemblyName>
+
+    <!-- The product is Blockage; EditorApp stays as the namespace so the source does not churn. -->
+    <AssemblyName>Blockage</AssemblyName>
+    <Product>Blockage</Product>
+    <AssemblyTitle>Blockage</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

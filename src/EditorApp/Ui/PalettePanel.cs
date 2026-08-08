@@ -6,47 +6,53 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// The 256-entry palette as a 16x16 swatch grid, plus an editor for the active entry behind a
-/// popover. Changing a colour repaints every voxel that uses the index - that is what storing
-/// indices buys us.
+/// Three separate things that used to be one:
 ///
-/// The picker is a popover rather than a permanent panel because it is the tallest control in the
-/// interface and it is needed for a few seconds at a time.
+/// a fixed reference **library** that clicking never rewrites; a row of **custom slots** holding
+/// whatever colours have been picked; and a **picker** that chooses a colour without touching
+/// either until asked.
+///
+/// Editing a library entry is still possible — recolouring every voxel that uses an index is a real
+/// feature of storing indices — but it is behind a right-click now rather than being what the
+/// colour picker does by accident.
 /// </summary>
 public sealed class PalettePanel
 {
     private const int Columns = 16;
     private const float SwatchGap = 2f;
 
+    private Vector3 _working = new(0.85f, 0.35f, 0.25f);
+
     private int _editingIndex = -1;
     private Color32 _editingBefore;
 
-    /// <summary>Draws into whatever panel the shell has already opened.</summary>
     public void DrawContent(EditorSession session)
     {
         Palette palette = session.Scene.Palette;
 
         DrawActiveRow(session, palette);
         ImGui.Spacing();
-        DrawSwatchGrid(session, palette);
+
+        ImGui.SeparatorText("Custom");
+        DrawSwatches(session, palette, Palette.CustomStart, Palette.Size, custom: true);
+
+        ImGui.Spacing();
+        ImGui.SeparatorText("Library");
+        DrawSwatches(session, palette, 1, Palette.CustomStart, custom: false);
+
+        DrawLibraryEditPopup(session, palette);
     }
 
-    /// <summary>The active colour, its index, and the button that opens the picker.</summary>
     private void DrawActiveRow(EditorSession session, Palette palette)
     {
         int active = session.ActiveColorIndex;
-        Vector4 rgba = palette[active].ToVector4();
-
         float height = ImGui.GetFrameHeight();
-        if (ImGui.ColorButton("##active", rgba, ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip, new Vector2(height * 2f, height)))
-        {
-            ImGui.OpenPopup("palette-picker");
-        }
 
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Click to edit this palette entry.");
-        }
+        ImGui.ColorButton(
+            "##active",
+            palette[active].ToVector4(),
+            ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip,
+            new Vector2(height * 2f, height));
 
         ImGui.SameLine();
         ImGui.AlignTextToFramePadding();
@@ -54,92 +60,193 @@ public sealed class PalettePanel
         ImGui.SameLine();
         ImGui.TextDisabled(palette[active].ToString());
 
-        DrawPickerPopup(session, palette, active);
+        // The picker is a popover: it is the tallest control here and it is wanted for a few
+        // seconds at a time, while the swatch rows are what the panel is for.
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 46f + ImGui.GetCursorPosX());
+        if (ImGui.Button("Pick"))
+        {
+            ImGui.OpenPopup("free-picker");
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Choose any colour. It is matched to the palette,\nor saved to a custom slot if it is new.");
+        }
+
+        DrawPickerPopup(session);
     }
 
-    private void DrawPickerPopup(EditorSession session, Palette palette, int active)
+    /// <summary>
+    /// A colour chosen on its own terms. Nothing happens to the level until "Use colour", which
+    /// selects a matching entry if one exists and claims a custom slot if not.
+    /// </summary>
+    private void DrawPickerPopup(EditorSession session)
     {
-        if (!ImGui.BeginPopup("palette-picker"))
+        if (!ImGui.BeginPopup("free-picker"))
         {
             return;
         }
 
-        Vector4 rgba = palette[active].ToVector4();
-        var rgb = new Vector3(rgba.X, rgba.Y, rgba.Z);
+        ImGui.ColorPicker3(
+            "##picker",
+            ref _working,
+            ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.NoSmallPreview | ImGuiColorEditFlags.DisplayRGB);
 
-        if (ImGui.ColorPicker3("##activecolor", ref rgb, ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB))
+        var colour = Color32.FromVector4(new Vector4(_working, 1f));
+        byte? existing = session.Scene.Palette.FindExact(colour);
+
+        if (existing is { } index)
         {
-            // Remember the pre-edit colour once, at the start of the drag, so the whole drag lands
-            // in history as a single step.
-            if (_editingIndex != active)
-            {
-                _editingIndex = active;
-                _editingBefore = palette[active];
-            }
-
-            session.ApplyPaletteColor(active, Color32.FromVector4(new Vector4(rgb, 1f)));
+            ImGui.TextDisabled($"Already in the palette at index {index}.");
+        }
+        else
+        {
+            int free = session.Scene.Palette.FreeCustomSlots;
+            ImGui.TextDisabled(free > 0
+                ? $"Saved to a custom slot ({free} free)."
+                : "No free custom slot - the oldest unused one is reused.");
         }
 
-        if (_editingIndex == active && ImGui.IsItemDeactivatedAfterEdit())
+        if (ImGui.Button("Use colour", new Vector2(-1f, 0f)))
         {
-            session.PushPaletteEdit(active, _editingBefore, palette[active]);
-            _editingIndex = -1;
+            session.SelectColor(colour);
+            ImGui.CloseCurrentPopup();
         }
 
         ImGui.EndPopup();
     }
 
-    private static void DrawSwatchGrid(EditorSession session, Palette palette)
+    private void DrawSwatches(EditorSession session, Palette palette, int from, int to, bool custom)
     {
-        // Sized from the space actually available, so the last column is never clipped off the
-        // edge of the properties panel.
         float available = ImGui.GetContentRegionAvail().X;
-        float swatch = MathF.Max((available - (Columns - 1) * SwatchGap) / Columns, 8f);
+        float swatch = MathF.Max((available - ((Columns - 1) * SwatchGap)) / Columns, 8f);
 
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 2f);
 
-        // Index 0 is the empty marker and is never selectable; the grid starts at 1.
-        for (int index = 1; index < Palette.Size; index++)
+        for (int index = from; index < to; index++)
         {
-            if ((index - 1) % Columns != 0)
+            if ((index - from) % Columns != 0)
             {
                 ImGui.SameLine(0f, SwatchGap);
             }
 
             ImGui.PushID(index);
-
-            Vector4 color = palette[index].ToVector4();
-            bool isActive = index == session.ActiveColorIndex;
-
-            if (isActive)
-            {
-                ImGui.PushStyleColor(ImGuiCol.Border, Theme.Text);
-                ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 2f);
-            }
-
-            if (ImGui.ColorButton(
-                    $"##swatch{index}",
-                    color,
-                    ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoBorder,
-                    new Vector2(swatch, swatch)))
-            {
-                session.ActiveColorIndex = (byte)index;
-            }
-
-            if (isActive)
-            {
-                ImGui.PopStyleVar();
-                ImGui.PopStyleColor();
-            }
-
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip($"Index {index}\n{palette[index]}");
-            }
-
+            DrawSwatch(session, palette, index, swatch, custom);
             ImGui.PopID();
         }
 
         ImGui.PopStyleVar();
+    }
+
+    private void DrawSwatch(EditorSession session, Palette palette, int index, float size, bool custom)
+    {
+        bool free = custom && palette.IsCustomSlotFree(index);
+        bool isActive = index == session.ActiveColorIndex;
+
+        // A free slot is drawn as a recess rather than a colour, so the row reads as "space for
+        // more" instead of a run of black swatches.
+        Vector4 colour = free ? Theme.Sunken : palette[index].ToVector4();
+
+        if (isActive)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Border, Theme.Text);
+            ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 2f);
+        }
+
+        if (ImGui.ColorButton(
+                $"##swatch{index}",
+                colour,
+                ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoBorder,
+                new Vector2(size, size))
+            && !free)
+        {
+            session.ActiveColorIndex = (byte)index;
+        }
+
+        if (isActive)
+        {
+            ImGui.PopStyleVar();
+            ImGui.PopStyleColor();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(free
+                ? $"Empty custom slot {index}"
+                : $"Index {index}\n{palette[index]}\n\nRight-click for options.");
+        }
+
+        DrawSwatchMenu(session, index, custom, free);
+    }
+
+    private void DrawSwatchMenu(EditorSession session, int index, bool custom, bool free)
+    {
+        if (free || !ImGui.BeginPopupContextItem("##swatch-menu"))
+        {
+            return;
+        }
+
+        if (ImGui.MenuItem("Edit colour..."))
+        {
+            _editingIndex = index;
+            _editingBefore = session.Scene.Palette[index];
+            ImGui.CloseCurrentPopup();
+            ImGui.OpenPopup("library-edit");
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Recolours every voxel already using this index.");
+        }
+
+        if (custom && ImGui.MenuItem("Clear slot"))
+        {
+            session.ClearCustomColor(index);
+        }
+
+        ImGui.EndPopup();
+    }
+
+    /// <summary>
+    /// Editing an entry in place. Kept explicit because it changes the level, not the selection:
+    /// every voxel on that index is repainted.
+    /// </summary>
+    private void DrawLibraryEditPopup(EditorSession session, Palette palette)
+    {
+        if (_editingIndex < 1)
+        {
+            return;
+        }
+
+        if (!ImGui.IsPopupOpen("library-edit"))
+        {
+            ImGui.OpenPopup("library-edit");
+        }
+
+        if (!ImGui.BeginPopup("library-edit"))
+        {
+            return;
+        }
+
+        ImGui.Text($"Palette index {_editingIndex}");
+        ImGui.TextDisabled("Every voxel using this index is recoloured.");
+
+        Vector4 rgba = palette[_editingIndex].ToVector4();
+        var rgb = new Vector3(rgba.X, rgba.Y, rgba.Z);
+
+        if (ImGui.ColorPicker3("##edit", ref rgb, ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB))
+        {
+            session.ApplyPaletteColor(_editingIndex, Color32.FromVector4(new Vector4(rgb, 1f)));
+        }
+
+        if (ImGui.Button("Done", new Vector2(-1f, 0f)))
+        {
+            // The whole drag lands in history as one step, not one per frame.
+            session.PushPaletteEdit(_editingIndex, _editingBefore, palette[_editingIndex]);
+            _editingIndex = -1;
+            ImGui.CloseCurrentPopup();
+        }
+
+        ImGui.EndPopup();
     }
 }

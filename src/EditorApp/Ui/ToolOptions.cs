@@ -40,14 +40,22 @@ public static class ToolOptions
 
     private static void DrawTransform(EditorSession session)
     {
-        Segmented("##transform-mode", ["Move", "Rotate"], (int)session.TransformMode, "F", value =>
-            session.TransformMode = (TransformMode)value);
+        Segmented(
+            "transform-mode",
+            [(Icons.Move, "Move"), (Icons.Rotate, "Rotate")],
+            (int)session.TransformMode,
+            "F",
+            value => session.TransformMode = (TransformMode)value);
 
         ImGui.SameLine(0f, 18f);
 
         ImGui.BeginDisabled(session.TransformMode != TransformMode.Move);
-        Segmented("##transform-space", ["Global", "Local"], (int)session.TransformSpace, "X", value =>
-            session.TransformSpace = (TransformSpace)value);
+        Segmented(
+            "transform-space",
+            [(Icons.Global, "Global"), (Icons.Local, "Local")],
+            (int)session.TransformSpace,
+            "X",
+            value => session.TransformSpace = (TransformSpace)value);
         ImGui.EndDisabled();
 
         ImGui.SameLine(0f, 18f);
@@ -57,8 +65,12 @@ public static class ToolOptions
 
     private static void DrawExtrude(EditorSession session)
     {
-        Segmented("##extrude-select", ["Box", "Face"], (int)session.ExtrudeSelectionMode, "F", value =>
-            session.ExtrudeSelectionMode = (ExtrudeSelectionMode)value);
+        Segmented(
+            "extrude-select",
+            [(Icons.BoxSelect, "Box select"), (Icons.FaceSelect, "Whole face")],
+            (int)session.ExtrudeSelectionMode,
+            "F",
+            value => session.ExtrudeSelectionMode = (ExtrudeSelectionMode)value);
 
         ImGui.SameLine(0f, 18f);
 
@@ -92,8 +104,12 @@ public static class ToolOptions
 
     private static void DrawPaint(EditorSession session)
     {
-        Segmented("##paint-mode", ["Brush", "Bucket", "Pattern"], (int)session.PaintMode, "X", value =>
-            session.PaintMode = (PaintMode)value);
+        Segmented(
+            "paint-mode",
+            [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill")],
+            (int)session.PaintMode,
+            "X",
+            value => session.PaintMode = (PaintMode)value);
 
         ImGui.SameLine(0f, 18f);
 
@@ -180,42 +196,34 @@ public static class ToolOptions
     };
 
     /// <summary>
-    /// A joined run of buttons rather than a row of radio circles — the same choice, but it reads as
-    /// a mode switch instead of a questionnaire.
+    /// A joined run of icon buttons rather than a row of radio circles — the same choice, but it
+    /// reads as a mode switch instead of a questionnaire. The name lives in each button's tooltip.
     /// </summary>
-    private static void Segmented(string id, string[] labels, int selected, string shortcut, Action<int> onChange)
+    private static void Segmented(
+        string id,
+        (Icons.Painter Icon, string Name)[] options,
+        int selected,
+        string shortcut,
+        Action<int> onChange)
     {
+        float size = ImGui.GetFrameHeight();
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new System.Numerics.Vector2(2f, 0f));
 
-        for (int i = 0; i < labels.Length; i++)
+        for (int i = 0; i < options.Length; i++)
         {
             if (i > 0)
             {
                 ImGui.SameLine();
             }
 
-            bool active = i == selected;
-            if (active)
-            {
-                ImGui.PushStyleColor(ImGuiCol.Button, Theme.Accent);
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.AccentHovered);
-            }
+            (Icons.Painter icon, string name) = options[i];
 
-            if (ImGui.Button($"{labels[i]}{id}{i}") && !active)
+            if (Icons.Button($"{id}{i}", icon, i == selected, $"{name}  ({shortcut} cycles)", size) && i != selected)
             {
                 onChange(i);
-            }
-
-            if (active)
-            {
-                ImGui.PopStyleColor(2);
             }
         }
 
         ImGui.PopStyleVar();
-
-        ImGui.SameLine(0f, 6f);
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled($"({shortcut})");
     }
 }

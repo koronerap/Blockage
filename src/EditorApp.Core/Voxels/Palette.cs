@@ -19,6 +19,19 @@ public sealed class Palette
     /// </summary>
     public const byte WhiteIndex = 15;
 
+    /// <summary>
+    /// Where the user's own colours start. Below this is a fixed reference library that picking a
+    /// colour never rewrites; above it are slots the editor hands out as new colours are chosen.
+    ///
+    /// Splitting the range is what lets a colour be picked freely without silently repainting every
+    /// voxel that happened to share an index with it.
+    /// </summary>
+    public const int CustomStart = 192;
+
+    public const int CustomCount = Size - CustomStart;
+
+    public static bool IsCustomIndex(int index) => index >= CustomStart;
+
     private readonly Color32[] _colors = new Color32[Size];
 
     public Palette()
@@ -42,6 +55,53 @@ public sealed class Palette
 
     public ReadOnlySpan<Color32> Colors => _colors;
 
+    /// <summary>
+    /// A custom slot nobody has filled yet. Fully transparent is the marker: every real colour is
+    /// written opaque, so no extra bookkeeping is needed and the state survives a save unchanged.
+    /// </summary>
+    public bool IsCustomSlotFree(int index) => IsCustomIndex(index) && _colors[index].A == 0;
+
+    public int FreeCustomSlots
+    {
+        get
+        {
+            int free = 0;
+            for (int i = CustomStart; i < Size; i++)
+            {
+                if (IsCustomSlotFree(i))
+                {
+                    free++;
+                }
+            }
+
+            return free;
+        }
+    }
+
+    /// <summary>Hands a custom slot back. Voxels still using it keep whatever colour it held.</summary>
+    public void ClearCustomSlot(int index)
+    {
+        if (IsCustomIndex(index))
+        {
+            _colors[index] = Color32.Transparent;
+        }
+    }
+
+    /// <summary>The index holding exactly this colour, ignoring alpha, or null.</summary>
+    public byte? FindExact(Color32 color)
+    {
+        for (int i = 1; i < Size; i++)
+        {
+            Color32 candidate = _colors[i];
+            if (candidate.A != 0 && candidate.R == color.R && candidate.G == color.G && candidate.B == color.B)
+            {
+                return (byte)i;
+            }
+        }
+
+        return null;
+    }
+
     public void CopyFrom(ReadOnlySpan<Color32> colors)
     {
         if (colors.Length != Size)
@@ -61,8 +121,9 @@ public sealed class Palette
     }
 
     /// <summary>
-    /// A usable starting palette: a 15-step grayscale ramp followed by 240 colors laid out as
-    /// 24 hues x 5 values x 2 saturations.
+    /// The fixed reference library: a 15-step grayscale ramp followed by 176 colors laid out as
+    /// 22 hues x 2 saturations x 4 values. It stops at <see cref="CustomStart"/>, leaving the rest
+    /// of the range free for whatever the user picks.
     /// </summary>
     public static Palette CreateDefault()
     {
@@ -75,20 +136,21 @@ public sealed class Palette
         }
 
         int index = 16;
-        for (int hue = 0; hue < 24; hue++)
+        for (int hue = 0; hue < 22; hue++)
         {
             for (int sat = 0; sat < 2; sat++)
             {
-                for (int val = 0; val < 5; val++)
+                for (int val = 0; val < 4; val++)
                 {
                     palette._colors[index++] = Color32.FromHsv(
-                        hue * 15f,
+                        hue * (360f / 22f),
                         sat == 0 ? 1.0f : 0.55f,
-                        0.35f + val * 0.1625f);
+                        0.40f + val * 0.2f);
                 }
             }
         }
 
+        // Anything left is a free custom slot, and stays transparent until it is claimed.
         return palette;
     }
 }

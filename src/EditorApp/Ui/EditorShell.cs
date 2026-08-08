@@ -95,8 +95,33 @@ public sealed class EditorShell
         ImGui.SameLine(0f, 16f);
 
         ToolOptions.Draw(session);
+        DrawOverlayToggles(context, size);
 
         ImGui.End();
+    }
+
+    /// <summary>
+    /// Overlay switches, parked on the right of the header. They belong to the viewport rather than
+    /// to any tool, so they keep the same place whichever tool is active.
+    /// </summary>
+    private static void DrawOverlayToggles(ShellContext context, Vector2 size)
+    {
+        float button = ImGui.GetFrameHeight();
+        float width = button * 2f + ImGui.GetStyle().ItemSpacing.X;
+
+        ImGui.SameLine(size.X - width - ImGui.GetStyle().WindowPadding.X);
+
+        if (Icons.Button("grid", Icons.Grid, context.View.GridVisible(), "Ground grid  (G)", button))
+        {
+            context.View.ToggleGrid();
+        }
+
+        ImGui.SameLine();
+
+        if (Icons.Button("measure", Icons.Measure, context.View.MeasurementsVisible(), "Measurements  (D)", button))
+        {
+            context.View.ToggleMeasurements();
+        }
     }
 
     private static void DrawToolColumn(ShellContext context, Vector2 position, Vector2 size)

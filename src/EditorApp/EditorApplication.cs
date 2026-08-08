@@ -99,7 +99,7 @@ public sealed class EditorApplication : IDisposable
         WindowOptions options = WindowOptions.Default with
         {
             Size = new Vector2D<int>(1600, 900),
-            Title = "EditorApp - Voxel Level Editor",
+            Title = "Blockage - Voxel Level Editor",
             // 3.3 core covers everything this tool needs and runs on the widest range of drivers.
             API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core, ContextFlags.Default, new APIVersion(3, 3)),
             VSync = true,

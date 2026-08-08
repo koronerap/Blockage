@@ -31,7 +31,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     public bool IsError { get; private set; }
 
     public string WindowTitle =>
-        $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} - EditorApp";
+        $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} - Blockage";
 
     public void NewProject() => GuardUnsaved("start a new level", () =>
     {

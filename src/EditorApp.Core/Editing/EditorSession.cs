@@ -461,6 +461,105 @@ public sealed class EditorSession
         HasUnsavedChanges = true;
     }
 
+    /// <summary>
+    /// Makes an arbitrary colour the active one. If the palette already holds it exactly, that
+    /// entry is selected and nothing changes; otherwise it lands in a custom slot.
+    ///
+    /// This is the difference between picking a colour and editing the palette. Writing the picked
+    /// colour over the active entry — which is what the editor used to do — repaints every voxel
+    /// that shared the index, which is almost never what choosing a colour is meant to mean.
+    /// </summary>
+    public byte SelectColor(Color32 color)
+    {
+        color = color with { A = 255 };
+
+        if (Scene.Palette.FindExact(color) is { } existing)
+        {
+            ActiveColorIndex = existing;
+            return existing;
+        }
+
+        byte slot = AllocateCustomSlot();
+        Color32 before = Scene.Palette[slot];
+
+        Scene.Palette[slot] = color;
+        Scene.MarkAllDirty();
+        Pattern?.InvalidateMatches();
+
+        // Recorded, because claiming a slot that voxels were using does change what they look like.
+        History.Push(new PaletteEditCommand(Scene, slot, before, color));
+        HasUnsavedChanges = true;
+
+        ActiveColorIndex = slot;
+        return slot;
+    }
+
+    /// <summary>Gives a custom slot back to the pool.</summary>
+    public bool ClearCustomColor(int index)
+    {
+        if (!Palette.IsCustomIndex(index) || Scene.Palette.IsCustomSlotFree(index))
+        {
+            return false;
+        }
+
+        Color32 before = Scene.Palette[index];
+        Scene.Palette.ClearCustomSlot(index);
+        Scene.MarkAllDirty();
+        Pattern?.InvalidateMatches();
+
+        History.Push(new PaletteEditCommand(Scene, index, before, Color32.Transparent));
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>
+    /// A free slot if there is one, otherwise one no voxel is using, and only as a last resort a
+    /// slot that is in use — losing the oldest custom colour beats refusing to pick one.
+    /// </summary>
+    private byte AllocateCustomSlot()
+    {
+        for (int i = Palette.CustomStart; i < Palette.Size; i++)
+        {
+            if (Scene.Palette.IsCustomSlotFree(i))
+            {
+                return (byte)i;
+            }
+        }
+
+        HashSet<byte> used = UsedPaletteIndices();
+        for (int i = Palette.CustomStart; i < Palette.Size; i++)
+        {
+            if (!used.Contains((byte)i))
+            {
+                return (byte)i;
+            }
+        }
+
+        return Palette.CustomStart;
+    }
+
+    /// <summary>Every palette index referenced by a voxel anywhere in the scene.</summary>
+    public HashSet<byte> UsedPaletteIndices()
+    {
+        var used = new HashSet<byte>();
+
+        foreach (VoxelObject o in Scene.Objects)
+        {
+            foreach (Chunk chunk in o.Grid.Chunks.Values)
+            {
+                foreach (byte index in chunk.Indices)
+                {
+                    if (index != Palette.EmptyIndex)
+                    {
+                        used.Add(index);
+                    }
+                }
+            }
+        }
+
+        return used;
+    }
+
     /// <summary>Records a finished palette edit as one undo step.</summary>
     public void PushPaletteEdit(int index, Color32 before, Color32 after)
     {
