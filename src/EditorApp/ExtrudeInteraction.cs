@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Rendering;
 
@@ -63,17 +64,36 @@ public sealed class ExtrudeInteraction(EditorSession session)
         return (start, start + direction * ArrowLength);
     }
 
-    public void OnPress(RaycastHit? hover, Vector2 mouse, Vector2 viewport, FlyCamera camera, bool shift, bool alt)
+    /// <param name="pick">
+    /// Whatever the cursor is over, which may belong to an object that does not hold focus. Hovering
+    /// one of those never takes focus while a selection is held; pressing on one does, because a
+    /// click is a decision and passing the cursor over something is not.
+    /// </param>
+    public void OnPress(ScenePick? pick, Vector2 mouse, Vector2 viewport, FlyCamera camera, bool shift, bool alt)
     {
+        // Tried first: the arrow is drawn in front of everything, so grabbing it must never be read
+        // as a click on whatever happens to be behind it.
         if (TryGrabArrow(mouse, viewport, camera))
         {
             return;
         }
 
-        if (hover is not { } hit)
+        if (pick is not { } target)
         {
             return;
         }
+
+        if (target.Object.Id != session.Scene.FocusId)
+        {
+            // Clearing first is what lets the focus change through — a held selection pins it.
+            session.ClearSelection();
+            if (!session.TryFocus(target.Object.Id))
+            {
+                return;
+            }
+        }
+
+        RaycastHit hit = target.Hit;
 
         // Starting a new selection while a drag is pending keeps the pending one rather than
         // silently throwing the user's work away.
@@ -184,9 +204,17 @@ public sealed class ExtrudeInteraction(EditorSession session)
             IsSelecting = false;
         }
 
-        // The arrow drag deliberately survives the release: the spec confirms with Enter and
-        // cancels with Esc, so letting go is a chance to look at the result, not a commit.
-        IsDraggingArrow = false;
+        if (IsDraggingArrow)
+        {
+            // Letting go commits. The spec confirmed with Enter, on the reasoning that the release
+            // was a chance to look at the result — but the result is already on screen during the
+            // drag, and a gesture that needs a keystroke to stick is one you have to remember to
+            // finish. Ctrl+Z is the way back, as it is for every other edit.
+            //
+            // A grab released without moving is a no-op: there is no preview to commit.
+            session.ConfirmExtrude();
+            IsDraggingArrow = false;
+        }
     }
 
     public void Confirm()

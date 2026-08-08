@@ -86,6 +86,11 @@ public sealed class EditorApplication : IDisposable
     private bool _leftButtonWasDown;
     private ExtrudeInteraction? _extrude;
     private TransformInteraction? _transform;
+
+    /// <summary>What the cursor is over, whichever object owns it.</summary>
+    private ScenePick? _pick;
+
+    /// <summary>The same hit, but only when it belongs to the object the tools are editing.</summary>
     private RaycastHit? _hover;
     private Int3? _paintShapeStart;
     private Face _paintShapeFace;
@@ -309,6 +314,7 @@ public sealed class EditorApplication : IDisposable
     private void UpdateHover()
     {
         _hover = null;
+        _pick = null;
 
         if (_input is null || _input.Mice.Count == 0 || _looking || ImGui.GetIO().WantCaptureMouse)
         {
@@ -329,9 +335,13 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
+        _pick = pick;
+
         // Focus follows whatever the cursor is over, except while a gesture is running. TryFocus
-        // guards strokes and extrudes itself; a gizmo drag has no stroke, so it is guarded here.
-        if (_transform is not { IsDragging: true })
+        // guards strokes, extrude previews and held selections itself; the drags that have none of
+        // those — a gizmo, and the box-drag that is still deciding what the selection will be — are
+        // guarded here.
+        if (_transform is not { IsDragging: true } && _extrude is not { IsBusy: true })
         {
             _session.TryFocus(pick.Object.Id);
         }
@@ -412,7 +422,7 @@ public sealed class EditorApplication : IDisposable
     {
         if (pressed)
         {
-            _extrude!.OnPress(_hover, mouse, viewport, _camera, IsShiftHeld(), IsAltHeld());
+            _extrude!.OnPress(_pick, mouse, viewport, _camera, IsShiftHeld(), IsAltHeld());
         }
         else if (leftDown && _extrude!.IsBusy)
         {

@@ -40,6 +40,15 @@ public sealed class EditorSession
             return false;
         }
 
+        // A held Extrude selection pins focus too, even though no drag is running. Reaching for the
+        // arrow means crossing whatever happens to be between the cursor and it, and losing the
+        // selection to an object merely passed over makes the tool unusable in a crowded scene.
+        // A deliberate click still moves focus — see ExtrudeInteraction.OnPress.
+        if (ActiveTool == EditorTool.Extrude && HasSelection)
+        {
+            return false;
+        }
+
         if (objectId == Scene.FocusId)
         {
             return true;
