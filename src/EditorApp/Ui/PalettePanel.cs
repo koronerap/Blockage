@@ -17,24 +17,14 @@ public sealed class PalettePanel
     private int _editingIndex = -1;
     private Color32 _editingBefore;
 
-    public void Draw(EditorSession session)
+    /// <summary>Draws into whatever panel the shell has already opened.</summary>
+    public void DrawContent(EditorSession session)
     {
-        ImGui.SetNextWindowPos(new Vector2(12, 320), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new Vector2(400, 480), ImGuiCond.FirstUseEver);
-
-        if (!ImGui.Begin("Palette"))
-        {
-            ImGui.End();
-            return;
-        }
-
-        Palette palette = session.World.Palette;
+        Palette palette = session.Scene.Palette;
         DrawSwatchGrid(session, palette);
 
-        ImGui.Separator();
+        ImGui.Spacing();
         DrawActiveColorEditor(session, palette);
-
-        ImGui.End();
     }
 
     private static void DrawSwatchGrid(EditorSession session, Palette palette)

@@ -15,25 +15,31 @@ public sealed class StatsOverlay
     private readonly float[] _frameTimes = new float[HistoryLength];
     private int _cursor;
 
-    public void Draw(GlRenderer renderer, FlyCamera camera, int solidVoxels, int chunkCount, float deltaSeconds)
+    /// <summary>Records the frame time even when the section is collapsed, so the graph stays continuous.</summary>
+    public void Sample(float deltaSeconds)
     {
         _frameTimes[_cursor] = deltaSeconds * 1000f;
         _cursor = (_cursor + 1) % HistoryLength;
+    }
 
-        ImGui.SetNextWindowPos(new Vector2(12, 32), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowBgAlpha(0.85f);
+    public void DrawContent(GlRenderer renderer, FlyCamera camera, EditorApp.Core.Editing.EditorSession session)
+    {
+        int solidVoxels = session.Scene.SolidCount;
 
-        if (!ImGui.Begin("Statistics", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoFocusOnAppearing))
+        int chunkCount = 0;
+        foreach (Core.Scene.VoxelObject o in session.Scene.Objects)
         {
-            ImGui.End();
-            return;
+            chunkCount += o.Grid.Chunks.Count;
         }
 
+        float deltaSeconds = _frameTimes[(_cursor + HistoryLength - 1) % HistoryLength] / 1000f;
         float fps = deltaSeconds > 0f ? 1f / deltaSeconds : 0f;
-        ImGui.Text($"{fps,6:0.0} fps   ({deltaSeconds * 1000f:0.00} ms)");
-        ImGui.PlotLines("##frametimes", ref _frameTimes[0], HistoryLength, _cursor, "frame ms", 0f, 33f, new Vector2(220f, 40f));
-        ImGui.Separator();
 
+        ImGui.Text($"{fps,6:0.0} fps   ({deltaSeconds * 1000f:0.00} ms)");
+        ImGui.PlotLines("##frametimes", ref _frameTimes[0], HistoryLength, _cursor, "frame ms", 0f, 33f, new Vector2(-1f, 40f));
+        ImGui.Spacing();
+
+        ImGui.Text($"Objects       {session.Scene.Objects.Count:N0}");
         ImGui.Text($"Voxels        {solidVoxels:N0}");
         ImGui.Text($"Chunks        {chunkCount:N0}");
         ImGui.Text($"Drawn         {renderer.VisibleChunks:N0}   ({chunkCount - renderer.VisibleChunks:N0} culled)");
@@ -58,7 +64,5 @@ public sealed class StatsOverlay
         ImGui.Separator();
         Vector3 position = camera.Position;
         ImGui.Text($"Camera        {position.X:0.0}, {position.Y:0.0}, {position.Z:0.0}");
-
-        ImGui.End();
     }
 }

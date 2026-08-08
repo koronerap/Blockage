@@ -219,13 +219,27 @@ public sealed class GlRenderer : IDisposable
         TotalVertices += buffer.VertexCount;
     }
 
-    public void Render(VoxelScene scene, FlyCamera camera, Vector2 viewportSize)
+    /// <summary>
+    /// Draws the scene into a sub-rectangle of the framebuffer, so the 3D view is centred on the
+    /// space the shell actually leaves it rather than on the whole window. Coordinates are in
+    /// framebuffer pixels with the origin at the top left, as the UI sees them.
+    /// </summary>
+    public void Render(VoxelScene scene, FlyCamera camera, Vector2 framebufferSize, Vector2 viewportPosition, Vector2 viewportSize)
     {
-        _gl.Viewport(0, 0, (uint)MathF.Max(viewportSize.X, 1f), (uint)MathF.Max(viewportSize.Y, 1f));
+        uint width = (uint)MathF.Max(viewportSize.X, 1f);
+        uint height = (uint)MathF.Max(viewportSize.Y, 1f);
+
+        // Clear the whole framebuffer first: the chrome paints over the rest, but anything left
+        // undefined outside the viewport would flicker with whatever was in the buffer before.
+        _gl.Viewport(0, 0, (uint)MathF.Max(framebufferSize.X, 1f), (uint)MathF.Max(framebufferSize.Y, 1f));
 
         Vector4 background = BackgroundColor.ToVector4();
         _gl.ClearColor(background.X, background.Y, background.Z, 1f);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+        // GL counts rows from the bottom; the UI counts from the top.
+        int glY = (int)(framebufferSize.Y - (viewportPosition.Y + viewportSize.Y));
+        _gl.Viewport((int)viewportPosition.X, glY, width, height);
 
         Matrix4x4 viewProjection = camera.ViewProjection(viewportSize.X / MathF.Max(viewportSize.Y, 1f));
         Frustum frustum = Frustum.FromViewProjection(viewProjection);

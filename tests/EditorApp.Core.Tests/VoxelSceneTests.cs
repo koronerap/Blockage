@@ -78,6 +78,32 @@ public class SessionFocusTests
     }
 
     [Fact]
+    public void DeletingAnObjectIsUndoable()
+    {
+        (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
+
+        Assert.True(session.DeleteObject(a.Id));
+        Assert.Single(session.Scene.Objects);
+        Assert.Equal(b.Id, session.Scene.Objects[0].Id);
+
+        session.Undo();
+
+        Assert.Equal(2, session.Scene.Objects.Count);
+        Assert.Contains(session.Scene.Objects, o => o.Id == a.Id);
+    }
+
+    [Fact]
+    public void TheLastObjectCannotBeDeleted()
+    {
+        // With no Place tool, an empty scene would leave nothing to extrude from.
+        (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
+        session.DeleteObject(a.Id);
+
+        Assert.False(session.DeleteObject(b.Id));
+        Assert.Single(session.Scene.Objects);
+    }
+
+    [Fact]
     public void PaletteEditsReachEveryObject()
     {
         (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();

@@ -54,6 +54,10 @@ public sealed class EditorApplication : IDisposable
     private readonly PalettePanel _palettePanel = new();
     private readonly ReferencePanel _referencePanel = new();
     private readonly StatsOverlay _stats = new();
+    private readonly EditorShell _shell = new();
+
+    /// <summary>The space the shell leaves for the 3D view, in logical window pixels.</summary>
+    private ViewportRect _viewport = new(Vector2.Zero, Vector2.One);
 
     private GL? _gl;
     private IInputContext? _input;
@@ -245,8 +249,14 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        var viewport = new Vector2(_window.Size.X, _window.Size.Y);
-        Ray ray = _camera.ScreenPointToRay(_input.Mice[0].Position, viewport);
+        // Picking is in viewport-local pixels, because the 3D view no longer fills the window.
+        Vector2 mouse = _input.Mice[0].Position;
+        if (!_viewport.Contains(mouse))
+        {
+            return;
+        }
+
+        Ray ray = _camera.ScreenPointToRay(_viewport.ToLocal(mouse), _viewport.Size);
 
         if (!_session.Scene.TryPick(ray, out ScenePick pick))
         {
@@ -275,22 +285,24 @@ public sealed class EditorApplication : IDisposable
         IMouse mouse = _input.Mice[0];
         bool leftDown = mouse.IsButtonPressed(MouseButton.Left)
             && !ImGui.GetIO().WantCaptureMouse
-            && !_looking;
+            && !_looking
+            && _viewport.Contains(mouse.Position);
 
         bool pressed = leftDown && !_leftButtonWasDown;
         bool released = !leftDown && _leftButtonWasDown;
         _leftButtonWasDown = leftDown;
 
-        var viewport = new Vector2(_window.Size.X, _window.Size.Y);
+        Vector2 local = _viewport.ToLocal(mouse.Position);
+        Vector2 viewport = _viewport.Size;
 
         switch (_session.ActiveTool)
         {
             case EditorTool.Transform:
-                UpdateTransform(mouse.Position, viewport, leftDown, pressed, released);
+                UpdateTransform(local, viewport, leftDown, pressed, released);
                 break;
 
             case EditorTool.Extrude:
-                UpdateExtrude(mouse.Position, viewport, leftDown, pressed, released);
+                UpdateExtrude(local, viewport, leftDown, pressed, released);
                 break;
 
             case EditorTool.Paint:
@@ -594,13 +606,26 @@ public sealed class EditorApplication : IDisposable
 
         _imgui.Update((float)deltaSeconds);
 
+        // The shell runs first so the viewport rectangle it leaves is known before the scene is
+        // drawn into it; ImGui's own draw data is submitted afterwards, on top.
+        DrawUi();
+
         _renderer.SyncDirtyChunks(_session.Scene);
         BuildOverlayLines();
 
-        var viewport = new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y);
-        _renderer.Render(_session.Scene, _camera, viewport);
+        var framebuffer = new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y);
+        var logical = new Vector2(_window.Size.X, _window.Size.Y);
+        Vector2 scale = new(
+            framebuffer.X / MathF.Max(logical.X, 1f),
+            framebuffer.Y / MathF.Max(logical.Y, 1f));
 
-        DrawUi();
+        _renderer.Render(
+            _session.Scene,
+            _camera,
+            framebuffer,
+            _viewport.Position * scale,
+            _viewport.Size * scale);
+
         _imgui.Render();
 
         _frameCount++;
@@ -705,7 +730,7 @@ public sealed class EditorApplication : IDisposable
 
         // The pivot a rotation is turning about, so a hinge is not a mystery mid-drag.
         if (_input is { Mice.Count: > 0 }
-            && _transform.ActivePivot(_input.Mice[0].Position, new Vector2(_window.Size.X, _window.Size.Y), _camera)
+            && _transform.ActivePivot(_viewport.ToLocal(_input.Mice[0].Position), _viewport.Size, _camera)
                 is { } pivot)
         {
             var size = new Vector3(0.25f);
@@ -878,13 +903,31 @@ public sealed class EditorApplication : IDisposable
 
     private void DrawUi()
     {
-        MainMenu.Draw(_session, _project!, _export!, _window.Close);
-        _stats.Draw(_renderer!, _camera, _session.World.SolidCount, _session.World.Chunks.Count, _lastDelta);
-        ToolPanel.Draw(_session, _hover);
-        _palettePanel.Draw(_session);
-        _referencePanel.Draw(_session, _renderer!.Reference);
+        _stats.Sample(_lastDelta);
+
+        var context = new ShellContext
+        {
+            Session = _session,
+            Project = _project!,
+            Export = _export!,
+            Renderer = _renderer!,
+            Camera = _camera,
+            Palette = _palettePanel,
+            Reference = _referencePanel,
+            ReferenceRenderer = _renderer!.Reference,
+            Stats = _stats,
+            OnExit = _window.Close,
+            Hover = _hover,
+            DragReadout = _transform?.Readout ?? string.Empty,
+            FrameSeconds = _lastDelta,
+        };
+
+        _viewport = _shell.Draw(context);
+
+        // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
         _export!.Draw();
+        _referencePanel.DrawDialogs();
 
         // The asterisk in the title is the only always-visible unsaved-changes indicator.
         string title = _project.WindowTitle;

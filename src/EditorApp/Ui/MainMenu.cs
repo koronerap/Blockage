@@ -7,11 +7,12 @@ namespace EditorApp.Ui;
 /// <summary>The menu bar and the status line under it.</summary>
 public static class MainMenu
 {
-    public static void Draw(EditorSession session, ProjectController project, ExportController export, Action onExit)
+    /// <summary>Draws the menu bar and returns its height, so the shell can lay out beneath it.</summary>
+    public static float Draw(EditorSession session, ProjectController project, ExportController export, Action onExit)
     {
         if (!ImGui.BeginMainMenuBar())
         {
-            return;
+            return 0f;
         }
 
         if (ImGui.BeginMenu("File"))
@@ -74,7 +75,9 @@ public static class MainMenu
 
         DrawStatus(project);
 
+        float height = ImGui.GetWindowSize().Y;
         ImGui.EndMainMenuBar();
+        return height;
     }
 
     private static void DrawRecentMenu(ProjectController project)

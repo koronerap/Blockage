@@ -18,21 +18,10 @@ public sealed class ReferencePanel
     private string _status = string.Empty;
     private bool _statusIsError;
 
-    public void Draw(EditorSession session, ReferenceModelRenderer reference)
-    {
-        ImGui.SetNextWindowPos(new Vector2(430f, 590f), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new Vector2(420f, 260f), ImGuiCond.FirstUseEver);
+    /// <summary>The file browser is a popup, so it is drawn at the top level, not inside a panel.</summary>
+    public void DrawDialogs() => _browser.Draw();
 
-        if (ImGui.Begin("Reference model"))
-        {
-            DrawContents(session, reference);
-        }
-
-        ImGui.End();
-        _browser.Draw();
-    }
-
-    private void DrawContents(EditorSession session, ReferenceModelRenderer reference)
+    public void DrawContent(EditorSession session, ReferenceModelRenderer reference)
     {
         if (ImGui.Button("Import..."))
         {

@@ -337,6 +337,44 @@ public sealed class EditorSession
         return true;
     }
 
+    /// <summary>
+    /// Removes an object. Refused for the last one: with no Place tool, an empty scene has nothing
+    /// left to extrude from.
+    /// </summary>
+    public bool DeleteObject(int objectId)
+    {
+        if (Scene.Objects.Count <= 1)
+        {
+            return false;
+        }
+
+        VoxelObject? target = null;
+        foreach (VoxelObject candidate in Scene.Objects)
+        {
+            if (candidate.Id == objectId)
+            {
+                target = candidate;
+                break;
+            }
+        }
+
+        if (target is null)
+        {
+            return false;
+        }
+
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var command = new DeleteObjectCommand(Scene, target);
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     // ---- Loop Cut ----------------------------------------------------------------------------
 
     /// <summary>The plane the cursor is currently over, or null. Drawn as a preview.</summary>
