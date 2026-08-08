@@ -818,13 +818,14 @@ public sealed class EditorApplication : IDisposable
             }
 
             (Vector3 start, Vector3 end) = _transform.Segment(handle, _camera);
-            float width = handle.Kind == GizmoKind.EdgeHinge ? GizmoEdgeWidth : GizmoWidth;
-            lines.AddThickLine(start, end, color, width);
 
             if (handle.Kind == GizmoKind.MoveAxis)
             {
-                AddArrowHead(lines, start, end, color);
+                AddArrow(lines, start, end, color, GizmoWidth);
+                continue;
             }
+
+            lines.AddThickLine(start, end, color, GizmoEdgeWidth);
         }
 
         // The pivot a rotation is turning about, so a hinge is not a mystery mid-drag.
@@ -837,8 +838,12 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    /// <summary>A solid cone at the tip, so a move axis reads as a direction from any angle.</summary>
-    private static void AddArrowHead(LineBatch lines, Vector3 start, Vector3 end, Color32 color)
+    /// <summary>
+    /// A shaft that stops at the base of a solid cone. Running the shaft all the way to the tip
+    /// leaves a thick stub poking out of the cone's point, which is the part of an arrow that has
+    /// to look sharp.
+    /// </summary>
+    private static void AddArrow(LineBatch lines, Vector3 start, Vector3 end, Color32 color, float width)
     {
         Vector3 along = end - start;
         float length = along.Length();
@@ -849,8 +854,10 @@ public sealed class EditorApplication : IDisposable
 
         Vector3 direction = along / length;
         float coneLength = length * 0.28f;
+        Vector3 coneBase = end - direction * coneLength;
 
-        lines.AddCone(end, end - direction * coneLength, coneLength * 0.42f, color);
+        lines.AddThickLine(start, coneBase, color, width);
+        lines.AddCone(end, coneBase, coneLength * 0.42f, color);
     }
 
     private static Color32 ColorFor(GizmoHandle handle) => handle.Kind switch
@@ -937,8 +944,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        lines.AddThickLine(arrow.Start, arrow.End, ArrowColor, ArrowWidth);
-        AddArrowHead(lines, arrow.Start, arrow.End, ArrowColor);
+        AddArrow(lines, arrow.Start, arrow.End, ArrowColor, ArrowWidth);
     }
 
     /// <summary>Shows where a Shift or Ctrl drag would land before it is committed.</summary>

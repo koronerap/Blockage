@@ -308,9 +308,12 @@ public sealed class GlRenderer : IDisposable
 
         if (!GizmoLines.IsEmpty)
         {
-            _gl.Disable(EnableCap.DepthTest);
+            // Clear depth rather than switching the test off. Turning it off puts the gizmo in
+            // front of the model, but it also stops the gizmo occluding *itself* — a cone drawn
+            // that way shows its own back faces and inner cap through the front. Clearing gives
+            // the pass a fresh depth range: still in front of everything, still solid in itself.
+            _gl.Clear(ClearBufferMask.DepthBufferBit);
             GizmoLines.Draw();
-            _gl.Enable(EnableCap.DepthTest);
         }
 
         _gl.Enable(EnableCap.CullFace);
