@@ -63,6 +63,10 @@ public static class GreedyMesher
             combined.Append(Build(o.Grid, uvSelector), o.Transform);
         }
 
+        // Voxel units become world units here, at the very end. Object placements are in voxel units
+        // too, so they have to be baked in before the scale rather than after.
+        combined.Scale(scene.VoxelSize);
+
         return combined;
     }
 

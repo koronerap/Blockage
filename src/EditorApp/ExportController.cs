@@ -195,6 +195,20 @@ public sealed class ExportController(EditorSession session)
         }
 
         ImGui.Text($"  Colors used  {_analysis.UsedPaletteIndices().Count}  ->  1 material, 1 texture");
+
+        // The size the file will actually be, read off the mesh that is about to be written rather
+        // than recomputed from the level. A wrong scale is cheap to fix here and expensive to find
+        // once the model is in an engine.
+        (Vector3 min, Vector3 max) = _analysis.Bounds();
+        Vector3 extent = max - min;
+        ImGui.Text($"  Size         {extent.X:0.###} x {extent.Y:0.###} x {extent.Z:0.###}");
+
+        if (session.Scene.HasCustomVoxelSize)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(Theme.Highlight, $"   at {session.Scene.VoxelSize:0.####} per voxel");
+        }
+
         ImGui.TextDisabled($"  Meshed in {_analysisMilliseconds:0} ms");
 
         if (ImGui.Button("Re-analyse"))

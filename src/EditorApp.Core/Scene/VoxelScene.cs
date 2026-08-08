@@ -17,8 +17,14 @@ public readonly record struct ScenePick(VoxelObject Object, RaycastHit Hit, floa
 /// </summary>
 public sealed class VoxelScene
 {
+    /// <summary>Smallest and largest world size a single voxel may be given.</summary>
+    public const float MinVoxelSize = 0.001f;
+
+    public const float MaxVoxelSize = 1000f;
+
     private readonly List<VoxelObject> _objects = [];
     private int _nextId = 1;
+    private float _voxelSize = 1f;
 
     public VoxelScene()
     {
@@ -26,6 +32,26 @@ public sealed class VoxelScene
     }
 
     public Palette Palette { get; private set; }
+
+    /// <summary>
+    /// How much world space one voxel occupies in the exported mesh. Fixed for the whole level: it
+    /// is the unit the level is drawn in, and a level whose unit changed partway through would not
+    /// mean anything.
+    ///
+    /// Nothing inside the editor is measured in these units. Editing, picking, transforms and the
+    /// grid all stay at one unit per voxel, because that is the space voxels are actually indexed
+    /// in and scaling it would put a conversion between every click and the cell it lands on for no
+    /// gain. The size is applied once, to the finished export, and shown wherever a real-world
+    /// dimension is worth reading.
+    /// </summary>
+    public float VoxelSize
+    {
+        get => _voxelSize;
+        set => _voxelSize = float.IsFinite(value) ? Math.Clamp(value, MinVoxelSize, MaxVoxelSize) : _voxelSize;
+    }
+
+    /// <summary>True when one voxel is not one world unit, so scaled figures are worth showing.</summary>
+    public bool HasCustomVoxelSize => MathF.Abs(_voxelSize - 1f) > 1e-6f;
 
     public IReadOnlyList<VoxelObject> Objects => _objects;
 

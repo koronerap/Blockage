@@ -23,6 +23,13 @@ public sealed class LevelManifest
     [JsonPropertyName("chunkSize")]
     public int ChunkSize { get; set; } = Chunk.Size;
 
+    /// <summary>
+    /// World size of one voxel in the exported mesh. Absent in files written before it existed,
+    /// where one voxel was always one unit.
+    /// </summary>
+    [JsonPropertyName("voxelSize")]
+    public float? VoxelSize { get; set; }
+
     /// <summary>256 entries as <c>#RRGGBBAA</c>.</summary>
     [JsonPropertyName("palette")]
     public string[] Palette { get; set; } = [];

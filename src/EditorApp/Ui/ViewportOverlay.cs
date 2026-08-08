@@ -97,21 +97,27 @@ public static class ViewportOverlay
         Vector3 localMin = min.ToVector3();
         Vector3 localMax = max.ToVector3() + Vector3.One;
 
+        // Voxels stay the headline number — that is what an edit adds one of. The world size only
+        // appears once it is not the same number, so a level at one unit per voxel reads as before.
+        float scale = session.Scene.VoxelSize;
+        bool scaled = session.Scene.HasCustomVoxelSize;
+        string Label(int voxels) => scaled ? $"{voxels}  ({voxels * scale:0.###})" : $"{voxels}";
+
         // One edge per axis, all meeting at the same corner, so the three labels read as a set.
         DrawEdgeLabel(drawList, camera, viewport, focus,
             localMin,
             new Vector3(localMax.X, localMin.Y, localMin.Z),
-            $"{size.X}", Theme.AxisX);
+            Label(size.X), Theme.AxisX);
 
         DrawEdgeLabel(drawList, camera, viewport, focus,
             localMin,
             new Vector3(localMin.X, localMax.Y, localMin.Z),
-            $"{size.Y}", Theme.AxisY);
+            Label(size.Y), Theme.AxisY);
 
         DrawEdgeLabel(drawList, camera, viewport, focus,
             localMin,
             new Vector3(localMin.X, localMin.Y, localMax.Z),
-            $"{size.Z}", Theme.AxisZ);
+            Label(size.Z), Theme.AxisZ);
     }
 
     private static void DrawEdgeLabel(

@@ -544,6 +544,26 @@ public sealed class EditorSession
         return true;
     }
 
+    /// <summary>
+    /// Sets the world size of one voxel for the whole level.
+    ///
+    /// Not an undo step, unlike a palette edit. A palette edit repaints voxels — it changes the
+    /// model, invisibly and everywhere at once, so it needs a way back. This changes no voxel and
+    /// no placement; the number that was there is still on screen in the box you just typed into.
+    /// </summary>
+    public bool SetVoxelSize(float size)
+    {
+        float clamped = Math.Clamp(size, VoxelScene.MinVoxelSize, VoxelScene.MaxVoxelSize);
+        if (!float.IsFinite(size) || clamped == Scene.VoxelSize)
+        {
+            return false;
+        }
+
+        Scene.VoxelSize = clamped;
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     /// <summary>Gives a custom slot back to the pool.</summary>
     public bool ClearCustomColor(int index)
     {

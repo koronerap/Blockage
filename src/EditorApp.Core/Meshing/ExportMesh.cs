@@ -82,6 +82,24 @@ public sealed class ExportMesh
     }
 
     /// <summary>
+    /// Scales every position about the origin. Applied once to the finished export to turn voxel
+    /// units into world units. Normals and UVs are left alone: a uniform positive scale does not
+    /// change a direction, and a quad's UV never depended on its size in the first place.
+    /// </summary>
+    public void Scale(float factor)
+    {
+        if (factor == 1f)
+        {
+            return;
+        }
+
+        for (int i = 0; i < Positions.Count; i++)
+        {
+            Positions[i] *= factor;
+        }
+    }
+
+    /// <summary>
     /// Total surface area. Merging quads must not change this by a single unit — it is the
     /// invariant the greedy mesher is validated against (EditorApp.md §4b).
     /// </summary>

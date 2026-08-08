@@ -159,6 +159,11 @@ public sealed class EditorShell
 
         // Collapsing sections rather than separate windows: one column, one scrollbar, one place to
         // look for anything that is not the model itself.
+        if (ImGui.CollapsingHeader("Level", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            LevelPanel.DrawContent(context.Session);
+        }
+
         if (ImGui.CollapsingHeader("Objects", ImGuiTreeNodeFlags.DefaultOpen))
         {
             ObjectListPanel.Draw(context.Session);

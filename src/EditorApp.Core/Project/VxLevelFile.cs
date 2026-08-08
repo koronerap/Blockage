@@ -26,9 +26,14 @@ namespace EditorApp.Core.Project;
 public static class VxLevelFile
 {
     /// <summary>
-    /// 1: a single grid. 2: objects with transforms. 3: per-face colours.
+    /// 1: a single grid. 2: objects with transforms. 3: per-face colours. 4: voxel size.
+    ///
+    /// Version 4 is a bump for a field an older build would simply not see. That is exactly why it
+    /// is one: it sets the scale of everything exported from the file, so a build that ignored it
+    /// would write a correct-looking mesh at the wrong size rather than fail. Refusing to open the
+    /// file says so out loud.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     public const string Extension = ".vxlevel";
 
@@ -87,6 +92,7 @@ public static class VxLevelFile
             Version = CurrentVersion,
             Name = name,
             ChunkSize = Chunk.Size,
+            VoxelSize = scene.VoxelSize,
             Palette = LevelManifest.EncodePalette(scene.Palette),
             SavedCustomSlots = [.. scene.Palette.SavedCustomSlots()],
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
@@ -255,6 +261,9 @@ public static class VxLevelFile
 
         var scene = new VoxelScene();
         scene.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette, manifest.SavedCustomSlots));
+
+        // Absent before version 4, where one voxel was always one unit.
+        scene.VoxelSize = manifest.VoxelSize ?? 1f;
 
         if (manifest.Objects is { Length: > 0 } objects)
         {
