@@ -68,11 +68,22 @@ public sealed class ExportController(EditorSession session)
     {
         var stopwatch = Stopwatch.StartNew();
 
-        _analysis = GreedyMesher.Build(session.World);
+        _analysis = GreedyMesher.BuildScene(session.Scene);
 
+        // The naive reference covers the whole scene too, so the reduction figure is the one that
+        // actually applies to the file being written.
+        _naiveVertexCount = 0;
         var naive = new MeshBuilder();
-        EditMesher.BuildWorldNaive(session.World, naive);
-        _naiveVertexCount = naive.VertexCount;
+        foreach (Core.Scene.VoxelObject o in session.Scene.Objects)
+        {
+            if (!o.Visible)
+            {
+                continue;
+            }
+
+            EditMesher.BuildWorldNaive(o.Grid, naive);
+            _naiveVertexCount += naive.VertexCount;
+        }
 
         stopwatch.Stop();
         _analysisMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
@@ -242,7 +253,7 @@ public sealed class ExportController(EditorSession session)
 
             ExportResult result = Current.Export(
                 _analysis!,
-                session.World.Palette,
+                session.Scene.Palette,
                 path,
                 new ExportOptions { WriteImportNotes = _writeImportNotes });
 

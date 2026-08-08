@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Project;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Ui;
 using ImGuiNET;
@@ -81,11 +82,13 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     {
         try
         {
-            VoxelWorld world = VxLevelFile.Load(path);
-            session.ReplaceWorld(world, path);
+            VoxelScene scene = VxLevelFile.LoadScene(path);
+            session.ReplaceScene(scene, path);
             onWorldReplaced();
             Recent.Add(path);
-            Report($"Opened {Path.GetFileName(path)} — {world.SolidCount:N0} voxels.", isError: false);
+            Report(
+                $"Opened {Path.GetFileName(path)} — {scene.SolidCount:N0} voxels in {scene.Objects.Count} object(s).",
+                isError: false);
         }
         catch (Exception exception) when (exception is VxLevelFormatException or IOException or UnauthorizedAccessException or InvalidDataException)
         {
@@ -98,7 +101,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     {
         try
         {
-            VxLevelFile.Save(session.World, path);
+            VxLevelFile.Save(session.Scene, path);
             session.ProjectPath = path;
             session.HasUnsavedChanges = false;
             Recent.Add(path);

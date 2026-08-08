@@ -60,6 +60,28 @@ public sealed class ExportMesh
     }
 
     /// <summary>
+    /// Appends another mesh with a rigid transform applied. Used to bake each object's placement
+    /// into the exported geometry: a rotation without reflection preserves winding, so quads stay
+    /// facing outward without any correction.
+    /// </summary>
+    public void Append(ExportMesh source, Scene.ObjectTransform transform)
+    {
+        for (int quad = 0; quad < source.QuadCount; quad++)
+        {
+            int baseIndex = quad * 4;
+
+            AddQuad(
+                transform.TransformPoint(source.Positions[baseIndex]),
+                transform.TransformPoint(source.Positions[baseIndex + 1]),
+                transform.TransformPoint(source.Positions[baseIndex + 2]),
+                transform.TransformPoint(source.Positions[baseIndex + 3]),
+                Vector3.Normalize(transform.TransformDirection(source.Normals[baseIndex])),
+                source.Uvs[baseIndex],
+                source.QuadPaletteIndices[quad]);
+        }
+    }
+
+    /// <summary>
     /// Total surface area. Merging quads must not change this by a single unit — it is the
     /// invariant the greedy mesher is validated against (EditorApp.md §4b).
     /// </summary>

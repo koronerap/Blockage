@@ -144,7 +144,9 @@ public class VxLevelFileTests : IDisposable
         VxLevelFile.Save(world, first, name: "stable");
         VxLevelFile.Save(world, second, name: "stable");
 
-        Assert.Equal(ChunkEntries(first), ChunkEntries(second));
+        Dictionary<string, string> firstEntries = ChunkEntries(first);
+        Assert.NotEmpty(firstEntries);
+        Assert.Equal(firstEntries, ChunkEntries(second));
     }
 
     private static Dictionary<string, string> ChunkEntries(string path)
@@ -153,7 +155,7 @@ public class VxLevelFileTests : IDisposable
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
 
         var entries = new Dictionary<string, string>();
-        foreach (ZipArchiveEntry entry in archive.Entries.Where(e => e.FullName.StartsWith("chunks/", StringComparison.Ordinal)))
+        foreach (ZipArchiveEntry entry in archive.Entries.Where(e => e.FullName.EndsWith(".bin", StringComparison.Ordinal)))
         {
             using Stream content = entry.Open();
             using var buffer = new MemoryStream();
@@ -189,8 +191,12 @@ public class VxLevelFileTests : IDisposable
         Assert.Equal("My Level", manifest.Name);
         Assert.Equal(Chunk.Size, manifest.ChunkSize);
         Assert.Equal(Palette.Size, manifest.Palette.Length);
-        Assert.NotEmpty(manifest.Chunks);
         Assert.NotNull(manifest.BoundsMin);
+
+        // Version 2 keeps the chunk list per object rather than at the root.
+        Assert.NotNull(manifest.Objects);
+        LevelManifest.ObjectEntry only = Assert.Single(manifest.Objects!);
+        Assert.NotEmpty(only.Chunks);
     }
 
     [Fact]
@@ -223,7 +229,7 @@ public class VxLevelFileTests : IDisposable
         using (FileStream stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite))
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Update))
         {
-            archive.Entries.First(e => e.FullName.StartsWith("chunks/", StringComparison.Ordinal)).Delete();
+            archive.Entries.First(e => e.FullName.EndsWith(".bin", StringComparison.Ordinal)).Delete();
         }
 
         VxLevelFormatException error = Assert.Throws<VxLevelFormatException>(() => VxLevelFile.Load(path));

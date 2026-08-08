@@ -1,29 +1,35 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Numerics;
 using System.Text.Json;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Project;
 
 /// <summary>
-/// Reads and writes <c>.vxlevel</c> project files (EditorApp.md §7). An exported mesh is one-way —
-/// it cannot be turned back into voxels — so the editor needs a format of its own.
+/// Reads and writes <c>.vxlevel</c> project files (EditorApp.md, "Proje dosyası formatı"). An
+/// exported mesh is one-way — it cannot be turned back into voxels — so the editor needs a format
+/// of its own.
 ///
 /// <code>
 /// .vxlevel  (zip container)
-/// +-- manifest.json     version, name, chunk size, palette, bounds, chunk list
-/// +-- chunks/
-///     +-- 0_0_0.bin     32768 palette indices, run-length coded
+/// +-- manifest.json          version, name, chunk size, palette, objects
+/// +-- objects/1/chunks/
+///     +-- 0_0_0.bin          32768 palette indices, run-length coded
 /// </code>
+///
+/// Version 2 introduced objects. Version 1 files hold a single grid at <c>chunks/</c> and still
+/// load — being able to open old files is exactly what the version field was written for.
 /// </summary>
 public static class VxLevelFile
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     public const string Extension = ".vxlevel";
 
     private const string ManifestEntry = "manifest.json";
-    private const string ChunkPrefix = "chunks/";
+    private const string LegacyChunkPrefix = "chunks/";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -31,10 +37,10 @@ public static class VxLevelFile
     };
 
     /// <summary>
-    /// Writes the world. The file is built beside the target and moved into place, so a failure
+    /// Writes the level. The file is built beside the target and moved into place, so a failure
     /// part way through cannot destroy the previous save.
     /// </summary>
-    public static void Save(VoxelWorld world, string path, string? name = null)
+    public static void Save(VoxelScene scene, string path, string? name = null)
     {
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory))
@@ -49,7 +55,7 @@ public static class VxLevelFile
             using (FileStream stream = File.Create(temporaryPath))
             using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
             {
-                WriteArchive(world, archive, name ?? Path.GetFileNameWithoutExtension(path));
+                WriteArchive(scene, archive, name ?? Path.GetFileNameWithoutExtension(path));
             }
 
             File.Move(temporaryPath, path, overwrite: true);
@@ -61,10 +67,75 @@ public static class VxLevelFile
         }
     }
 
-    private static void WriteArchive(VoxelWorld world, ZipArchive archive, string name)
+    /// <summary>Convenience for a single-grid level.</summary>
+    public static void Save(VoxelWorld world, string path, string? name = null)
+    {
+        var scene = new VoxelScene();
+        scene.ReplacePalette(world.Palette);
+        scene.Add(world, ObjectTransform.Identity, "Object 1");
+        Save(scene, path, name);
+    }
+
+    private static void WriteArchive(VoxelScene scene, ZipArchive archive, string name)
+    {
+        var manifest = new LevelManifest
+        {
+            Version = CurrentVersion,
+            Name = name,
+            ChunkSize = Chunk.Size,
+            Palette = LevelManifest.EncodePalette(scene.Palette),
+            SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+
+        var entries = new List<LevelManifest.ObjectEntry>();
+
+        foreach (VoxelObject o in scene.Objects)
+        {
+            List<ChunkCoord> coordinates = SortedCoordinates(o.Grid);
+
+            entries.Add(new LevelManifest.ObjectEntry
+            {
+                Id = o.Id,
+                Name = o.Name,
+                Position = [o.Transform.Position.X, o.Transform.Position.Y, o.Transform.Position.Z],
+                Rotation =
+                [
+                    o.Transform.Rotation.X,
+                    o.Transform.Rotation.Y,
+                    o.Transform.Rotation.Z,
+                    o.Transform.Rotation.W,
+                ],
+                Chunks = [.. coordinates.Select(c => new[] { c.X, c.Y, c.Z })],
+            });
+
+            foreach (ChunkCoord coord in coordinates)
+            {
+                byte[] encoded = Rle.Encode(o.Grid.Chunks[coord].Indices);
+
+                ZipArchiveEntry entry = archive.CreateEntry(ChunkEntryName(o.Id, coord), CompressionLevel.Optimal);
+                using Stream chunkStream = entry.Open();
+                chunkStream.Write(encoded, 0, encoded.Length);
+            }
+        }
+
+        manifest.Objects = [.. entries];
+
+        if (scene.TryGetWorldBounds(out Vector3 min, out Vector3 max))
+        {
+            manifest.BoundsMin = [(int)MathF.Floor(min.X), (int)MathF.Floor(min.Y), (int)MathF.Floor(min.Z)];
+            manifest.BoundsMax = [(int)MathF.Ceiling(max.X), (int)MathF.Ceiling(max.Y), (int)MathF.Ceiling(max.Z)];
+        }
+
+        ZipArchiveEntry manifestEntry = archive.CreateEntry(ManifestEntry, CompressionLevel.Optimal);
+        using Stream manifestStream = manifestEntry.Open();
+        JsonSerializer.Serialize(manifestStream, manifest, JsonOptions);
+    }
+
+    /// <summary>Stable order keeps two saves of the same level byte-comparable.</summary>
+    private static List<ChunkCoord> SortedCoordinates(VoxelWorld grid)
     {
         var coordinates = new List<ChunkCoord>();
-        foreach ((ChunkCoord coord, Chunk chunk) in world.Chunks)
+        foreach ((ChunkCoord coord, Chunk chunk) in grid.Chunks)
         {
             if (!chunk.IsEmpty)
             {
@@ -72,7 +143,6 @@ public static class VxLevelFile
             }
         }
 
-        // Stable order keeps two saves of the same level byte-comparable.
         coordinates.Sort(static (a, b) =>
         {
             int compare = a.X.CompareTo(b.X);
@@ -81,46 +151,16 @@ public static class VxLevelFile
             return compare != 0 ? compare : a.Z.CompareTo(b.Z);
         });
 
-        var manifest = new LevelManifest
-        {
-            Version = CurrentVersion,
-            Name = name,
-            ChunkSize = Chunk.Size,
-            Palette = LevelManifest.EncodePalette(world.Palette),
-            Chunks = [.. coordinates.Select(c => new[] { c.X, c.Y, c.Z })],
-            SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-        };
-
-        if (world.TryGetBounds(out Int3 min, out Int3 max))
-        {
-            manifest.BoundsMin = [min.X, min.Y, min.Z];
-            manifest.BoundsMax = [max.X, max.Y, max.Z];
-        }
-
-        ZipArchiveEntry manifestEntry = archive.CreateEntry(ManifestEntry, CompressionLevel.Optimal);
-        using (Stream manifestStream = manifestEntry.Open())
-        {
-            JsonSerializer.Serialize(manifestStream, manifest, JsonOptions);
-        }
-
-        foreach (ChunkCoord coord in coordinates)
-        {
-            Chunk chunk = world.Chunks[coord];
-            byte[] encoded = Rle.Encode(chunk.Indices);
-
-            ZipArchiveEntry entry = archive.CreateEntry(ChunkEntryName(coord), CompressionLevel.Optimal);
-            using Stream chunkStream = entry.Open();
-            chunkStream.Write(encoded, 0, encoded.Length);
-        }
+        return coordinates;
     }
 
-    public static VoxelWorld Load(string path)
+    public static VoxelScene LoadScene(string path)
     {
         using FileStream stream = File.OpenRead(path);
-        return Load(stream);
+        return LoadScene(stream);
     }
 
-    public static VoxelWorld Load(Stream stream)
+    public static VoxelScene LoadScene(Stream stream)
     {
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
 
@@ -147,11 +187,53 @@ public static class VxLevelFile
                 $"Chunk size {manifest.ChunkSize} does not match this build's {Chunk.Size}.");
         }
 
-        var world = new VoxelWorld();
-        world.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette));
+        var scene = new VoxelScene();
+        scene.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette));
 
+        if (manifest.Objects is { Length: > 0 } objects)
+        {
+            foreach (LevelManifest.ObjectEntry entry in objects)
+            {
+                scene.Add(ReadGrid(archive, entry.Chunks, coord => ChunkEntryName(entry.Id, coord)), ReadTransform(entry), entry.Name);
+            }
+        }
+        else
+        {
+            // Version 1: one grid at the root, sitting at the origin.
+            scene.Add(
+                ReadGrid(archive, manifest.Chunks, coord => LegacyChunkPrefix + $"{coord.X}_{coord.Y}_{coord.Z}.bin"),
+                ObjectTransform.Identity,
+                "Object 1");
+        }
+
+        scene.MarkAllDirty();
+        return scene;
+    }
+
+    private static ObjectTransform ReadTransform(LevelManifest.ObjectEntry entry)
+    {
+        if (entry.Position.Length != 3 || entry.Rotation.Length != 4)
+        {
+            throw new VxLevelFormatException($"Object '{entry.Name}' has a malformed transform.");
+        }
+
+        var rotation = new Quaternion(entry.Rotation[0], entry.Rotation[1], entry.Rotation[2], entry.Rotation[3]);
+        if (rotation.LengthSquared() < 1e-6f)
+        {
+            rotation = Quaternion.Identity;
+        }
+
+        return new ObjectTransform(
+            new Vector3(entry.Position[0], entry.Position[1], entry.Position[2]),
+            Quaternion.Normalize(rotation));
+    }
+
+    private static VoxelWorld ReadGrid(ZipArchive archive, int[][] chunks, Func<ChunkCoord, string> entryName)
+    {
+        var grid = new VoxelWorld();
         var indices = new byte[Chunk.VoxelCount];
-        foreach (int[] triple in manifest.Chunks)
+
+        foreach (int[] triple in chunks)
         {
             if (triple.Length != 3)
             {
@@ -159,19 +241,23 @@ public static class VxLevelFile
             }
 
             var coord = new ChunkCoord(triple[0], triple[1], triple[2]);
-            string entryName = ChunkEntryName(coord);
+            string name = entryName(coord);
 
-            ZipArchiveEntry entry = archive.GetEntry(entryName)
-                ?? throw new VxLevelFormatException($"Manifest lists {entryName}, but the file does not contain it.");
+            ZipArchiveEntry entry = archive.GetEntry(name)
+                ?? throw new VxLevelFormatException($"Manifest lists {name}, but the file does not contain it.");
 
-            byte[] encoded = ReadAll(entry);
-            Rle.Decode(encoded, indices);
-
-            world.GetOrCreateChunk(coord).LoadIndices(indices);
+            Rle.Decode(ReadAll(entry), indices);
+            grid.GetOrCreateChunk(coord).LoadIndices(indices);
         }
 
-        world.MarkAllDirty();
-        return world;
+        return grid;
+    }
+
+    /// <summary>Convenience for callers that only want a single grid, such as the benchmarks.</summary>
+    public static VoxelWorld Load(string path)
+    {
+        VoxelScene scene = LoadScene(path);
+        return scene.Objects.Count > 0 ? scene.Objects[0].Grid : new VoxelWorld();
     }
 
     /// <summary>Reads just the manifest — used to show details without loading every chunk.</summary>
@@ -188,8 +274,8 @@ public static class VxLevelFile
             ?? throw new VxLevelFormatException("manifest.json is empty.");
     }
 
-    private static string ChunkEntryName(ChunkCoord coord) =>
-        $"{ChunkPrefix}{coord.X}_{coord.Y}_{coord.Z}.bin";
+    private static string ChunkEntryName(int objectId, ChunkCoord coord) =>
+        $"objects/{objectId}/chunks/{coord.X}_{coord.Y}_{coord.Z}.bin";
 
     private static byte[] ReadAll(ZipArchiveEntry entry)
     {

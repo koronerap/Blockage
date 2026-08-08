@@ -43,6 +43,29 @@ public static class GreedyMesher
         return mesh;
     }
 
+    /// <summary>
+    /// Meshes every visible object and bakes its placement into the result, so the export is a
+    /// single mesh with one material regardless of how many pieces the level was built from. Each
+    /// object is merged in its own space, which is what keeps greedy merging working after a
+    /// rotation.
+    /// </summary>
+    public static ExportMesh BuildScene(Scene.VoxelScene scene, Func<byte, Vector2>? uvSelector = null)
+    {
+        var combined = new ExportMesh();
+
+        foreach (Scene.VoxelObject o in scene.Objects)
+        {
+            if (!o.Visible || o.IsEmpty)
+            {
+                continue;
+            }
+
+            combined.Append(Build(o.Grid, uvSelector), o.Transform);
+        }
+
+        return combined;
+    }
+
     private static void SweepDirection(
         VoxelWorld world,
         ExportMesh mesh,

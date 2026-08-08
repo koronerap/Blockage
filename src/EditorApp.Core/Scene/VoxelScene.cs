@@ -206,20 +206,39 @@ public sealed class VoxelScene
         return any;
     }
 
-    /// <summary>Order-independent hash of the whole scene. Used by tests to compare states.</summary>
+    /// <summary>
+    /// Order-independent hash of the whole scene. Used by tests to compare states.
+    ///
+    /// Transform components are quantised rather than hashed bit for bit: a transform that has been
+    /// through a file and back is the same placement even if the last bit of a float moved, and a
+    /// hash that disagreed about that would be useless for exactly the comparison it exists for.
+    /// </summary>
     public ulong ContentHash()
     {
         ulong total = 0;
         foreach (VoxelObject o in _objects)
         {
             ulong hash = o.Grid.ContentHash();
-            hash ^= (ulong)o.Transform.Position.GetHashCode() * 0x9E3779B97F4A7C15UL;
-            hash ^= (ulong)o.Transform.Rotation.GetHashCode() * 0xC2B2AE3D27D4EB4FUL;
+
+            hash = Mix(hash, Quantise(o.Transform.Position.X));
+            hash = Mix(hash, Quantise(o.Transform.Position.Y));
+            hash = Mix(hash, Quantise(o.Transform.Position.Z));
+            hash = Mix(hash, Quantise(o.Transform.Rotation.X));
+            hash = Mix(hash, Quantise(o.Transform.Rotation.Y));
+            hash = Mix(hash, Quantise(o.Transform.Rotation.Z));
+            hash = Mix(hash, Quantise(o.Transform.Rotation.W));
+
             total += hash;
         }
 
         return total;
     }
+
+    /// <summary>Rounds to about a thousandth of a voxel, well below anything that can be seen.</summary>
+    private static long Quantise(float value) => (long)MathF.Round(value * 1024f);
+
+    private static ulong Mix(ulong hash, long value) =>
+        (hash ^ (ulong)value) * 0x9E3779B97F4A7C15UL;
 
     /// <summary>A scene holding one 8³ white cube — what New starts from.</summary>
     public static VoxelScene CreateStarter(byte paletteIndex = Palette.WhiteIndex)

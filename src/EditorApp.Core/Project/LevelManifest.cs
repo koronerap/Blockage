@@ -34,9 +34,36 @@ public sealed class LevelManifest
     [JsonPropertyName("boundsMax")]
     public int[]? BoundsMax { get; set; }
 
-    /// <summary>Coordinates of the chunks stored under <c>chunks/</c>, as [x, y, z] triples.</summary>
+    /// <summary>
+    /// Version 1 only: coordinates of the chunks stored under <c>chunks/</c>. Version 2 moved them
+    /// under each object.
+    /// </summary>
     [JsonPropertyName("chunks")]
     public int[][] Chunks { get; set; } = [];
+
+    /// <summary>Version 2 and up: the level's objects, each with its own placement.</summary>
+    [JsonPropertyName("objects")]
+    public ObjectEntry[]? Objects { get; set; }
+
+    /// <summary>One placed object in the manifest.</summary>
+    public sealed class ObjectEntry
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("position")]
+        public float[] Position { get; set; } = [0f, 0f, 0f];
+
+        /// <summary>Quaternion as [x, y, z, w].</summary>
+        [JsonPropertyName("rotation")]
+        public float[] Rotation { get; set; } = [0f, 0f, 0f, 1f];
+
+        [JsonPropertyName("chunks")]
+        public int[][] Chunks { get; set; } = [];
+    }
 
     [JsonPropertyName("savedUtc")]
     public string SavedUtc { get; set; } = string.Empty;
