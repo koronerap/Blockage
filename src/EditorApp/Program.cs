@@ -7,6 +7,8 @@ if (args.Length > 0)
     NativeConsole.AttachToParentTerminal();
 }
 
+CrashLog.Install();
+
 // --smoke[=frames]        opens the window, renders a few frames and exits. Lets a build pipeline
 //                         verify GL context creation, shader compilation and the first upload.
 // --export-to=<dir>       runs the whole export chain with no window and exits. Add --level=<path>

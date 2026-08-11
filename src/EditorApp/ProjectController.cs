@@ -94,10 +94,14 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
                 $"Opened {Path.GetFileName(path)} - {scene.SolidCount:N0} voxels in {scene.Objects.Count} object(s).",
                 isError: false);
         }
-        catch (Exception exception) when (exception is VxLevelFormatException or IOException or UnauthorizedAccessException or InvalidDataException)
+        // Every exception, not a chosen few. A file that cannot be read is a bad afternoon; a file
+        // that takes the editor down with unsaved work still in it is a lost one, and the list of
+        // ways a stored format can surprise its reader is not one worth betting the session on.
+        catch (Exception exception)
         {
             Recent.Remove(path);
             Report($"Could not open {Path.GetFileName(path)}: {exception.Message}", isError: true);
+            CrashLog.Record($"opening {path}", exception);
         }
     }
 
@@ -111,9 +115,10 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             Recent.Add(path);
             Report($"Saved {Path.GetFileName(path)}.", isError: false);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception)
         {
             Report($"Could not save: {exception.Message}", isError: true);
+            CrashLog.Record($"saving {path}", exception);
         }
     }
 

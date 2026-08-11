@@ -62,18 +62,44 @@ public sealed class ObjExporter : IMeshExporter
         builder.Append(culture, $"mtllib {mtlFileName}\n");
         builder.Append(culture, $"o {Sanitize(objectName)}\n");
 
-        foreach (Vector3 position in mesh.Positions)
+        // OBJ indexes positions, texture coordinates and normals independently, which is the whole
+        // reason this is worth doing: a corner where a top face meets a side face is one position
+        // used twice, each time with its own normal and its own UV.
+        //
+        // The mesh arrives with four unshared vertices per quad, because that is what a GPU vertex
+        // buffer needs — every corner carrying its own copy of everything. Written out that way the
+        // file is a pile of loose quads: nothing touches anything, and Blender's select-linked picks
+        // one face because as far as the file is concerned there is nothing else attached to it.
+        //
+        // Positions coincide exactly rather than approximately. Each corner comes from the same
+        // integer lattice through the same object transform, so two quads meeting at an edge produce
+        // identical floats, not merely close ones — no tolerance needed, and none wanted, since a
+        // tolerance would start welding parts that were never joined.
+        var positions = new Deduplicated<Vector3>();
+        var uvs = new Deduplicated<Vector2>();
+        var normals = new Deduplicated<Vector3>();
+
+        var corners = new (int Position, int Uv, int Normal)[mesh.VertexCount];
+        for (int i = 0; i < mesh.VertexCount; i++)
+        {
+            corners[i] = (
+                positions.Add(mesh.Positions[i]),
+                uvs.Add(mesh.Uvs[i]),
+                normals.Add(mesh.Normals[i]));
+        }
+
+        foreach (Vector3 position in positions.Values)
         {
             builder.Append(culture, $"v {F(position.X)} {F(position.Y)} {F(position.Z)}\n");
         }
 
         // OBJ counts V from the bottom of the image; PaletteTexture works top-down like glTF.
-        foreach (Vector2 uv in mesh.Uvs)
+        foreach (Vector2 uv in uvs.Values)
         {
             builder.Append(culture, $"vt {F(uv.X)} {F(1f - uv.Y)}\n");
         }
 
-        foreach (Vector3 normal in mesh.Normals)
+        foreach (Vector3 normal in normals.Values)
         {
             builder.Append(culture, $"vn {F(normal.X)} {F(normal.Y)} {F(normal.Z)}\n");
         }
@@ -81,17 +107,50 @@ public sealed class ObjExporter : IMeshExporter
         builder.Append(culture, $"usemtl {MaterialName}\n");
         builder.Append("s off\n");
 
-        // Vertices come in groups of four per quad, so the faces can stay quads instead of being
-        // split into triangles — half the face lines and a cleaner mesh in Blender.
+        // Corners come in groups of four, so the faces stay quads instead of being split into
+        // triangles — half the face lines and a cleaner mesh in Blender.
         for (int quad = 0; quad < mesh.QuadCount; quad++)
         {
-            int first = quad * 4 + 1;   // OBJ indices are 1-based
-            builder.Append(culture, $"f {Vertex(first)} {Vertex(first + 1)} {Vertex(first + 2)} {Vertex(first + 3)}\n");
+            int first = quad * 4;
+            builder.Append('f');
+            for (int corner = 0; corner < 4; corner++)
+            {
+                (int position, int uv, int normal) = corners[first + corner];
+
+                // OBJ indices are 1-based.
+                builder.Append(culture, $" {position + 1}/{uv + 1}/{normal + 1}");
+            }
+
+            builder.Append('\n');
         }
 
         return builder.ToString();
+    }
 
-        static string Vertex(int index) => $"{index}/{index}/{index}";
+    /// <summary>
+    /// Assigns each distinct value one index, in first-seen order. Also shrinks the file
+    /// considerably on its own: a level has six normals and one UV per colour, however many quads.
+    /// </summary>
+    private sealed class Deduplicated<T>
+        where T : notnull
+    {
+        private readonly Dictionary<T, int> _indices = [];
+        private readonly List<T> _values = [];
+
+        public IReadOnlyList<T> Values => _values;
+
+        public int Add(T value)
+        {
+            if (_indices.TryGetValue(value, out int existing))
+            {
+                return existing;
+            }
+
+            int index = _values.Count;
+            _indices.Add(value, index);
+            _values.Add(value);
+            return index;
+        }
     }
 
     private static string BuildMtl(string textureFileName)

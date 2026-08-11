@@ -1059,6 +1059,7 @@ public sealed class EditorApplication : IDisposable
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
 
+
         _export!.Draw();
         _referencePanel.DrawDialogs();
         ToolOptions.DrawDialogs();

@@ -89,9 +89,12 @@ public class ExporterTests : IDisposable
         int normals = lines.Count(l => l.StartsWith("vn ", StringComparison.Ordinal));
         string[] faces = [.. lines.Where(l => l.StartsWith("f ", StringComparison.Ordinal))];
 
-        Assert.Equal(mesh.VertexCount, positions);
-        Assert.Equal(mesh.VertexCount, uvs);
-        Assert.Equal(mesh.VertexCount, normals);
+        // Each of the three is deduplicated on its own, which is the point of OBJ's separate
+        // indices — so none of them matches the mesh's corner count any more, and the file is a
+        // connected surface rather than a pile of loose quads. See ObjWeldingTests.
+        Assert.True(positions < mesh.VertexCount, "Positions were not welded.");
+        Assert.True(uvs <= positions, "One UV per colour is expected, not one per corner.");
+        Assert.Equal(FaceInfo.Count, normals);
         Assert.Equal(mesh.QuadCount, faces.Length);
 
         foreach (string face in faces)
@@ -104,10 +107,9 @@ public class ExporterTests : IDisposable
                 string[] triple = corner.Split('/');
                 Assert.Equal(3, triple.Length);
 
-                int index = int.Parse(triple[0], CultureInfo.InvariantCulture);
-                Assert.InRange(index, 1, positions);
-                Assert.Equal(triple[0], triple[1]);
-                Assert.Equal(triple[0], triple[2]);
+                Assert.InRange(int.Parse(triple[0], CultureInfo.InvariantCulture), 1, positions);
+                Assert.InRange(int.Parse(triple[1], CultureInfo.InvariantCulture), 1, uvs);
+                Assert.InRange(int.Parse(triple[2], CultureInfo.InvariantCulture), 1, normals);
             }
         }
     }
@@ -134,11 +136,19 @@ public class ExporterTests : IDisposable
                     float.Parse(parts[2], CultureInfo.InvariantCulture));
             })];
 
-        Assert.Equal(mesh.VertexCount, objUvs.Length);
+        // UVs are shared between every quad of the same colour now, so the quad's own UV has to be
+        // reached through its face indices rather than by position in the list.
+        int[] uvOfQuad = [.. File.ReadAllLines(path)
+            .Where(l => l.StartsWith("f ", StringComparison.Ordinal))
+            .Select(l => int.Parse(
+                l.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1].Split('/')[1],
+                CultureInfo.InvariantCulture) - 1)];
+
+        Assert.Equal(mesh.QuadCount, uvOfQuad.Length);
 
         for (int quad = 0; quad < mesh.QuadCount; quad++)
         {
-            Vector2 uv = objUvs[quad * 4];
+            Vector2 uv = objUvs[uvOfQuad[quad]];
             (byte r, byte g, byte b, byte _) = image.Sample(uv.X, 1f - uv.Y);
 
             Color32 expected = world.Palette[mesh.QuadPaletteIndices[quad]];

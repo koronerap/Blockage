@@ -82,12 +82,22 @@ public sealed class FileBrowserDialog
         DrawEntryList();
         DrawFooter();
 
-        ImGui.EndPopup();
-
         if (!open)
         {
+            // Dismissed with the window's own close button. This has to happen before EndPopup:
+            // CloseCurrentPopup works on the popup being drawn, and after EndPopup there is no
+            // longer one — ImGui asserts on that, and a native assert kills the process outright
+            // rather than raising anything catchable.
             Close();
         }
+
+        ImGui.EndPopup();
+
+        // Out here the dialog is no longer part of the frame, so the caller is free to replace the
+        // whole scene.
+        Action? result = _deferredResult;
+        _deferredResult = null;
+        result?.Invoke();
     }
 
     private void DrawPathBar()
@@ -181,6 +191,13 @@ public sealed class FileBrowserDialog
         }
     }
 
+    /// <summary>
+    /// What the confirmed choice was, held until the popup has finished drawing. Opening a level
+    /// tears the scene down and rebuilds the renderer's buffers; doing that from inside the dialog
+    /// means doing it halfway through the frame the dialog is still part of.
+    /// </summary>
+    private Action? _deferredResult;
+
     private void Confirm()
     {
         string name = _fileName.Trim();
@@ -205,7 +222,7 @@ public sealed class FileBrowserDialog
 
         Action<string>? callback = _onConfirm;
         Close();
-        callback?.Invoke(full);
+        _deferredResult = () => callback?.Invoke(full);
     }
 
     private void Navigate(string path)

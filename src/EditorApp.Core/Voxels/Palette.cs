@@ -30,7 +30,8 @@ public sealed class Palette
 
     public const int CustomCount = Size - CustomStart;
 
-    public static bool IsCustomIndex(int index) => index >= CustomStart;
+    /// <summary>Both ends matter: this guards array offsets fed by a file, which can say anything.</summary>
+    public static bool IsCustomIndex(int index) => index >= CustomStart && index < Size;
 
     private readonly Color32[] _colors = new Color32[Size];
 
