@@ -51,7 +51,8 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             VxLevelFile.Extension,
             StartDirectory,
             suggestedName: null,
-            LoadFrom));
+            LoadFrom,
+            ProjectDirectory));
 
     public void OpenRecent(string path) => GuardUnsaved("open another level", () => LoadFrom(path));
 
@@ -76,7 +77,17 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         VxLevelFile.Extension,
         StartDirectory,
         session.ProjectName + VxLevelFile.Extension,
-        WriteTo);
+        WriteTo,
+        ProjectDirectory);
+
+    /// <summary>
+    /// Where the level being worked on lives, or null when it has never been saved. Kept apart from
+    /// <see cref="StartDirectory"/>, which always has an answer — the browser offers this one as a
+    /// shortcut, and a shortcut labelled "Project folder" that led to wherever the dialog happened
+    /// to open would be a lie.
+    /// </summary>
+    private string? ProjectDirectory =>
+        session.ProjectPath is not null ? Path.GetDirectoryName(session.ProjectPath) : null;
 
     private string StartDirectory =>
         session.ProjectPath is not null
