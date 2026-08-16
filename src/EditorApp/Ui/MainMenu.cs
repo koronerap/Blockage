@@ -156,11 +156,13 @@ public static class MainMenu
             return;
         }
 
+        string? chosen = null;
+
         foreach (string path in recent)
         {
             if (ImGui.MenuItem(Path.GetFileName(path)))
             {
-                project.OpenRecent(path);
+                chosen = path;
             }
 
             if (ImGui.IsItemHovered())
@@ -170,6 +172,14 @@ public static class MainMenu
         }
 
         ImGui.EndMenu();
+
+        // Opened out here, not where it was clicked. Loading a level replaces the scene and drops
+        // the renderer's buffers, which is not something to start halfway through drawing the menu
+        // that asked for it.
+        if (chosen is not null)
+        {
+            project.OpenRecent(chosen);
+        }
     }
 
     private static void DrawStatus(ProjectController project)
