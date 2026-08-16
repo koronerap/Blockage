@@ -16,6 +16,10 @@
     <AssemblyName>Blockage</AssemblyName>
     <Product>Blockage</Product>
     <AssemblyTitle>Blockage</AssemblyTitle>
+
+    <!-- Generated, not drawn by hand: the write-icon switch renders it from AppIcon.
+         Committed so a build needs no extra step. -->
+    <ApplicationIcon>..\..\assets\icon\Blockage.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

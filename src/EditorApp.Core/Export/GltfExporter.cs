@@ -22,8 +22,10 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
 
     public bool Binary { get; } = binary;
 
+    // ASCII only: this reaches the interface, and the font atlas is built with ImGui's default
+    // glyph ranges, so anything past Latin-1 arrives as a hollow box.
     public string DisplayName => Binary
-        ? "glTF binary (.glb — single file, texture embedded)"
+        ? "glTF binary (.glb - single file, texture embedded)"
         : "glTF (.gltf + .bin + .png)";
 
     public string Extension => Binary ? ".glb" : ".gltf";

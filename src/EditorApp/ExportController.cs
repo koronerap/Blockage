@@ -16,7 +16,13 @@ namespace EditorApp;
 /// </summary>
 public sealed class ExportController(EditorSession session)
 {
-    private const string PopupId = "export-level";
+    /// <summary>
+    /// Title and identity in one string, and the same string has to reach both <c>OpenPopup</c> and
+    /// <c>BeginPopupModal</c>. ImGui hashes "Name###id" as "###id" rather than as "id", so opening
+    /// by the bare id and beginning by the decorated one addresses two different popups and the
+    /// dialog simply never appears.
+    /// </summary>
+    private const string PopupId = "Export mesh###export-level";
 
     private static readonly IMeshExporter[] Exporters =
     [
@@ -107,15 +113,21 @@ public sealed class ExportController(EditorSession session)
 
     private void DrawPopup()
     {
-        ImGui.SetNextWindowSize(new Vector2(720f, 0f), ImGuiCond.Appearing);
+        // A fixed width, and no AlwaysAutoResize.
+        //
+        // The two together were a feedback loop: the output path field asks for the width available
+        // minus room for the Browse button, an auto-resizing window takes its width from its widest
+        // item, and each frame handed the other a little more. The dialog walked off the side of the
+        // screen. Zero height still means fit to the content, which has nothing feeding back into it.
+        //
+        ImGui.SetNextWindowSize(new Vector2(720f, 0f), ImGuiCond.Always);
 
         bool open = true;
-        if (!ImGui.BeginPopupModal(PopupId, ref open, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+        if (!ImGui.BeginPopupModal(PopupId, ref open, ImGuiWindowFlags.NoSavedSettings))
         {
             return;
         }
 
-        ImGui.SeparatorText("Export mesh");
         DrawFormatPicker();
         ImGui.Spacing();
         DrawPathPicker();

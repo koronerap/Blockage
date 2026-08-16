@@ -28,6 +28,14 @@ public sealed class FileBrowserDialog
 
     public bool IsOpen { get; private set; }
 
+    /// <summary>
+    /// The visible half changes with the job — Open level, Save level as — while the half after
+    /// "###" keeps ImGui looking at the same window. Both OpenPopup and BeginPopupModal have to be
+    /// given this exact string: ImGui hashes "Name###id" as "###id", not as "id", so opening by one
+    /// and beginning by the other addresses two different popups.
+    /// </summary>
+    private string Label => $"{_title}###{PopupId}";
+
     public void Show(
         FileBrowserMode mode,
         string title,
@@ -60,7 +68,7 @@ public sealed class FileBrowserDialog
     {
         if (_shouldOpenPopup)
         {
-            ImGui.OpenPopup(PopupId);
+            ImGui.OpenPopup(Label);
             _shouldOpenPopup = false;
         }
 
@@ -72,12 +80,11 @@ public sealed class FileBrowserDialog
         ImGui.SetNextWindowSize(new Vector2(720, 520), ImGuiCond.FirstUseEver);
 
         bool open = true;
-        if (!ImGui.BeginPopupModal(PopupId, ref open, ImGuiWindowFlags.NoSavedSettings))
+        if (!ImGui.BeginPopupModal(Label, ref open, ImGuiWindowFlags.NoSavedSettings))
         {
             return;
         }
 
-        ImGui.SeparatorText(_title);
         DrawPathBar();
         DrawEntryList();
         DrawFooter();

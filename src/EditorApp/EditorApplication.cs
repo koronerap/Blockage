@@ -7,6 +7,7 @@ using EditorApp.Core.Voxels;
 using EditorApp.Rendering;
 using EditorApp.Ui;
 using ImGuiNET;
+using Silk.NET.Core;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
@@ -144,6 +145,8 @@ public sealed class EditorApplication : IDisposable
 
     private void OnLoad()
     {
+        SetWindowIcon();
+
         _gl = _window.CreateOpenGL();
         _input = _window.CreateInput();
         _imgui = CreateImGui(_gl, _input);
@@ -183,6 +186,30 @@ public sealed class EditorApplication : IDisposable
         foreach (IKeyboard keyboard in _input.Keyboards)
         {
             keyboard.KeyDown += OnKeyDown;
+        }
+    }
+
+    /// <summary>
+    /// The taskbar and title-bar icon, rendered rather than loaded. The executable carries the same
+    /// mark as a resource for Explorer; this is the one the window manager asks for at runtime, and
+    /// it comes from the same code, so the two can never drift apart.
+    /// </summary>
+    private void SetWindowIcon()
+    {
+        try
+        {
+            RawImage[] images =
+            [
+                new(32, 32, AppIcon.RenderRgba(32)),
+                new(48, 48, AppIcon.RenderRgba(48)),
+                new(256, 256, AppIcon.RenderRgba(256)),
+            ];
+
+            _window.SetWindowIcon(images);
+        }
+        catch (PlatformNotSupportedException)
+        {
+            // macOS takes its icon from the bundle and refuses this outright. Not worth a message.
         }
     }
 

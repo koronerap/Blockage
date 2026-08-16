@@ -15,7 +15,8 @@ namespace EditorApp;
 /// </summary>
 public sealed class ProjectController(EditorSession session, Action onWorldReplaced)
 {
-    private const string ConfirmPopupId = "discard-changes";
+    /// <summary>Title and identity together; both have to be passed to OpenPopup and BeginPopupModal.</summary>
+    private const string ConfirmPopupId = "Unsaved changes###discard-changes";
 
     private readonly FileBrowserDialog _browser = new();
 
@@ -173,7 +174,6 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             return;
         }
 
-        ImGui.SeparatorText("Unsaved changes");
         ImGui.Text($"{session.ProjectName} has unsaved changes.");
         ImGui.Text($"Discard them and {_pendingDescription}?");
         ImGui.Spacing();

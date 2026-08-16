@@ -21,6 +21,7 @@ int stressHalfExtent = 0;
 string? exportDirectory = null;
 string? levelPath = null;
 string? screenshotPath = null;
+string? iconPath = null;
 bool startUnlit = false;
 
 foreach (string argument in args)
@@ -59,6 +60,19 @@ foreach (string argument in args)
     {
         startUnlit = argument["--shading=".Length..].Equals("unlit", StringComparison.OrdinalIgnoreCase);
     }
+    else if (argument.StartsWith("--write-icon=", StringComparison.Ordinal))
+    {
+        iconPath = argument["--write-icon=".Length..];
+    }
+}
+
+if (iconPath is not null)
+{
+    // The committed .ico is generated, not drawn by hand, so it can be regenerated whenever the
+    // mark or the shading constants behind it change.
+    File.WriteAllBytes(iconPath, EditorApp.Core.Export.AppIcon.EncodeIco());
+    Console.WriteLine($"Wrote {iconPath} ({EditorApp.Core.Export.AppIcon.Sizes.Length} sizes).");
+    return 0;
 }
 
 if (stressHalfExtent > 0)
