@@ -81,11 +81,15 @@ public sealed class ExportController(EditorSession session)
     {
         var stopwatch = Stopwatch.StartNew();
 
-        _analysis = GreedyMesher.BuildScene(session.Scene);
+        bool unwrapped = _layoutIndex == 0;
+
+        // Colour stops constraining the merge once there is somewhere for it to go. Palette blocks
+        // still need it: there, a merged quad samples one texel and so can only be one colour.
+        _analysis = GreedyMesher.BuildScene(session.Scene, uvSelector: null, mergeAcrossColors: unwrapped);
 
         // Unwrapping rewrites the mesh's UVs, so it belongs here with the meshing rather than inside
         // an exporter — both formats have to be handed the same layout and the same sheet.
-        _atlas = _layoutIndex == 0
+        _atlas = unwrapped
             ? UvUnwrap.Apply(_analysis, session.Scene.VoxelSize, _texelsPerVoxel)
             : null;
 

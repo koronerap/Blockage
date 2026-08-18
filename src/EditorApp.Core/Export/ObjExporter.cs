@@ -36,7 +36,7 @@ public sealed class ObjExporter : IMeshExporter
         if (options.WriteTexture)
         {
             string texturePath = Path.Combine(directory, textureFileName);
-            File.WriteAllBytes(texturePath, options.EncodeTexture(palette));
+            File.WriteAllBytes(texturePath, options.EncodeTexture(mesh, palette));
             written.Add(texturePath);
         }
 
@@ -45,7 +45,7 @@ public sealed class ObjExporter : IMeshExporter
         File.WriteAllText(Path.Combine(directory, mtlFileName), BuildMtl(textureFileName), Encoding.UTF8);
         written.Add(Path.Combine(directory, mtlFileName));
 
-        File.WriteAllText(path, BuildObj(mesh, baseName, mtlFileName), Encoding.UTF8);
+        File.WriteAllText(path, BuildObj(mesh, mtlFileName), Encoding.UTF8);
         written.Add(path);
 
         if (options.WriteImportNotes)
@@ -58,15 +58,15 @@ public sealed class ObjExporter : IMeshExporter
         return new ExportResult(written, mesh.VertexCount, mesh.TriangleCount, mesh.QuadCount);
     }
 
-    private static string BuildObj(ExportMesh mesh, string objectName, string mtlFileName)
+    private static string BuildObj(ExportMesh mesh, string mtlFileName)
     {
         var builder = new StringBuilder(mesh.VertexCount * 48);
         CultureInfo culture = CultureInfo.InvariantCulture;
 
         builder.Append("# Exported by EditorApp — greedy-meshed voxel level\n");
         builder.Append(culture, $"# {mesh.QuadCount} quads, {mesh.VertexCount} vertices, {mesh.TriangleCount} triangles\n");
+        builder.Append(culture, $"# {mesh.PartsOrWhole.Count} object(s)\n");
         builder.Append(culture, $"mtllib {mtlFileName}\n");
-        builder.Append(culture, $"o {Sanitize(objectName)}\n");
 
         // OBJ indexes positions, texture coordinates and normals independently, which is the whole
         // reason this is worth doing: a corner where a top face meets a side face is one position
@@ -113,21 +113,29 @@ public sealed class ObjExporter : IMeshExporter
         builder.Append(culture, $"usemtl {MaterialName}\n");
         builder.Append("s off\n");
 
-        // Corners come in groups of four, so the faces stay quads instead of being split into
-        // triangles — half the face lines and a cleaner mesh in Blender.
-        for (int quad = 0; quad < mesh.QuadCount; quad++)
+        // One "o" per object in the level, so a scene built from several pieces arrives as several
+        // objects rather than as a single lump that has to be split by hand. The vertex lists above
+        // are shared and the indices are global, which is exactly how OBJ expects this to be done.
+        foreach (MeshPart part in mesh.PartsOrWhole)
         {
-            int first = quad * 4;
-            builder.Append('f');
-            for (int corner = 0; corner < 4; corner++)
+            builder.Append(culture, $"o {Sanitize(part.Name)}\n");
+
+            // Corners come in groups of four, so the faces stay quads instead of being split into
+            // triangles — half the face lines and a cleaner mesh in Blender.
+            for (int quad = part.FirstQuad; quad < part.FirstQuad + part.QuadCount; quad++)
             {
-                (int position, int uv, int normal) = corners[first + corner];
+                int first = quad * 4;
+                builder.Append('f');
+                for (int corner = 0; corner < 4; corner++)
+                {
+                    (int position, int uv, int normal) = corners[first + corner];
 
-                // OBJ indices are 1-based.
-                builder.Append(culture, $" {position + 1}/{uv + 1}/{normal + 1}");
+                    // OBJ indices are 1-based.
+                    builder.Append(culture, $" {position + 1}/{uv + 1}/{normal + 1}");
+                }
+
+                builder.Append('\n');
             }
-
-            builder.Append('\n');
         }
 
         return builder.ToString();

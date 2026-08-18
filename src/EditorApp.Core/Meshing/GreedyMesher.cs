@@ -22,7 +22,20 @@ public static class GreedyMesher
     /// UV for a palette index; all four corners of a quad get the same one. Defaults to the palette
     /// texture's block center, which is why merging is completely unconstrained here (§6).
     /// </param>
-    public static ExportMesh Build(VoxelWorld world, Func<byte, Vector2>? uvSelector = null)
+    /// <param name="mergeAcrossColors">
+    /// Merge on shape alone, letting one quad span voxels of different colours.
+    ///
+    /// Colour has always had to match because of where the colour lived: with the palette texture a
+    /// quad's four corners all sample one texel, so a merged quad could only ever be one colour, and
+    /// every painted edge became a cut in the geometry. Give the mesh a real unwrap and that stops
+    /// being true — the quad owns a rectangle of the sheet large enough to hold each of its cells, so
+    /// the paint goes into the texture instead of into the triangle count. Off for palette exports,
+    /// which still need it.
+    /// </param>
+    public static ExportMesh Build(
+        VoxelWorld world,
+        Func<byte, Vector2>? uvSelector = null,
+        bool mergeAcrossColors = false)
     {
         var mesh = new ExportMesh();
         if (!world.TryGetBounds(out Int3 min, out Int3 max))
@@ -37,7 +50,7 @@ public static class GreedyMesher
 
         for (int f = 0; f < FaceInfo.Count; f++)
         {
-            SweepDirection(world, mesh, (Face)f, minimum, maximum, uvSelector);
+            SweepDirection(world, mesh, (Face)f, minimum, maximum, uvSelector, mergeAcrossColors);
         }
 
         return mesh;
@@ -49,7 +62,10 @@ public static class GreedyMesher
     /// object is merged in its own space, which is what keeps greedy merging working after a
     /// rotation.
     /// </summary>
-    public static ExportMesh BuildScene(Scene.VoxelScene scene, Func<byte, Vector2>? uvSelector = null)
+    public static ExportMesh BuildScene(
+        Scene.VoxelScene scene,
+        Func<byte, Vector2>? uvSelector = null,
+        bool mergeAcrossColors = false)
     {
         var combined = new ExportMesh();
 
@@ -60,7 +76,11 @@ public static class GreedyMesher
                 continue;
             }
 
-            combined.Append(Build(o.Grid, uvSelector), o.Transform);
+            // Where this object's quads start, so the export can put it back as its own object
+            // rather than welding the whole level into one lump.
+            int first = combined.QuadCount;
+            combined.Append(Build(o.Grid, uvSelector, mergeAcrossColors), o.Transform);
+            combined.BeginPart(o.Name, first);
         }
 
         // Voxel units become world units here, at the very end. Object placements are in voxel units
@@ -76,7 +96,8 @@ public static class GreedyMesher
         Face face,
         ReadOnlySpan<int> minimum,
         ReadOnlySpan<int> maximum,
-        Func<byte, Vector2> uvSelector)
+        Func<byte, Vector2> uvSelector,
+        bool mergeAcrossColors)
     {
         int axis = FaceInfo.Axis(face);
         // The two axes spanning the slice, always in ascending order so the quad corner offsets
@@ -101,7 +122,7 @@ public static class GreedyMesher
         for (int slice = minimum[axis]; slice <= maximum[axis]; slice++)
         {
             BuildMask(ref reader, mask, face, axis, uAxis, vAxis, slice, minimum, uCount, vCount, neighbourOffset, position);
-            EmitQuads(mesh, mask, face, axis, uAxis, vAxis, slice, minimum, uCount, vCount, normal, uvSelector);
+            EmitQuads(mesh, mask, face, axis, uAxis, vAxis, slice, minimum, uCount, vCount, normal, uvSelector, mergeAcrossColors);
         }
     }
 
@@ -173,8 +194,18 @@ public static class GreedyMesher
         int uCount,
         int vCount,
         Vector3 normal,
-        Func<byte, Vector2> uvSelector)
+        Func<byte, Vector2> uvSelector,
+        bool mergeAcrossColors)
     {
+        // Either "the same colour as the run started with", or "covered at all". The second is what
+        // lets a painted surface stay one quad.
+        bool Matches(byte cell, byte index) =>
+            mergeAcrossColors ? cell != Palette.EmptyIndex : cell == index;
+
+        // Whether this face's first quad edge runs along the mask's u axis or its v axis.
+        bool firstEdgeAlongU =
+            Component(FaceInfo.Corner(face, 1), uAxis) != Component(FaceInfo.Corner(face, 0), uAxis);
+
         for (int v = 0; v < vCount; v++)
         {
             for (int u = 0; u < uCount; u++)
@@ -185,9 +216,9 @@ public static class GreedyMesher
                     continue;
                 }
 
-                // Width: run right while the color holds.
+                // Width: run right while the run holds.
                 int width = 1;
-                while (u + width < uCount && mask[v * uCount + u + width] == index)
+                while (u + width < uCount && Matches(mask[v * uCount + u + width], index))
                 {
                     width++;
                 }
@@ -199,7 +230,7 @@ public static class GreedyMesher
                     bool rowMatches = true;
                     for (int i = 0; i < width; i++)
                     {
-                        if (mask[(v + height) * uCount + u + i] != index)
+                        if (!Matches(mask[(v + height) * uCount + u + i], index))
                         {
                             rowMatches = false;
                             break;
@@ -214,7 +245,32 @@ public static class GreedyMesher
                     height++;
                 }
 
-                AddQuad(mesh, face, axis, uAxis, vAxis, slice, minimum, u, v, width, height, normal, uvSelector(index), index);
+                QuadColors? cells = null;
+                if (mergeAcrossColors && (width > 1 || height > 1))
+                {
+                    // Stored along the quad's own first and second edges, which is not always the
+                    // mask's u and v: the corner tables wind the other way round on half the faces,
+                    // so for those the run's width lies along the quad's second edge. Getting this
+                    // backwards is invisible on a single-coloured quad and paints nonsense on a
+                    // merged one.
+                    int gridWidth = firstEdgeAlongU ? width : height;
+                    int gridHeight = firstEdgeAlongU ? height : width;
+                    var grid = new byte[gridWidth * gridHeight];
+
+                    for (int b = 0; b < gridHeight; b++)
+                    {
+                        for (int a = 0; a < gridWidth; a++)
+                        {
+                            int alongU = firstEdgeAlongU ? a : b;
+                            int alongV = firstEdgeAlongU ? b : a;
+                            grid[(b * gridWidth) + a] = mask[((v + alongV) * uCount) + u + alongU];
+                        }
+                    }
+
+                    cells = new QuadColors(gridWidth, gridHeight, grid);
+                }
+
+                AddQuad(mesh, face, axis, uAxis, vAxis, slice, minimum, u, v, width, height, normal, uvSelector(index), index, cells);
 
                 // Consumed: clear the rectangle so it is not emitted again.
                 for (int j = 0; j < height; j++)
@@ -241,7 +297,8 @@ public static class GreedyMesher
         int height,
         Vector3 normal,
         Vector2 uv,
-        byte paletteIndex)
+        byte paletteIndex,
+        QuadColors? cells)
     {
         int originU = minimum[uAxis] + u;
         int originV = minimum[vAxis] + v;
@@ -253,7 +310,8 @@ public static class GreedyMesher
             Corner(face, 3, axis, uAxis, vAxis, slice, originU, originV, width, height),
             normal,
             uv,
-            paletteIndex);
+            paletteIndex,
+            cells);
     }
 
     /// <summary>

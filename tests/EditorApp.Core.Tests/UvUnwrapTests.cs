@@ -438,7 +438,7 @@ public class UvUnwrapTests
         ExportMesh mesh = GreedyMesher.BuildScene(scene);
         UvAtlas atlas = UvUnwrap.Apply(mesh);
 
-        byte[] pixels = AtlasTexture.CreateRgba(atlas, scene.Palette);
+        byte[] pixels = AtlasTexture.CreateRgba(atlas, mesh, scene.Palette);
 
         for (int quad = 0; quad < mesh.QuadCount; quad++)
         {

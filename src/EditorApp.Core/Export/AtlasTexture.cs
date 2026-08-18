@@ -1,3 +1,4 @@
+using EditorApp.Core.Meshing;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Export;
@@ -21,7 +22,7 @@ public static class AtlasTexture
     public const string DefaultFileName = "basecolor.png";
 
     /// <summary>Row-major RGBA pixels, top row first.</summary>
-    public static byte[] CreateRgba(UvAtlas atlas, Palette palette)
+    public static byte[] CreateRgba(UvAtlas atlas, ExportMesh mesh, Palette palette)
     {
         int width = atlas.Width;
         int height = atlas.Height;
@@ -38,27 +39,76 @@ public static class AtlasTexture
             pixels[i + 3] = 255;
         }
 
-        foreach (UvIsland island in atlas.Islands)
+        for (int quad = 0; quad < atlas.Islands.Count; quad++)
         {
-            Color32 color = palette[island.PaletteIndex];
+            UvIsland island = atlas.Islands[quad];
+            QuadColors cells = quad < mesh.QuadCells.Count
+                ? mesh.QuadCells[quad]
+                : QuadColors.Uniform(island.PaletteIndex);
 
-            for (int y = island.Y; y < island.Y + island.Height; y++)
+            // A quad can span many voxels of different colours now, so its island is filled cell by
+            // cell rather than flooded with one. This is where the paint that no longer splits the
+            // geometry ends up.
+            for (int j = 0; j < cells.Height; j++)
             {
-                int row = y * width;
-                for (int x = island.X; x < island.X + island.Width; x++)
+                for (int i = 0; i < cells.Width; i++)
                 {
-                    int offset = (row + x) * 4;
-                    pixels[offset] = color.R;
-                    pixels[offset + 1] = color.G;
-                    pixels[offset + 2] = color.B;
-                    pixels[offset + 3] = 255;
-                    painted[row + x] = true;
+                    Color32 color = palette[cells.At(i, j)];
+                    (int left, int top, int cellWidth, int cellHeight) = CellRect(island, cells, i, j);
+
+                    for (int y = top; y < top + cellHeight; y++)
+                    {
+                        int row = y * width;
+                        for (int x = left; x < left + cellWidth; x++)
+                        {
+                            int offset = (row + x) * 4;
+                            pixels[offset] = color.R;
+                            pixels[offset + 1] = color.G;
+                            pixels[offset + 2] = color.B;
+                            pixels[offset + 3] = 255;
+                            painted[row + x] = true;
+                        }
+                    }
                 }
             }
         }
 
         Dilate(pixels, painted, width, height, atlas.Padding);
         return pixels;
+    }
+
+    /// <summary>
+    /// Where one voxel cell of a quad lands in the sheet.
+    ///
+    /// The quad's own u runs across its island and its v runs down it — unless the chart was turned
+    /// to pack, in which case v runs backwards across and u runs down. Getting this wrong does not
+    /// show on a single-coloured quad, which is exactly why it is worth writing down.
+    /// </summary>
+    private static (int Left, int Top, int Width, int Height) CellRect(
+        UvIsland island,
+        QuadColors cells,
+        int i,
+        int j)
+    {
+        if (island.Rotated)
+        {
+            // Turned, so the island's width spans the quad's v and its height spans the quad's u.
+            int turnedWidth = island.Width / cells.Height;
+            int turnedHeight = island.Height / cells.Width;
+
+            return (
+                island.X + ((cells.Height - 1 - j) * turnedWidth),
+                island.Y + (i * turnedHeight),
+                turnedWidth,
+                turnedHeight);
+        }
+
+        // Both sides divided separately. A quad merged as one colour has a single cell covering an
+        // island that is rarely square, and one shared size would paint it as though it were.
+        int width = island.Width / cells.Width;
+        int height = island.Height / cells.Height;
+
+        return (island.X + (i * width), island.Y + (j * height), width, height);
     }
 
     /// <summary>
@@ -131,8 +181,8 @@ public static class AtlasTexture
         return -1;
     }
 
-    public static byte[] EncodePng(UvAtlas atlas, Palette palette) =>
-        PngWriter.EncodeRgba(CreateRgba(atlas, palette), atlas.Width, atlas.Height);
+    public static byte[] EncodePng(UvAtlas atlas, ExportMesh mesh, Palette palette) =>
+        PngWriter.EncodeRgba(CreateRgba(atlas, mesh, palette), atlas.Width, atlas.Height);
 
     /// <summary>Import settings, written beside the mesh and shown in the export dialog.</summary>
     public static string ImportNotes(UvAtlas atlas) =>

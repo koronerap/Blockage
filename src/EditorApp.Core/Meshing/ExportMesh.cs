@@ -8,6 +8,25 @@ namespace EditorApp.Core.Meshing;
 /// per quad. No vertex sharing between quads — neighbouring quads carry different normals or
 /// different UVs, so sharing would be wrong even where positions coincide.
 /// </summary>
+/// <summary>
+/// One quad's colours, a palette index per voxel cell it covers, row-major along the quad's own u
+/// then v.
+///
+/// A quad is one colour only when merging was keyed on colour. Once the mesh has a real UV layout it
+/// need not be: the quad owns a rectangle of texture big enough to hold every cell separately, so
+/// geometry can merge across a painted edge and the paint goes into the sheet instead of into the
+/// triangle count.
+/// </summary>
+public readonly record struct QuadColors(int Width, int Height, byte[] Cells)
+{
+    public static QuadColors Uniform(byte index) => new(1, 1, [index]);
+
+    public byte At(int x, int y) => Cells[(y * Width) + x];
+}
+
+/// <summary>A run of quads that came from one object, kept so the export can stay as many objects.</summary>
+public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount);
+
 public sealed class ExportMesh
 {
     public List<Vector3> Positions { get; } = [];
@@ -20,6 +39,15 @@ public sealed class ExportMesh
 
     /// <summary>Palette index per quad. Used for reporting, not for export — color travels via UV.</summary>
     public List<byte> QuadPaletteIndices { get; } = [];
+
+    /// <summary>Colour per voxel cell of each quad. One entry per quad, aligned with the list above.</summary>
+    public List<QuadColors> QuadCells { get; } = [];
+
+    /// <summary>
+    /// Which quads came from which object. Empty when the mesh was not built from a scene, in which
+    /// case the whole thing is one part.
+    /// </summary>
+    public List<MeshPart> Parts { get; } = [];
 
     public int VertexCount => Positions.Count;
 
@@ -34,7 +62,8 @@ public sealed class ExportMesh
         Vector3 corner3,
         Vector3 normal,
         Vector2 uv,
-        byte paletteIndex)
+        byte paletteIndex,
+        QuadColors? cells = null)
     {
         int baseIndex = Positions.Count;
 
@@ -57,7 +86,12 @@ public sealed class ExportMesh
         Indices.Add(baseIndex + 3);
 
         QuadPaletteIndices.Add(paletteIndex);
+        QuadCells.Add(cells ?? QuadColors.Uniform(paletteIndex));
     }
+
+    /// <summary>Records that everything added since the last part belongs to this one.</summary>
+    public void BeginPart(string name, int firstQuad) =>
+        Parts.Add(new MeshPart(name, firstQuad, QuadCount - firstQuad));
 
     /// <summary>
     /// Appends another mesh with a rigid transform applied. Used to bake each object's placement
@@ -77,7 +111,8 @@ public sealed class ExportMesh
                 transform.TransformPoint(source.Positions[baseIndex + 3]),
                 Vector3.Normalize(transform.TransformDirection(source.Normals[baseIndex])),
                 source.Uvs[baseIndex],
-                source.QuadPaletteIndices[quad]);
+                source.QuadPaletteIndices[quad],
+                source.QuadCells[quad]);
         }
     }
 
@@ -86,6 +121,10 @@ public sealed class ExportMesh
     /// units into world units. Normals and UVs are left alone: a uniform positive scale does not
     /// change a direction, and a quad's UV never depended on its size in the first place.
     /// </summary>
+    /// <summary>Falls back to the whole mesh as one part, for callers that never named any.</summary>
+    public IReadOnlyList<MeshPart> PartsOrWhole =>
+        Parts.Count > 0 ? Parts : [new MeshPart("level", 0, QuadCount)];
+
     public void Scale(float factor)
     {
         if (factor == 1f)

@@ -35,8 +35,8 @@ public sealed record ExportOptions
         ? TextureFileName
         : Atlas is null ? PaletteTexture.DefaultFileName : AtlasTexture.DefaultFileName;
 
-    public byte[] EncodeTexture(Palette palette) => Atlas is { } atlas
-        ? AtlasTexture.EncodePng(atlas, palette)
+    public byte[] EncodeTexture(ExportMesh mesh, Palette palette) => Atlas is { } atlas
+        ? AtlasTexture.EncodePng(atlas, mesh, palette)
         : PaletteTexture.EncodePng(palette);
 
     public string ImportNotes() => Atlas is { } atlas

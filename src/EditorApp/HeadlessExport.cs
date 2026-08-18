@@ -46,7 +46,7 @@ public static class HeadlessExport
         double naiveMs = stopwatch.Elapsed.TotalMilliseconds;
 
         stopwatch.Restart();
-        ExportMesh greedy = GreedyMesher.Build(world);
+        ExportMesh greedy = GreedyMesher.Build(world, uvSelector: null, mergeAcrossColors: true);
         double greedyMs = stopwatch.Elapsed.TotalMilliseconds;
 
         double naiveArea = naive.TotalArea();

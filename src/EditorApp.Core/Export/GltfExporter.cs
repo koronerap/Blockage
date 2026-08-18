@@ -36,7 +36,7 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         Directory.CreateDirectory(directory);
 
         string textureFileName = options.ResolveTextureFileName();
-        byte[] png = options.EncodeTexture(palette);
+        byte[] png = options.EncodeTexture(mesh, palette);
 
         MaterialBuilder material = new MaterialBuilder(MaterialName)
             .WithDoubleSide(false)
@@ -44,20 +44,32 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
             .WithMetallicRoughness(0f, 1f)
             .WithBaseColor(new MemoryImage(png), Vector4.One);
 
-        var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexTexture1>("level");
-        PrimitiveBuilder<MaterialBuilder, VertexPositionNormal, VertexTexture1, VertexEmpty> primitive =
-            meshBuilder.UsePrimitive(material);
-
-        for (int i = 0; i < mesh.Indices.Count; i += 3)
-        {
-            primitive.AddTriangle(
-                Vertex(mesh, mesh.Indices[i]),
-                Vertex(mesh, mesh.Indices[i + 1]),
-                Vertex(mesh, mesh.Indices[i + 2]));
-        }
-
         var scene = new SceneBuilder();
-        scene.AddRigidMesh(meshBuilder, Matrix4x4.Identity);
+
+        // One mesh per object in the level rather than one for the whole thing. They share the
+        // material and the sheet, so this stays a single texture and a single draw call's worth of
+        // state — it only stops the pieces arriving welded into one lump that has to be separated
+        // by hand on the other side.
+        foreach (MeshPart part in mesh.PartsOrWhole)
+        {
+            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexTexture1>(part.Name);
+            PrimitiveBuilder<MaterialBuilder, VertexPositionNormal, VertexTexture1, VertexEmpty> primitive =
+                meshBuilder.UsePrimitive(material);
+
+            // Six indices per quad, two triangles.
+            int from = part.FirstQuad * 6;
+            int to = from + (part.QuadCount * 6);
+
+            for (int i = from; i < to; i += 3)
+            {
+                primitive.AddTriangle(
+                    Vertex(mesh, mesh.Indices[i]),
+                    Vertex(mesh, mesh.Indices[i + 1]),
+                    Vertex(mesh, mesh.Indices[i + 2]));
+            }
+
+            scene.AddRigidMesh(meshBuilder, Matrix4x4.Identity);
+        }
 
         ModelRoot model = scene.ToGltf2();
         model.Asset.Generator = "EditorApp voxel level editor";
