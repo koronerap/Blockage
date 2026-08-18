@@ -93,7 +93,7 @@ public class UvUnwrapTests
         Assert.True(atlas.Islands.Count > 100, "Not enough islands to be a real test.");
 
         // A coverage grid rather than a pairwise sweep: thousands of islands make that quadratic.
-        var used = new int[atlas.Size * atlas.Size];
+        var used = new int[atlas.Width * atlas.Height];
         int id = 1;
 
         foreach (UvIsland island in atlas.Islands)
@@ -102,7 +102,7 @@ public class UvUnwrapTests
             {
                 for (int x = island.X; x < island.X + island.Width; x++)
                 {
-                    int offset = (y * atlas.Size) + x;
+                    int offset = (y * atlas.Width) + x;
                     Assert.Equal(0, used[offset]);
                     used[offset] = id;
                 }
@@ -120,7 +120,7 @@ public class UvUnwrapTests
         ExportMesh mesh = GreedyMesher.BuildScene(SceneOf(MixedWorld()));
         UvAtlas atlas = UvUnwrap.Apply(mesh);
 
-        var owner = new int[atlas.Size * atlas.Size];
+        var owner = new int[atlas.Width * atlas.Height];
         for (int i = 0; i < atlas.Charts.Count; i++)
         {
             UvChart chart = atlas.Charts[i];
@@ -128,8 +128,8 @@ public class UvUnwrapTests
             {
                 for (int x = chart.X; x < chart.X + chart.Width; x++)
                 {
-                    Assert.Equal(0, owner[(y * atlas.Size) + x]);
-                    owner[(y * atlas.Size) + x] = i + 1;
+                    Assert.Equal(0, owner[(y * atlas.Width) + x]);
+                    owner[(y * atlas.Width) + x] = i + 1;
                 }
             }
         }
@@ -139,14 +139,14 @@ public class UvUnwrapTests
             UvChart chart = atlas.Charts[i];
             int left = Math.Max(chart.X - atlas.Padding, 0);
             int top = Math.Max(chart.Y - atlas.Padding, 0);
-            int right = Math.Min(chart.X + chart.Width + atlas.Padding, atlas.Size);
-            int bottom = Math.Min(chart.Y + chart.Height + atlas.Padding, atlas.Size);
+            int right = Math.Min(chart.X + chart.Width + atlas.Padding, atlas.Width);
+            int bottom = Math.Min(chart.Y + chart.Height + atlas.Padding, atlas.Height);
 
             for (int y = top; y < bottom; y++)
             {
                 for (int x = left; x < right; x++)
                 {
-                    int found = owner[(y * atlas.Size) + x];
+                    int found = owner[(y * atlas.Width) + x];
                     Assert.True(found is 0 || found == i + 1, "Another chart reaches into the gutter.");
                 }
             }
@@ -315,13 +315,43 @@ public class UvUnwrapTests
         ExportMesh quarter = GreedyMesher.BuildScene(SceneOf(MixedWorld(), voxelSize: 0.25f));
         UvAtlas atlasB = UvUnwrap.Apply(quarter, voxelSize: 0.25f);
 
-        Assert.Equal(atlasA.Size, atlasB.Size);
+        Assert.Equal(atlasA.Width, atlasB.Width);
+        Assert.Equal(atlasA.Height, atlasB.Height);
         Assert.Equal(atlasA.Islands, atlasB.Islands);
 
         for (int i = 0; i < unit.Uvs.Count; i++)
         {
             Assert.Equal(unit.Uvs[i], quarter.Uvs[i]);
         }
+    }
+
+    [Fact]
+    public void TheSheetIsShapedLikeSomethingAToolWillAccept()
+    {
+        // Width a power of two, height a whole number of blocks, and not a sliver: a sheet eight
+        // times as long as it is tall packs beautifully and is miserable to open.
+        ExportMesh mesh = GreedyMesher.BuildScene(SceneOf(MixedWorld()));
+        UvAtlas atlas = UvUnwrap.Apply(mesh);
+
+        Assert.Equal(0, atlas.Width & (atlas.Width - 1));
+        Assert.Equal(0, atlas.Height % 64);
+        Assert.True(
+            Math.Max(atlas.Width, atlas.Height) <= Math.Min(atlas.Width, atlas.Height) * 4,
+            $"{atlas.Width}x{atlas.Height} is too far from square.");
+    }
+
+    [Fact]
+    public void ThePackerLeavesLessThanHalfTheSheetEmpty()
+    {
+        // Not a tight bound, a regression guard: rows-only packing with square power-of-two sheets
+        // came in under 15% on this model, and it would be easy to slip back there without noticing.
+        ExportMesh mesh = GreedyMesher.BuildScene(SceneOf(MixedWorld()));
+        UvAtlas atlas = UvUnwrap.Apply(mesh);
+
+        long chartArea = atlas.Charts.Sum(c => (long)c.Width * c.Height);
+        double occupancy = chartArea / (double)((long)atlas.Width * atlas.Height);
+
+        Assert.True(occupancy > 0.5, $"Charts occupy only {occupancy:P0} of the sheet.");
     }
 
     [Fact]
@@ -416,9 +446,9 @@ public class UvUnwrapTests
             Vector2 a = mesh.Uvs[quad * 4];
             Vector2 c = mesh.Uvs[(quad * 4) + 2];
 
-            int x = (int)(((a.X + c.X) * 0.5f) * atlas.Size);
-            int y = (int)(((a.Y + c.Y) * 0.5f) * atlas.Size);
-            int offset = ((y * atlas.Size) + x) * 4;
+            int x = (int)(((a.X + c.X) * 0.5f) * atlas.Width);
+            int y = (int)(((a.Y + c.Y) * 0.5f) * atlas.Height);
+            int offset = ((y * atlas.Width) + x) * 4;
 
             Color32 expected = scene.Palette[mesh.QuadPaletteIndices[quad]];
             Assert.Equal(
@@ -435,7 +465,8 @@ public class UvUnwrapTests
         UvAtlas atlas = UvUnwrap.Apply(mesh, texelsPerVoxel: 64, maxSize: 512);
 
         Assert.True(atlas.TexelsPerVoxel < 64, "The density should have been reduced to fit.");
-        Assert.True(atlas.Size <= 512);
+        Assert.True(atlas.Width <= 512);
+        Assert.True(atlas.Height <= 512);
     }
 
     [Fact]

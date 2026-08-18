@@ -14,9 +14,17 @@ public readonly record struct UvIsland(int X, int Y, int Width, int Height, byte
 /// </summary>
 public readonly record struct UvChart(int X, int Y, int Width, int Height, int QuadCount, bool Rotated);
 
-/// <summary>Where every quad ended up, and how big the sheet is.</summary>
+/// <summary>
+/// Where every quad ended up, and how big the sheet is.
+///
+/// The sheet is not required to be square, and only its width is a power of two — the height is
+/// rounded up to a whole block instead. Insisting on a square power of two meant a level that
+/// overflowed a size by a little paid for the whole next one, which on a large level was three
+/// quarters of the texture thrown away.
+/// </summary>
 public sealed record UvAtlas(
-    int Size,
+    int Width,
+    int Height,
     int TexelsPerVoxel,
     int Padding,
     IReadOnlyList<UvIsland> Islands,
@@ -36,7 +44,7 @@ public sealed record UvAtlas(
                 used += (long)island.Width * island.Height;
             }
 
-            return used / (double)((long)Size * Size);
+            return used / (double)((long)Width * Height);
         }
     }
 }
@@ -265,14 +273,16 @@ public static class UvUnwrap
     }
 
     /// <summary>
-    /// Shelf packing, tallest chart first, each one going on the open shelf it wastes least height
-    /// on rather than only on the newest.
+    /// Skyline packing, largest chart first: the sheet's filled profile is kept as a run of steps,
+    /// and each chart goes wherever it can sit lowest.
     ///
-    /// Keeping earlier shelves open is what makes this worth using. With a single open shelf every
-    /// row ends in a ragged tail that nothing shorter is ever allowed back into, and the leftovers
-    /// pile up as one large unusable wedge; letting a short chart drop into an older row costs one
-    /// scan of a short list. Not the tightest algorithm in existence — a skyline packer would do
-    /// better again — but it is the most that is worth doing for rectangles this uniform.
+    /// Rows were the obvious thing and left nearly half the sheet empty. A row is only as useful as
+    /// its tallest member — everything shorter in it leaves a band of dead space above, and on a
+    /// model whose charts are all different shapes that is most of them. A skyline has no rows, so a
+    /// short chart tucks under a tall neighbour instead of reserving a strip of its own.
+    ///
+    /// Each chart is offered both ways round and takes whichever sits lower, which matters more here
+    /// than it would elsewhere: charts come from surfaces, and surfaces are mostly long thin strips.
     /// </summary>
     private static bool TryPack(
         PlanarQuad[] quads,
@@ -294,72 +304,69 @@ public static class UvUnwrap
             longest = Math.Max(longest, (Math.Max(width, height) * texelsPerVoxel) + gutter);
         }
 
-        // Sorted by the side that will become the shelf's height once the chart is laid on its long
-        // edge, which is the number that actually decides how the rows come out.
+        // Biggest first. A skyline fills in around what is already placed, so the large awkward
+        // pieces have to go down while there is still open sheet to choose from.
         int[] order = [.. Enumerable.Range(0, charts.Length)
-            .OrderByDescending(i => Math.Min(charts[i].Width, charts[i].Height))
+            .OrderByDescending(i => (long)charts[i].Width * charts[i].Height)
             .ThenByDescending(i => Math.Max(charts[i].Width, charts[i].Height))];
+
+        // Every width is tried and the smallest sheet wins. Packing to a fixed square and stopping
+        // at the first fit meant a level that overflowed one power of two by a little paid for the
+        // whole next one; letting the height settle wherever the rows end recovers it.
+        //
+        // Shape is kept as well as size. The narrowest candidate often has the smallest area — long
+        // rows waste less on their ragged ends — but a sheet eight times as tall as it is wide is
+        // awkward in a paint program and some tools refuse it outright. A reasonably square one wins
+        // whenever there is one; the smallest of any shape is only the answer if there is not.
+        UvAtlas? bestAtlas = null;
+        long bestArea = long.MaxValue;
+        UvAtlas? bestShaped = null;
+        long bestShapedArea = long.MaxValue;
 
         for (int size = NextPowerOfTwo(longest); size <= maxSize; size *= 2)
         {
             var placed = new UvChart[charts.Length];
-            var shelves = new List<Shelf>();
-            int nextY = 0;
+            var skyline = new List<Step> { new(0, 0, size) };
+            int usedHeight = 0;
             bool fits = true;
 
             foreach (int chart in order)
             {
-                // Turned so the long side lies along the row. A texture has no up, and one tall
-                // chart left standing sets a shelf height the whole rest of the row has to pay for —
-                // which on a real model was the difference between filling an eighth of the sheet
-                // and most of it.
-                bool rotated = charts[chart].Height > charts[chart].Width;
+                int wide = charts[chart].Width * texelsPerVoxel;
+                int tall = charts[chart].Height * texelsPerVoxel;
 
-                int chartWidth = (rotated ? charts[chart].Height : charts[chart].Width) * texelsPerVoxel;
-                int chartHeight = (rotated ? charts[chart].Width : charts[chart].Height) * texelsPerVoxel;
-                int boxWidth = chartWidth + gutter;
-                int boxHeight = chartHeight + gutter;
+                // Offered both ways round; whichever sits lower wins. Charts are surfaces, and
+                // surfaces are mostly long thin strips, so the choice is rarely a wash.
+                (int x, int y, int step) = Lowest(skyline, size, wide + gutter, tall + gutter);
+                (int rx, int ry, int rstep) = Lowest(skyline, size, tall + gutter, wide + gutter);
 
-                // Least leftover height among the shelves that can take it, so short charts settle
-                // into the gaps rather than opening a new row.
-                int best = -1;
-                for (int i = 0; i < shelves.Count; i++)
+                bool rotated = rx >= 0 && (x < 0 || ry < y || (ry == y && rx < x));
+                if (rotated)
                 {
-                    Shelf shelf = shelves[i];
-                    if (shelf.Height < boxHeight || shelf.X + boxWidth > size)
-                    {
-                        continue;
-                    }
-
-                    if (best < 0 || shelf.Height < shelves[best].Height)
-                    {
-                        best = i;
-                    }
+                    (x, y, step) = (rx, ry, rstep);
                 }
 
-                if (best < 0)
-                {
-                    if (nextY + boxHeight > size)
-                    {
-                        fits = false;
-                        break;
-                    }
+                int boxWidth = (rotated ? tall : wide) + gutter;
+                int boxHeight = (rotated ? wide : tall) + gutter;
 
-                    shelves.Add(new Shelf(nextY, boxHeight, 0));
-                    nextY += boxHeight;
-                    best = shelves.Count - 1;
+                // Height is not capped while packing — only the width is a decision. How tall the
+                // result turned out is measured afterwards.
+                if (x < 0 || y + boxHeight > maxSize)
+                {
+                    fits = false;
+                    break;
                 }
 
-                Shelf target = shelves[best];
                 placed[chart] = new UvChart(
-                    target.X + padding,
-                    target.Y + padding,
-                    chartWidth,
-                    chartHeight,
+                    x + padding,
+                    y + padding,
+                    rotated ? tall : wide,
+                    rotated ? wide : tall,
                     0,
                     rotated);
 
-                shelves[best] = target with { X = target.X + boxWidth };
+                Raise(skyline, step, x, y + boxHeight, boxWidth);
+                usedHeight = Math.Max(usedHeight, y + boxHeight);
             }
 
             if (!fits)
@@ -367,12 +374,41 @@ public static class UvUnwrap
                 continue;
             }
 
-            atlas = Build(quads, chartOf, charts, placed, mesh, size, texelsPerVoxel, padding);
-            return true;
+            int height = RoundHeight(usedHeight);
+            if (height > maxSize)
+            {
+                continue;
+            }
+
+            long area = (long)size * height;
+            bool shaped = Math.Max(size, height) <= Math.Min(size, height) * MaxAspect;
+
+            if (area >= bestArea && (!shaped || area >= bestShapedArea))
+            {
+                continue;
+            }
+
+            UvAtlas candidate = Build(quads, chartOf, charts, placed, mesh, size, height, texelsPerVoxel, padding);
+
+            if (area < bestArea)
+            {
+                bestArea = area;
+                bestAtlas = candidate;
+            }
+
+            if (shaped && area < bestShapedArea)
+            {
+                bestShapedArea = area;
+                bestShaped = candidate;
+            }
         }
 
-        return false;
+        atlas = bestShaped ?? bestAtlas;
+        return atlas is not null;
     }
+
+    /// <summary>How far from square a sheet may get before its shape counts against it.</summary>
+    private const int MaxAspect = 4;
 
     /// <summary>Places every quad inside its chart, at its own offset within it.</summary>
     private static UvAtlas Build(
@@ -381,7 +417,8 @@ public static class UvUnwrap
         (int X, int Y, int Width, int Height)[] charts,
         UvChart[] placed,
         ExportMesh mesh,
-        int size,
+        int width,
+        int height,
         int texelsPerVoxel,
         int padding)
     {
@@ -428,12 +465,13 @@ public static class UvUnwrap
             finished[i] = placed[i] with { QuadCount = counts[i] };
         }
 
-        return new UvAtlas(size, texelsPerVoxel, padding, islands, finished);
+        return new UvAtlas(width, height, texelsPerVoxel, padding, islands, finished);
     }
 
     private static void WriteUvs(ExportMesh mesh, UvAtlas atlas)
     {
-        float size = atlas.Size;
+        float width = atlas.Width;
+        float height = atlas.Height;
 
         for (int quad = 0; quad < mesh.QuadCount; quad++)
         {
@@ -455,10 +493,25 @@ public static class UvUnwrap
                 (float across, float down) = island.Rotated ? (1f - v, u) : (u, v);
 
                 mesh.Uvs[vertex] = new Vector2(
-                    (island.X + (across * island.Width)) / size,
-                    (island.Y + (down * island.Height)) / size);
+                    (island.X + (across * island.Width)) / width,
+                    (island.Y + (down * island.Height)) / height);
             }
         }
+    }
+
+    /// <summary>
+    /// Rounds the packed height up to a whole number of blocks rather than to the next power of two.
+    ///
+    /// This is where most of the sheet was going. The packer settles the rows at whatever height they
+    /// need, and doubling that to the next power of two threw away everything between — on a large
+    /// level, packing that finished at 2200 rows was being charged for 4096. Only the width is a
+    /// power of two now; block-aligned heights keep the texture usable by every compressor and tool
+    /// that cares, which is what the power of two was ever really for.
+    /// </summary>
+    private static int RoundHeight(int used)
+    {
+        const int Block = 64;
+        return Math.Max(((used + Block - 1) / Block) * Block, Block);
     }
 
     private static int NextPowerOfTwo(int value)
@@ -472,6 +525,96 @@ public static class UvUnwrap
         return result;
     }
 
-    /// <summary>An open row: where it starts, how tall it is, and how far along it is filled.</summary>
-    private readonly record struct Shelf(int Y, int Height, int X);
+    /// <summary>One flat run of the filled profile: where it starts, how high it is, how wide.</summary>
+    private readonly record struct Step(int X, int Y, int Width);
+
+    /// <summary>
+    /// The lowest place a box of this size will sit, and which step it starts on. Returns a negative
+    /// x when there is nowhere across this width that will take it.
+    ///
+    /// A box has to clear every step it spans, so its resting height is the highest of them — which
+    /// is why the search walks forward from each candidate start rather than reading one step.
+    /// </summary>
+    private static (int X, int Y, int Step) Lowest(List<Step> skyline, int sheetWidth, int width, int height)
+    {
+        int bestX = -1;
+        int bestY = int.MaxValue;
+        int bestStep = -1;
+
+        for (int i = 0; i < skyline.Count; i++)
+        {
+            int x = skyline[i].X;
+            if (x + width > sheetWidth)
+            {
+                break;
+            }
+
+            int y = 0;
+            int spanned = 0;
+            int j = i;
+
+            while (spanned < width && j < skyline.Count)
+            {
+                y = Math.Max(y, skyline[j].Y);
+                spanned += skyline[j].Width;
+                j++;
+            }
+
+            if (spanned < width)
+            {
+                break;
+            }
+
+            // Ties go to the leftmost, which keeps the profile growing evenly instead of towering
+            // up on one side.
+            if (y < bestY || (y == bestY && x < bestX))
+            {
+                bestX = x;
+                bestY = y;
+                bestStep = i;
+            }
+        }
+
+        return (bestX, bestY == int.MaxValue ? 0 : bestY, bestStep);
+    }
+
+    /// <summary>Raises the profile where a box was just placed, and tidies up what it covered.</summary>
+    private static void Raise(List<Step> skyline, int step, int x, int top, int width)
+    {
+        skyline.Insert(step, new Step(x, top, width));
+
+        // Whatever the new step now sits over is either shortened or gone entirely.
+        for (int i = step + 1; i < skyline.Count;)
+        {
+            int previousEnd = skyline[i - 1].X + skyline[i - 1].Width;
+            if (skyline[i].X >= previousEnd)
+            {
+                break;
+            }
+
+            int overlap = previousEnd - skyline[i].X;
+            if (skyline[i].Width <= overlap)
+            {
+                skyline.RemoveAt(i);
+                continue;
+            }
+
+            skyline[i] = skyline[i] with { X = skyline[i].X + overlap, Width = skyline[i].Width - overlap };
+            break;
+        }
+
+        // Runs at the same height are merged, or the profile turns into thousands of slivers and
+        // every placement gets slower than the one before it.
+        for (int i = 1; i < skyline.Count;)
+        {
+            if (skyline[i - 1].Y == skyline[i].Y)
+            {
+                skyline[i - 1] = skyline[i - 1] with { Width = skyline[i - 1].Width + skyline[i].Width };
+                skyline.RemoveAt(i);
+                continue;
+            }
+
+            i++;
+        }
+    }
 }

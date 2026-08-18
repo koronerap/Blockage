@@ -209,7 +209,7 @@ public sealed class ExportController(EditorSession session)
             if (_atlas is { } atlas)
             {
                 ImGui.SameLine();
-                ImGui.TextDisabled($"-> {atlas.Size} x {atlas.Size}");
+                ImGui.TextDisabled($"-> {atlas.Width} x {atlas.Height}");
 
                 ImGui.TextDisabled(
                     $"  {atlas.Charts.Count:N0} pieces from {atlas.Islands.Count:N0} faces, "

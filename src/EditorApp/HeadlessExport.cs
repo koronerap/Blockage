@@ -67,14 +67,19 @@ public static class HeadlessExport
         // The same default the dialog offers: a real sheet the model can be textured on.
         UvAtlas atlas = UvUnwrap.Apply(greedy);
         Console.WriteLine(
-            $"Atlas  {atlas.Size} x {atlas.Size}  ({atlas.Charts.Count:N0} charts from "
+            $"Atlas  {atlas.Width} x {atlas.Height}  ({atlas.Charts.Count:N0} charts from "
             + $"{atlas.Islands.Count:N0} faces, {atlas.TexelsPerVoxel} texels per voxel, "
             + $"{atlas.Coverage:P0} covered)");
 
+        long sheetArea = (long)atlas.Width * atlas.Height;
         long chartArea = atlas.Charts.Sum(c => (long)c.Width * c.Height);
         long faceArea = atlas.Islands.Sum(i => (long)i.Width * i.Height);
+        long packedArea = (long)atlas.Width
+            * atlas.Charts.Max(c => c.Y + c.Height + atlas.Padding);
+
         Console.WriteLine(
-            $"       charts occupy {chartArea / (double)((long)atlas.Size * atlas.Size):P0} of the sheet, "
+            $"       charts occupy {chartArea / (double)sheetArea:P0} of the sheet "
+            + $"({chartArea / (double)packedArea:P0} of what the packer laid out, before rounding), "
             + $"and faces fill {faceArea / (double)chartArea:P0} of the charts");
 
         var options = new ExportOptions { Atlas = atlas };

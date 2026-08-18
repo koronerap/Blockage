@@ -23,9 +23,10 @@ public static class AtlasTexture
     /// <summary>Row-major RGBA pixels, top row first.</summary>
     public static byte[] CreateRgba(UvAtlas atlas, Palette palette)
     {
-        int size = atlas.Size;
-        var pixels = new byte[size * size * 4];
-        var painted = new bool[size * size];
+        int width = atlas.Width;
+        int height = atlas.Height;
+        var pixels = new byte[width * height * 4];
+        var painted = new bool[width * height];
 
         // Anything no face covers. Magenta rather than black or transparent: unmapped texture is a
         // mistake somewhere, and it should look like one instead of like shadow.
@@ -43,7 +44,7 @@ public static class AtlasTexture
 
             for (int y = island.Y; y < island.Y + island.Height; y++)
             {
-                int row = y * size;
+                int row = y * width;
                 for (int x = island.X; x < island.X + island.Width; x++)
                 {
                     int offset = (row + x) * 4;
@@ -56,7 +57,7 @@ public static class AtlasTexture
             }
         }
 
-        Dilate(pixels, painted, size, atlas.Padding);
+        Dilate(pixels, painted, width, height, atlas.Padding);
         return pixels;
     }
 
@@ -69,24 +70,24 @@ public static class AtlasTexture
     /// the gaps between charts, and the holes inside a chart where the surface is not solid — so
     /// filtering and mip levels find a face's own colour next to it instead of magenta.
     /// </summary>
-    private static void Dilate(byte[] pixels, bool[] painted, int size, int rings)
+    private static void Dilate(byte[] pixels, bool[] painted, int width, int height, int rings)
     {
         for (int ring = 0; ring < rings; ring++)
         {
             bool[] before = (bool[])painted.Clone();
             bool spread = false;
 
-            for (int y = 0; y < size; y++)
+            for (int y = 0; y < height; y++)
             {
-                for (int x = 0; x < size; x++)
+                for (int x = 0; x < width; x++)
                 {
-                    int cell = (y * size) + x;
+                    int cell = (y * width) + x;
                     if (before[cell])
                     {
                         continue;
                     }
 
-                    int source = Neighbour(before, size, x, y);
+                    int source = Neighbour(before, width, height, x, y);
                     if (source < 0)
                     {
                         continue;
@@ -105,38 +106,38 @@ public static class AtlasTexture
         }
     }
 
-    private static int Neighbour(bool[] painted, int size, int x, int y)
+    private static int Neighbour(bool[] painted, int width, int height, int x, int y)
     {
-        if (x > 0 && painted[(y * size) + x - 1])
+        if (x > 0 && painted[(y * width) + x - 1])
         {
-            return (y * size) + x - 1;
+            return (y * width) + x - 1;
         }
 
-        if (x + 1 < size && painted[(y * size) + x + 1])
+        if (x + 1 < width && painted[(y * width) + x + 1])
         {
-            return (y * size) + x + 1;
+            return (y * width) + x + 1;
         }
 
-        if (y > 0 && painted[((y - 1) * size) + x])
+        if (y > 0 && painted[((y - 1) * width) + x])
         {
-            return ((y - 1) * size) + x;
+            return ((y - 1) * width) + x;
         }
 
-        if (y + 1 < size && painted[((y + 1) * size) + x])
+        if (y + 1 < height && painted[((y + 1) * width) + x])
         {
-            return ((y + 1) * size) + x;
+            return ((y + 1) * width) + x;
         }
 
         return -1;
     }
 
     public static byte[] EncodePng(UvAtlas atlas, Palette palette) =>
-        PngWriter.EncodeRgba(CreateRgba(atlas, palette), atlas.Size, atlas.Size);
+        PngWriter.EncodeRgba(CreateRgba(atlas, palette), atlas.Width, atlas.Height);
 
     /// <summary>Import settings, written beside the mesh and shown in the export dialog.</summary>
     public static string ImportNotes(UvAtlas atlas) =>
         $"""
-        {DefaultFileName} — generated base colour ({atlas.Size}x{atlas.Size})
+        {DefaultFileName} — generated base colour ({atlas.Width}x{atlas.Height})
 
           Filtering : Point / Nearest        (until you paint something that wants smoothing)
           Mipmaps   : fine to leave on       ({atlas.Padding}-texel gutters carry each island's own colour)
