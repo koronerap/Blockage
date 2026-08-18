@@ -35,7 +35,8 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         string directory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
         Directory.CreateDirectory(directory);
 
-        byte[] png = PaletteTexture.EncodePng(palette);
+        string textureFileName = options.ResolveTextureFileName();
+        byte[] png = options.EncodeTexture(palette);
 
         MaterialBuilder material = new MaterialBuilder(MaterialName)
             .WithDoubleSide(false)
@@ -72,14 +73,14 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         {
             // Keep the image beside the mesh under the agreed name instead of letting the writer
             // invent one, so the .gltf and the .png stay a matched pair.
-            string texturePath = Path.Combine(directory, options.TextureFileName);
+            string texturePath = Path.Combine(directory, textureFileName);
             File.WriteAllBytes(texturePath, png);
             written.Add(texturePath);
 
             var settings = new WriteSettings
             {
                 ImageWriting = ResourceWriteMode.SatelliteFile,
-                ImageWriteCallback = (_, _, _) => options.TextureFileName,
+                ImageWriteCallback = (_, _, _) => textureFileName,
             };
 
             model.Save(path, settings);
@@ -89,7 +90,7 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         if (options.WriteImportNotes && !Binary)
         {
             string notesPath = Path.Combine(directory, Path.GetFileNameWithoutExtension(path) + "-texture-notes.txt");
-            File.WriteAllText(notesPath, PaletteTexture.ImportNotes, Encoding.UTF8);
+            File.WriteAllText(notesPath, options.ImportNotes(), Encoding.UTF8);
             written.Add(notesPath);
         }
 

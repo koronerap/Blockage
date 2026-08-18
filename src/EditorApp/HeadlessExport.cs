@@ -64,7 +64,20 @@ public static class HeadlessExport
             return 1;
         }
 
-        var options = new ExportOptions();
+        // The same default the dialog offers: a real sheet the model can be textured on.
+        UvAtlas atlas = UvUnwrap.Apply(greedy);
+        Console.WriteLine(
+            $"Atlas  {atlas.Size} x {atlas.Size}  ({atlas.Charts.Count:N0} charts from "
+            + $"{atlas.Islands.Count:N0} faces, {atlas.TexelsPerVoxel} texels per voxel, "
+            + $"{atlas.Coverage:P0} covered)");
+
+        long chartArea = atlas.Charts.Sum(c => (long)c.Width * c.Height);
+        long faceArea = atlas.Islands.Sum(i => (long)i.Width * i.Height);
+        Console.WriteLine(
+            $"       charts occupy {chartArea / (double)((long)atlas.Size * atlas.Size):P0} of the sheet, "
+            + $"and faces fill {faceArea / (double)chartArea:P0} of the charts");
+
+        var options = new ExportOptions { Atlas = atlas };
         foreach (IMeshExporter exporter in new IMeshExporter[] { new ObjExporter(), new GltfExporter(binary: true) })
         {
             string path = Path.Combine(outputDirectory, name + exporter.Extension);

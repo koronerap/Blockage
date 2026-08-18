@@ -29,14 +29,20 @@ public sealed class ObjExporter : IMeshExporter
 
         string baseName = Path.GetFileNameWithoutExtension(path);
         string mtlFileName = baseName + ".mtl";
-        string texturePath = Path.Combine(directory, options.TextureFileName);
+        string textureFileName = options.ResolveTextureFileName();
 
         var written = new List<string>();
 
-        File.WriteAllBytes(texturePath, PaletteTexture.EncodePng(palette));
-        written.Add(texturePath);
+        if (options.WriteTexture)
+        {
+            string texturePath = Path.Combine(directory, textureFileName);
+            File.WriteAllBytes(texturePath, options.EncodeTexture(palette));
+            written.Add(texturePath);
+        }
 
-        File.WriteAllText(Path.Combine(directory, mtlFileName), BuildMtl(options.TextureFileName), Encoding.UTF8);
+        // The material still names the texture when none was written: the mesh is unwrapped for it,
+        // and dropping the reference would leave the material with nothing to say.
+        File.WriteAllText(Path.Combine(directory, mtlFileName), BuildMtl(textureFileName), Encoding.UTF8);
         written.Add(Path.Combine(directory, mtlFileName));
 
         File.WriteAllText(path, BuildObj(mesh, baseName, mtlFileName), Encoding.UTF8);
@@ -45,7 +51,7 @@ public sealed class ObjExporter : IMeshExporter
         if (options.WriteImportNotes)
         {
             string notesPath = Path.Combine(directory, baseName + "-texture-notes.txt");
-            File.WriteAllText(notesPath, PaletteTexture.ImportNotes, Encoding.UTF8);
+            File.WriteAllText(notesPath, options.ImportNotes(), Encoding.UTF8);
             written.Add(notesPath);
         }
 

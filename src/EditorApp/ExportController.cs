@@ -39,6 +39,13 @@ public sealed class ExportController(EditorSession session)
     private bool _shouldOpenPopup;
     private bool _isOpen;
 
+    /// <summary>0 = unwrapped, 1 = palette blocks.</summary>
+    private int _layoutIndex;
+
+    private int _texelsPerVoxel = UvUnwrap.DefaultTexelsPerVoxel;
+    private bool _writeTexture = true;
+
+    private UvAtlas? _atlas;
     private ExportMesh? _analysis;
     private int _naiveVertexCount;
     private double _analysisMilliseconds;
@@ -75,6 +82,12 @@ public sealed class ExportController(EditorSession session)
         var stopwatch = Stopwatch.StartNew();
 
         _analysis = GreedyMesher.BuildScene(session.Scene);
+
+        // Unwrapping rewrites the mesh's UVs, so it belongs here with the meshing rather than inside
+        // an exporter — both formats have to be handed the same layout and the same sheet.
+        _atlas = _layoutIndex == 0
+            ? UvUnwrap.Apply(_analysis, session.Scene.VoxelSize, _texelsPerVoxel)
+            : null;
 
         // The naive reference covers the whole scene too, so the reduction figure is the one that
         // actually applies to the file being written.
@@ -130,6 +143,8 @@ public sealed class ExportController(EditorSession session)
 
         DrawFormatPicker();
         ImGui.Spacing();
+        DrawTexturePicker();
+        ImGui.Spacing();
         DrawPathPicker();
 
         ImGui.SeparatorText("Result");
@@ -157,6 +172,62 @@ public sealed class ExportController(EditorSession session)
                 _formatIndex = i;
                 _outputPath = Path.ChangeExtension(_outputPath, Exporters[i].Extension);
             }
+        }
+    }
+
+    /// <summary>
+    /// The two ways colour can leave this tool, and they are genuinely different jobs rather than a
+    /// preference. Unwrapped gives every face its own patch of a sheet, which is the only way the
+    /// model can be textured anywhere else. Palette blocks put the whole level on one 128x128 image
+    /// shared by every export — smaller and unbleedable, but with no surface to paint on.
+    /// </summary>
+    private void DrawTexturePicker()
+    {
+        ImGui.Text("Texture");
+
+        int layout = _layoutIndex;
+        if (ImGui.RadioButton("Unwrapped UVs  -  paintable in an external tool", ref layout, 0) |
+            ImGui.RadioButton("Palette blocks  -  one shared 128x128, no UV space", ref layout, 1))
+        {
+            if (layout != _layoutIndex)
+            {
+                _layoutIndex = layout;
+                Analyze();
+            }
+        }
+
+        if (_layoutIndex == 0)
+        {
+            ImGui.SetNextItemWidth(200f);
+            int texels = _texelsPerVoxel;
+            if (ImGui.SliderInt("Texels per voxel", ref texels, 1, 64) && texels != _texelsPerVoxel)
+            {
+                _texelsPerVoxel = texels;
+                Analyze();
+            }
+
+            if (_atlas is { } atlas)
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled($"-> {atlas.Size} x {atlas.Size}");
+
+                ImGui.TextDisabled(
+                    $"  {atlas.Charts.Count:N0} pieces from {atlas.Islands.Count:N0} faces, "
+                    + $"{atlas.Coverage:P0} of the sheet used");
+
+                if (atlas.TexelsPerVoxel != _texelsPerVoxel)
+                {
+                    ImGui.TextColored(
+                        Theme.Highlight,
+                        $"Reduced to {atlas.TexelsPerVoxel} texels per voxel to fit the sheet.");
+                }
+            }
+        }
+
+        ImGui.Checkbox("Write the texture file", ref _writeTexture);
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("The UVs are written either way.\nTurn this off to paint from a blank sheet.");
         }
     }
 
@@ -284,7 +355,12 @@ public sealed class ExportController(EditorSession session)
                 _analysis!,
                 session.Scene.Palette,
                 path,
-                new ExportOptions { WriteImportNotes = _writeImportNotes });
+                new ExportOptions
+                {
+                    Atlas = _atlas,
+                    WriteTexture = _writeTexture,
+                    WriteImportNotes = _writeImportNotes,
+                });
 
             _status = $"Wrote {result.FilesWritten.Count} file(s): {result.QuadCount:N0} quads, "
                 + $"{result.VertexCount:N0} vertices.";
