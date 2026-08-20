@@ -61,17 +61,40 @@ public sealed class ExportController(EditorSession session)
         _status = string.Empty;
         _statusIsError = false;
 
-        if (_outputPath.Length == 0)
-        {
-            string directory = session.ProjectPath is not null
-                ? Path.GetDirectoryName(session.ProjectPath) ?? Directory.GetCurrentDirectory()
-                : Directory.GetCurrentDirectory();
+        // The folder is remembered; the file name always follows the level.
+        //
+        // It used to be set once and kept forever, which meant exporting one level and then opening
+        // another left the first one's path in the box. Pressing Export then quietly overwrote the
+        // first level's mesh and the file that was asked for never appeared — no error, because
+        // nothing had gone wrong as far as the writer was concerned. A name that resets is visible
+        // in the field; one that silently points at another level's file is not.
+        string directory = _outputPath.Length > 0
+            ? Path.GetDirectoryName(_outputPath) ?? DefaultDirectory
+            : DefaultDirectory;
 
-            _outputPath = Path.Combine(directory, session.ProjectName + Current.Extension);
-        }
+        _outputPath = Path.Combine(directory, session.ProjectName + Current.Extension);
 
         Analyze();
     }
+
+    private string DefaultDirectory => session.ProjectPath is not null
+        ? Path.GetDirectoryName(session.ProjectPath) ?? Directory.GetCurrentDirectory()
+        : Directory.GetCurrentDirectory();
+
+    /// <summary>Where Export will write. Exposed so the behaviour can be checked without a mouse.</summary>
+    public string OutputPath => _outputPath;
+
+    /// <summary>What the path field and the Browse button do, for the same reason.</summary>
+    public void SetOutputPath(string path) => _outputPath = path;
+
+    /// <summary>Opens the folder picker on the current output path.</summary>
+    public void Browse() => _browser.Show(
+        FileBrowserMode.Save,
+        "Export to",
+        Current.Extension,
+        Path.GetDirectoryName(_outputPath),
+        Path.GetFileName(_outputPath),
+        SetOutputPath);
 
     /// <summary>
     /// Builds the greedy mesh and the naive reference once, so the dialog can show the reduction
@@ -124,8 +147,6 @@ public sealed class ExportController(EditorSession session)
         {
             DrawPopup();
         }
-
-        _browser.Draw();
     }
 
     private void DrawPopup()
@@ -156,6 +177,13 @@ public sealed class ExportController(EditorSession session)
 
         ImGui.Spacing();
         DrawActions();
+
+        // Drawn inside this popup, not beside it. A popup opened while none is being drawn goes to
+        // the top level, and opening a second one there closes the first: pressing Browse made the
+        // export dialog vanish, and picking a file then set a path on a dialog that was no longer
+        // on screen. From in here it nests instead, and the export dialog is still there underneath
+        // when the browser closes.
+        _browser.Draw();
 
         ImGui.EndPopup();
 
@@ -247,13 +275,7 @@ public sealed class ExportController(EditorSession session)
         ImGui.SameLine();
         if (ImGui.Button("Browse..."))
         {
-            _browser.Show(
-                FileBrowserMode.Save,
-                "Export to",
-                Current.Extension,
-                Path.GetDirectoryName(_outputPath),
-                Path.GetFileName(_outputPath),
-                selected => _outputPath = selected);
+            Browse();
         }
 
         ImGui.Checkbox("Write texture import notes beside the mesh", ref _writeImportNotes);
@@ -366,14 +388,19 @@ public sealed class ExportController(EditorSession session)
                     WriteImportNotes = _writeImportNotes,
                 });
 
-            _status = $"Wrote {result.FilesWritten.Count} file(s): {result.QuadCount:N0} quads, "
-                + $"{result.VertexCount:N0} vertices.";
+            // Names the file, because "wrote 4 files" does not answer the question people actually
+            // have when they cannot find them.
+            _status = $"Wrote {Path.GetFileName(path)} and {result.FilesWritten.Count - 1} more to "
+                + $"{Path.GetDirectoryName(path)} - {result.QuadCount:N0} quads, {result.VertexCount:N0} vertices.";
             _statusIsError = false;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or VxLevelFormatException)
+        catch (Exception exception)
         {
+            // Everything, as for opening and saving. An export that fails silently is worse than one
+            // that fails loudly, and the list of ways a mesh writer can be surprised is not short.
             _status = $"Export failed: {exception.Message}";
             _statusIsError = true;
+            CrashLog.Record($"exporting {_outputPath}", exception);
         }
     }
 }
