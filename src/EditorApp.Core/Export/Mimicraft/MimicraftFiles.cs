@@ -26,7 +26,10 @@ public static class MimicraftFiles
     /// The id list and the pieces must be the same length and in the same order — the reader checks
     /// and refuses the file otherwise. They are built from one list here so they cannot drift.
     /// </summary>
-    public static byte[] EncodeCharacterPayload(IReadOnlyList<MimicraftPiece> pieces, Palette palette)
+    public static byte[] EncodeCharacterPayload(
+        IReadOnlyList<MimicraftPiece> pieces,
+        Palette palette,
+        MimicraftOrientation? orientation = null)
     {
         if (pieces.Count == 0)
         {
@@ -46,7 +49,7 @@ public static class MimicraftFiles
             output.AddRange(id);
         }
 
-        byte[] body = MimicraftBody.Encode(pieces, palette);
+        byte[] body = MimicraftBody.Encode(pieces, palette, orientation);
         MimicraftBinary.WriteVarint(output, (uint)body.Length);
         output.AddRange(body);
 
@@ -58,9 +61,10 @@ public static class MimicraftFiles
         string characterName,
         string rigId,
         IReadOnlyList<MimicraftPiece> parts,
-        Palette palette)
+        Palette palette,
+        MimicraftOrientation? orientation = null)
     {
-        byte[] payload = EncodeCharacterPayload(parts, palette);
+        byte[] payload = EncodeCharacterPayload(parts, palette, orientation);
 
         var output = new List<byte>();
         MimicraftBinary.WriteAscii(output, "MCF");
@@ -88,6 +92,7 @@ public static class MimicraftFiles
         string weaponId,
         MimicraftPiece? piece,
         Palette palette,
+        MimicraftOrientation? orientation = null,
         bool hasPoints = false,
         (float X, float Y, float Z) leftGrip = default,
         (float X, float Y, float Z) rightGrip = default,
@@ -95,7 +100,7 @@ public static class MimicraftFiles
     {
         byte[] payload = piece is null
             ? []
-            : EncodeCharacterPayload([piece with { Id = weaponId }], palette);
+            : EncodeCharacterPayload([piece with { Id = weaponId }], palette, orientation);
 
         var output = new List<byte>();
         MimicraftBinary.WriteAscii(output, "MWS");

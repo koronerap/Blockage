@@ -31,6 +31,8 @@ public sealed class MimicraftController(EditorSession session)
     private readonly FileBrowserDialog _browser = new();
 
     private MimicraftTarget _target = MimicraftTarget.Character;
+    private MimicraftUpAxis _up = MimicraftUpAxis.Y;
+    private int _turnIndex;
     private string _characterName = string.Empty;
     private string _rigId = "steve";
     private string _weaponId = string.Empty;
@@ -89,6 +91,8 @@ public sealed class MimicraftController(EditorSession session)
 
         DrawTargetPicker();
         ImGui.Spacing();
+        DrawOrientation();
+        ImGui.Spacing();
         DrawFields();
 
         ImGui.SeparatorText("Check");
@@ -123,6 +127,72 @@ public sealed class MimicraftController(EditorSession session)
                 Validate();
             }
         }
+    }
+
+    private MimicraftOrientation Orientation =>
+        new(_up, MimicraftOrientation.Turns[_turnIndex]);
+
+    /// <summary>
+    /// How the model was built, which is the one thing the file cannot say for itself.
+    ///
+    /// Converting from this editor's right-handed axes to Unity's left-handed ones happens either
+    /// way and is not offered as a choice. What is offered is everything a modeller might reasonably
+    /// have done: built the thing lying on its side, or facing along a different horizontal axis.
+    /// Every combination here is a rotation, so none of them can mirror the model by accident.
+    /// </summary>
+    private void DrawOrientation()
+    {
+        ImGui.Text("Built with");
+
+        ImGui.SetNextItemWidth(140f);
+        int up = (int)_up;
+        if (ImGui.Combo("Up axis", ref up, "Y up\0Z up\0X up\0") && up != (int)_up)
+        {
+            _up = (MimicraftUpAxis)up;
+        }
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(140f);
+        int turn = _turnIndex;
+        if (ImGui.Combo("Turn", ref turn, "0\0 90\0 180\0 270\0") && turn != _turnIndex)
+        {
+            _turnIndex = turn;
+        }
+
+        // The fastest way to tell whether the choice is right without going to Unity: a truck is
+        // long along one axis, and if the long number is in the wrong place so is the model.
+        if (Size() is { } size)
+        {
+            ImGui.TextDisabled($"Arrives as {size.X} x {size.Y} x {size.Z} voxels (x, y, z in Unity)");
+        }
+    }
+
+    /// <summary>The written box, so the dialog can show what the orientation actually produces.</summary>
+    private Int3? Size()
+    {
+        IReadOnlyList<Core.Scene.VoxelObject> objects =
+            [.. session.Scene.Objects.Where(o => o.Visible && !o.IsEmpty)];
+
+        if (objects.Count == 0)
+        {
+            return null;
+        }
+
+        if (_target == MimicraftTarget.Weapon)
+        {
+            return MimicraftValidation.TryMergedBounds(objects, out Int3 min, out Int3 max)
+                ? Orientation.Size(max - min + Int3.One)
+                : null;
+        }
+
+        // For a character the parts are separate boxes; the focused one is the one being looked at.
+        Core.Scene.VoxelObject shown = session.Scene.Focus is { Visible: true, IsEmpty: false } focus
+            ? focus
+            : objects[0];
+
+        return shown.Grid.TryGetBounds(out Int3 partMin, out Int3 partMax)
+            ? Orientation.Size(partMax - partMin + Int3.One)
+            : null;
     }
 
     private void DrawFields()
@@ -262,11 +332,13 @@ public sealed class MimicraftController(EditorSession session)
                     _characterName,
                     _rigId,
                     MimicraftScene.BuildCharacterParts(session.Scene),
-                    session.Scene.Palette)
+                    session.Scene.Palette,
+                    Orientation)
                 : MimicraftFiles.EncodeWeapon(
                     _weaponId,
                     MimicraftScene.BuildWeaponPiece(session.Scene, _weaponId),
-                    session.Scene.Palette);
+                    session.Scene.Palette,
+                    Orientation);
 
             File.WriteAllBytes(path, bytes);
 

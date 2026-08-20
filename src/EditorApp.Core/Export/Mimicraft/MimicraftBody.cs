@@ -56,39 +56,15 @@ public static class MimicraftBody
     public const int MaxRunLength = 65535;
 
     /// <summary>
-    /// Mimicraft's face numbering, indexed by this editor's <see cref="Face"/>.
+    /// The face number an editor face becomes under a given orientation.
     ///
-    /// Two separate disagreements are folded into this one table. The numbering itself differs —
-    /// here the order is +X, -X, +Y, -Y, +Z, -Z, there it starts at -Z and pairs the axes the other
-    /// way round. And the depth axis points the other way, because this editor is right-handed like
-    /// the graphics API under it while Unity is left-handed: a face pointing +Z here is pointing -Z
-    /// once it arrives. So the two Z entries are the flipped ones. See <see cref="MirrorZ"/>.
+    /// Both the numbering and the direction differ — here the order is +X, -X, +Y, -Y, +Z, -Z, and
+    /// there it starts at -Z and pairs the axes the other way — and on top of that the model may
+    /// have been built lying in some other direction entirely. All of it comes out of the same
+    /// matrix the cells go through, so the two cannot disagree.
     /// </summary>
-    private static readonly byte[] FaceNumber =
-    [
-        5,  // PosX -> (+1, 0, 0)
-        4,  // NegX -> (-1, 0, 0)
-        2,  // PosY -> (0, +1, 0)
-        3,  // NegY -> (0, -1, 0)
-        0,  // PosZ -> (0, 0, -1) once the depth axis is turned round
-        1,  // NegZ -> (0, 0, +1)
-    ];
-
-    /// <summary>
-    /// Where a cell of the written box is read from.
-    ///
-    /// This editor is right-handed: its camera looks down -Z, as the graphics API it draws with
-    /// does. Unity is left-handed and looks down +Z. Copying the coordinates across unchanged
-    /// therefore hands over the model's mirror image — which on anything asymmetric reads as the
-    /// axes having been mixed up rather than as a reflection, because a reflection of a familiar
-    /// shape mostly looks like the shape put together wrong.
-    ///
-    /// Turning the depth axis round is the whole conversion. Nothing else moves: x and y mean the
-    /// same in both, and the handedness is carried entirely by which way z counts.
-    /// </summary>
-    private static int MirrorZ(Int3 min, Int3 size, int z) => min.Z + size.Z - 1 - z;
-
-    public static byte ToMimicraftFace(Face face) => FaceNumber[(int)face];
+    public static byte ToMimicraftFace(Face face, MimicraftOrientation? orientation = null) =>
+        (orientation ?? MimicraftOrientation.Default).FaceNumber(face);
 
     /// <summary>
     /// Writes the framed payload: one format byte, then the body.
@@ -97,8 +73,14 @@ public static class MimicraftBody
     /// both — and a raw file cannot trip the two-megabyte inflation ceiling that only applies to the
     /// compressed path.
     /// </summary>
-    public static byte[] Encode(IReadOnlyList<MimicraftPiece> pieces, Palette palette, float voxelSize = 1f)
+    public static byte[] Encode(
+        IReadOnlyList<MimicraftPiece> pieces,
+        Palette palette,
+        MimicraftOrientation? orientation = null,
+        float voxelSize = 1f)
     {
+        orientation ??= MimicraftOrientation.Default;
+
         var body = new List<byte> { FormatRaw };
 
         MimicraftBinary.WriteSingle(body, voxelSize);
@@ -133,7 +115,7 @@ public static class MimicraftBody
 
         foreach (MimicraftPiece piece in pieces)
         {
-            WritePiece(body, piece.Grid, indexOf, colors.Count);
+            WritePiece(body, piece.Grid, indexOf, colors.Count, orientation);
         }
 
         return [.. body];
@@ -172,7 +154,8 @@ public static class MimicraftBody
         List<byte> body,
         VoxelWorld grid,
         Dictionary<byte, int> indexOf,
-        int paletteCount)
+        int paletteCount,
+        MimicraftOrientation orientation)
     {
         // Position and rotation are written and then ignored on the way back: a character part hangs
         // off a bone and a weapon off its prefab, so where the modeller left it was never carried.
@@ -199,7 +182,10 @@ public static class MimicraftBody
             return;
         }
 
-        Int3 size = max - min + Int3.One;
+        Int3 sourceSize = max - min + Int3.One;
+
+        // The written box is the model's box with its axes shuffled into Unity's.
+        Int3 size = orientation.Size(sourceSize);
 
         // Rebased to its own box: the piece is written as though its lowest occupied cell were the
         // origin. Mimicraft expects a part's voxels inside 0..BoxSize-1 and clips what falls outside,
@@ -211,8 +197,8 @@ public static class MimicraftBody
         MimicraftBinary.WriteUInt16(body, (ushort)size.Y);
         MimicraftBinary.WriteUInt16(body, (ushort)size.Z);
 
-        WriteRuns(body, grid, min, size, indexOf, paletteCount);
-        WriteFaces(body, grid, min, size, indexOf, paletteCount);
+        WriteRuns(body, grid, min, sourceSize, size, indexOf, paletteCount, orientation);
+        WriteFaces(body, grid, min, sourceSize, size, indexOf, paletteCount, orientation);
     }
 
     /// <summary>
@@ -226,9 +212,11 @@ public static class MimicraftBody
         List<byte> body,
         VoxelWorld grid,
         Int3 min,
+        Int3 sourceSize,
         Int3 size,
         Dictionary<byte, int> indexOf,
-        int paletteCount)
+        int paletteCount,
+        MimicraftOrientation orientation)
     {
         var runs = new List<(long Start, int Length, byte Color)>();
 
@@ -242,12 +230,14 @@ public static class MimicraftBody
                 int length = 0;
                 byte color = 0;
 
-                int sourceZ = MirrorZ(min, size, z);
-
                 for (int x = 0; x < size.X; x++)
                 {
-                    bool solid = grid.IsSolid(min.X + x, min.Y + y, sourceZ);
-                    byte here = solid ? grid.GetVoxel(min.X + x, min.Y + y, sourceZ) : (byte)0;
+                    // Written in the output's order and read from wherever that cell came from, so a
+                    // run is contiguous where it counts — along the row Mimicraft will decode.
+                    Int3 from = min + orientation.Source(new Int3(x, y, z), sourceSize);
+
+                    bool solid = grid.IsSolid(from);
+                    byte here = solid ? grid.GetVoxel(from) : (byte)0;
 
                     bool extends = solid && length > 0 && here == color && length < MaxRunLength;
                     if (extends)
@@ -294,9 +284,11 @@ public static class MimicraftBody
         List<byte> body,
         VoxelWorld grid,
         Int3 min,
+        Int3 sourceSize,
         Int3 size,
         Dictionary<byte, int> indexOf,
-        int paletteCount)
+        int paletteCount,
+        MimicraftOrientation orientation)
     {
         var faces = new List<(long Index, byte Face, byte Color)>();
 
@@ -304,20 +296,20 @@ public static class MimicraftBody
         {
             for (int z = 0; z < size.Z; z++)
             {
-                int sourceZ = MirrorZ(min, size, z);
-
                 for (int x = 0; x < size.X; x++)
                 {
-                    if (!grid.IsSolid(min.X + x, min.Y + y, sourceZ))
+                    Int3 from = min + orientation.Source(new Int3(x, y, z), sourceSize);
+
+                    if (!grid.IsSolid(from))
                     {
                         continue;
                     }
 
-                    byte baseColor = grid.GetVoxel(min.X + x, min.Y + y, sourceZ);
+                    byte baseColor = grid.GetVoxel(from);
 
                     for (int f = 0; f < FaceInfo.Count; f++)
                     {
-                        byte painted = grid.GetFaceColor(min.X + x, min.Y + y, sourceZ, (Face)f);
+                        byte painted = grid.GetFaceColor(from, (Face)f);
                         if (painted == baseColor)
                         {
                             // The section is a list of exceptions; a face the same colour as its
@@ -325,7 +317,9 @@ public static class MimicraftBody
                             continue;
                         }
 
-                        faces.Add((CellIndex(x, y, z, size), ToMimicraftFace((Face)f), painted));
+                        // Turned through the same matrix as the cell, so the paint stays on the same
+                        // physical side of the same block.
+                        faces.Add((CellIndex(x, y, z, size), orientation.FaceNumber((Face)f), painted));
                     }
                 }
             }
