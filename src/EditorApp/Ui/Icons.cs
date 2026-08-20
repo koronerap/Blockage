@@ -228,6 +228,61 @@ public static class Icons
         }
     }
 
+    // ---- Rotation ------------------------------------------------------------------------------
+
+    public static void RotateRight(ImDrawListPtr drawList, Vector2 centre, float r, uint colour) =>
+        Turn(drawList, centre, r, colour, clockwise: true, vertical: false);
+
+    public static void RotateLeft(ImDrawListPtr drawList, Vector2 centre, float r, uint colour) =>
+        Turn(drawList, centre, r, colour, clockwise: false, vertical: false);
+
+    public static void RotateUp(ImDrawListPtr drawList, Vector2 centre, float r, uint colour) =>
+        Turn(drawList, centre, r, colour, clockwise: true, vertical: true);
+
+    public static void RotateDown(ImDrawListPtr drawList, Vector2 centre, float r, uint colour) =>
+        Turn(drawList, centre, r, colour, clockwise: false, vertical: true);
+
+    /// <summary>
+    /// A three-quarter arc with a head on it: the arrow says which way round, and the gap in the
+    /// circle says it is a turn rather than a cycle.
+    ///
+    /// The vertical pair are the same arc seen edge-on, drawn as an ellipse squashed the other way,
+    /// so tipping a model forwards reads differently from spinning it.
+    /// </summary>
+    private static void Turn(
+        ImDrawListPtr drawList,
+        Vector2 centre,
+        float r,
+        uint colour,
+        bool clockwise,
+        bool vertical)
+    {
+        const int Segments = 18;
+        float radius = r * 0.62f;
+
+        // Squashed across for a spin, along for a tip: the same gesture from two points of view.
+        Vector2 scale = vertical ? new Vector2(0.55f, 1f) : new Vector2(1f, 0.55f);
+
+        // Three quarters of the way round, leaving the last quarter open for the head.
+        float start = vertical ? -0.15f : 0.35f;
+        float sweep = MathF.PI * 1.5f * (clockwise ? 1f : -1f);
+
+        Vector2 At(float t)
+        {
+            float angle = start + (sweep * t);
+            return centre + (new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius * scale);
+        }
+
+        for (int i = 0; i < Segments; i++)
+        {
+            drawList.AddLine(At(i / (float)Segments), At((i + 1) / (float)Segments), colour, Thickness);
+        }
+
+        Vector2 tip = At(1f);
+        Vector2 direction = Vector2.Normalize(tip - At(0.94f));
+        Arrowhead(drawList, tip + (direction * r * 0.12f), direction, r * 0.42f, colour);
+    }
+
     /// <summary>Lit: a body with light falling on it.</summary>
     public static void Lit(ImDrawListPtr drawList, Vector2 centre, float r, uint colour)
     {

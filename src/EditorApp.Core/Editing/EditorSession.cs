@@ -554,6 +554,35 @@ public sealed class EditorSession
     }
 
     /// <summary>
+    /// Turns the focused object a quarter turn, in its voxels rather than in its transform.
+    ///
+    /// The distinction matters more than it looks. A transform rotation is a placement — the grid
+    /// underneath is untouched, so everything that reads the voxels rather than the picture still
+    /// sees the model the way it was built, and a file format with no field for rotation carries
+    /// none of it. This turns the lattice, which is exact: a quarter turn of a cubic grid is a
+    /// permutation, and nothing is resampled or lost.
+    /// </summary>
+    public bool RotateFocus(RotateDirection direction)
+    {
+        if (Scene.Focus is not { IsEmpty: false } focus)
+        {
+            return false;
+        }
+
+        // Any gesture in progress was aimed at the model as it was a moment ago.
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var command = new RotateObjectCommand(focus.Grid, direction);
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>
     /// Sets the world size of one voxel for the whole level.
     ///
     /// Not an undo step, unlike a palette edit. A palette edit repaints voxels — it changes the

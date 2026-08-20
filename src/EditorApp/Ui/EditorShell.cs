@@ -110,12 +110,17 @@ public sealed class EditorShell
         float button = ImGui.GetFrameHeight();
         float spacing = ImGui.GetStyle().ItemSpacing.X;
 
-        // Two groups: what is drawn over the scene, then how the scene itself is shaded. The wider
-        // gap between them is what says they are different kinds of switch.
+        // Three groups: turning the model, what is drawn over the scene, and how the scene is
+        // shaded. The wider gaps between them are what say they are different kinds of thing — the
+        // first group edits the level, the other two only change how it is looked at.
         const float GroupGap = 14f;
-        float width = (button * 4f) + (spacing * 2f) + GroupGap;
+        float width = (button * 8f) + (spacing * 5f) + (GroupGap * 2f);
 
         ImGui.SameLine(size.X - width - ImGui.GetStyle().WindowPadding.X);
+
+        DrawRotateButtons(context, button);
+
+        ImGui.SameLine(0f, GroupGap);
 
         if (Icons.Button("grid", Icons.Grid, context.View.GridVisible(), "Ground grid  (G)", button))
         {
@@ -144,6 +149,45 @@ public sealed class EditorShell
         {
             lighting.Mode = ShadingMode.Unlit;
         }
+    }
+
+    /// <summary>
+    /// Turning the focused object a quarter at a time, in its voxels rather than in its transform.
+    ///
+    /// An edit rather than a view control, which is why it is a separate group up here: a transform
+    /// rotation only changes how the object is drawn, and everything that reads the voxels — the
+    /// exporters, and any format with no field for rotation — would still see the model built the
+    /// way it was. This turns the lattice, and a quarter turn of a cubic grid loses nothing.
+    /// </summary>
+    private static void DrawRotateButtons(ShellContext context, float button)
+    {
+        EditorSession session = context.Session;
+        ImGui.BeginDisabled(session.Scene.Focus is not { IsEmpty: false });
+
+        (string Id, Icons.Painter Icon, string Tip, RotateDirection Direction)[] turns =
+        [
+            ("rot-left", Icons.RotateLeft, "Turn left", RotateDirection.Left),
+            ("rot-right", Icons.RotateRight, "Turn right", RotateDirection.Right),
+            ("rot-up", Icons.RotateUp, "Tip up", RotateDirection.Up),
+            ("rot-down", Icons.RotateDown, "Tip down", RotateDirection.Down),
+        ];
+
+        for (int i = 0; i < turns.Length; i++)
+        {
+            if (i > 0)
+            {
+                ImGui.SameLine();
+            }
+
+            (string id, Icons.Painter icon, string tip, RotateDirection direction) = turns[i];
+
+            if (Icons.Button(id, icon, active: false, $"{tip}  -  turns the object's voxels", button))
+            {
+                session.RotateFocus(direction);
+            }
+        }
+
+        ImGui.EndDisabled();
     }
 
     private static void DrawToolColumn(ShellContext context, Vector2 position, Vector2 size)
