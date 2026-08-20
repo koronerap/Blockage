@@ -48,27 +48,32 @@ public class MimicraftValidationTests
     }
 
     [Fact]
-    public void AnObjectOverSixtyFourOnAnyAxisIsRefused()
+    public void AnObjectOverSixtyFourIsNotRefused()
     {
+        // The 64 cap is a number in Mimicraft's own source, raised there to suit. Only what the
+        // format physically cannot express is refused here.
         VoxelScene scene = SceneOf(("barrel", Box(4, 4, 72)));
 
-        MimicraftProblem problem = Assert.Single(MimicraftValidation.Check(scene, MimicraftTarget.Character));
-
-        Assert.Equal("barrel", problem.Subject);
-        Assert.Contains("Z is 72", problem.Message, StringComparison.Ordinal);
+        Assert.Empty(MimicraftValidation.Check(scene, MimicraftTarget.Character));
     }
 
     [Fact]
-    public void EveryOversizedAxisIsNamed()
+    public void ButTheSizeIsReportedSoTheGameCanBeToldToAllowIt()
     {
-        // "Too big" leaves the modeller measuring it themselves.
-        VoxelScene scene = SceneOf(("slab", Box(70, 4, 80)));
+        VoxelScene scene = SceneOf(("barrel", Box(4, 4, 72)), ("grip", Box(8, 8, 8)));
 
-        MimicraftProblem problem = Assert.Single(MimicraftValidation.Check(scene, MimicraftTarget.Character));
+        Assert.Equal(72, MimicraftValidation.LargestExtent(scene, MimicraftTarget.Character));
+    }
 
-        Assert.Contains("X is 70", problem.Message, StringComparison.Ordinal);
-        Assert.Contains("Z is 80", problem.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("Y is", problem.Message, StringComparison.Ordinal);
+    [Fact]
+    public void AWeaponIsMeasuredMerged()
+    {
+        var scene = new VoxelScene();
+        scene.Add(Box(30, 4, 4), ObjectTransform.Identity, "front");
+        scene.Add(Box(30, 4, 4), new ObjectTransform(new Vector3(30f, 0f, 0f), Quaternion.Identity), "back");
+
+        Assert.Equal(30, MimicraftValidation.LargestExtent(scene, MimicraftTarget.Character));
+        Assert.Equal(60, MimicraftValidation.LargestExtent(scene, MimicraftTarget.Weapon));
     }
 
     [Fact]
@@ -115,21 +120,6 @@ public class MimicraftValidationTests
     public void AnEmptyLevelIsRefused()
     {
         Assert.Single(MimicraftValidation.Check(new VoxelScene(), MimicraftTarget.Character));
-    }
-
-    [Fact]
-    public void AWeaponIsMeasuredAcrossEverythingTogether()
-    {
-        // The pieces merge into one grid, so it is the whole thing that has to fit - two halves that
-        // each pass on their own can still be too long once they are side by side.
-        var scene = new VoxelScene();
-        scene.Add(Box(40, 4, 4), ObjectTransform.Identity, "front");
-        scene.Add(Box(40, 4, 4), new ObjectTransform(new Vector3(40f, 0f, 0f), Quaternion.Identity), "back");
-
-        Assert.Empty(MimicraftValidation.Check(scene, MimicraftTarget.Character));
-
-        MimicraftProblem problem = Assert.Single(MimicraftValidation.Check(scene, MimicraftTarget.Weapon));
-        Assert.Contains("X is 80", problem.Message, StringComparison.Ordinal);
     }
 
     [Fact]

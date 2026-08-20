@@ -27,8 +27,28 @@ public static class MimicraftBody
 {
     public const byte FormatRaw = 0x01;
 
-    /// <summary>Largest a piece's box may be on any axis. The reader rejects more.</summary>
-    public const int MaxBoxExtent = 64;
+    /// <summary>
+    /// The format's own ceiling on a box axis: <c>boxSize</c> is a <c>uint16</c>, so anything larger
+    /// cannot be written at all — it would wrap and describe a different, smaller model.
+    ///
+    /// Not the same thing as what the game will accept. That is <see cref="StockBoxExtent"/>, a
+    /// number in Mimicraft's own source and therefore one its author can change; this one is
+    /// arithmetic and cannot be.
+    /// </summary>
+    public const int MaxBoxExtent = ushort.MaxValue;
+
+    /// <summary>
+    /// What an unmodified Mimicraft build stops at (<c>VoxelBodyCodec.MaxPieceBoxExtent</c>). Nothing
+    /// here enforces it — a piece larger than this is written and the reader on the other side is
+    /// expected to have been raised to match. Kept so the dialog can say so.
+    /// </summary>
+    public const int StockBoxExtent = 64;
+
+    /// <summary>
+    /// Cells in one piece, capped by what a gap can express: run and face gaps are varints holding a
+    /// <c>uint32</c>, so a box with more cells than that could not be addressed.
+    /// </summary>
+    public const long MaxBoxCells = uint.MaxValue;
 
     public const int MaxTotalVoxels = 200_000;
 
@@ -36,9 +56,13 @@ public static class MimicraftBody
     public const int MaxRunLength = 65535;
 
     /// <summary>
-    /// Mimicraft's face numbering, indexed by this editor's <see cref="Face"/>. The two disagree:
-    /// here the order is +X, -X, +Y, -Y, +Z, -Z; there it starts at -Z and pairs the axes the other
-    /// way round. A face painted through the wrong number lands on the wrong side of the voxel.
+    /// Mimicraft's face numbering, indexed by this editor's <see cref="Face"/>.
+    ///
+    /// Two separate disagreements are folded into this one table. The numbering itself differs —
+    /// here the order is +X, -X, +Y, -Y, +Z, -Z, there it starts at -Z and pairs the axes the other
+    /// way round. And the depth axis points the other way, because this editor is right-handed like
+    /// the graphics API under it while Unity is left-handed: a face pointing +Z here is pointing -Z
+    /// once it arrives. So the two Z entries are the flipped ones. See <see cref="MirrorZ"/>.
     /// </summary>
     private static readonly byte[] FaceNumber =
     [
@@ -46,9 +70,23 @@ public static class MimicraftBody
         4,  // NegX -> (-1, 0, 0)
         2,  // PosY -> (0, +1, 0)
         3,  // NegY -> (0, -1, 0)
-        1,  // PosZ -> (0, 0, +1)
-        0,  // NegZ -> (0, 0, -1)
+        0,  // PosZ -> (0, 0, -1) once the depth axis is turned round
+        1,  // NegZ -> (0, 0, +1)
     ];
+
+    /// <summary>
+    /// Where a cell of the written box is read from.
+    ///
+    /// This editor is right-handed: its camera looks down -Z, as the graphics API it draws with
+    /// does. Unity is left-handed and looks down +Z. Copying the coordinates across unchanged
+    /// therefore hands over the model's mirror image — which on anything asymmetric reads as the
+    /// axes having been mixed up rather than as a reflection, because a reflection of a familiar
+    /// shape mostly looks like the shape put together wrong.
+    ///
+    /// Turning the depth axis round is the whole conversion. Nothing else moves: x and y mean the
+    /// same in both, and the handedness is carried entirely by which way z counts.
+    /// </summary>
+    private static int MirrorZ(Int3 min, Int3 size, int z) => min.Z + size.Z - 1 - z;
 
     public static byte ToMimicraftFace(Face face) => FaceNumber[(int)face];
 
@@ -204,10 +242,12 @@ public static class MimicraftBody
                 int length = 0;
                 byte color = 0;
 
+                int sourceZ = MirrorZ(min, size, z);
+
                 for (int x = 0; x < size.X; x++)
                 {
-                    bool solid = grid.IsSolid(min.X + x, min.Y + y, min.Z + z);
-                    byte here = solid ? grid.GetVoxel(min.X + x, min.Y + y, min.Z + z) : (byte)0;
+                    bool solid = grid.IsSolid(min.X + x, min.Y + y, sourceZ);
+                    byte here = solid ? grid.GetVoxel(min.X + x, min.Y + y, sourceZ) : (byte)0;
 
                     bool extends = solid && length > 0 && here == color && length < MaxRunLength;
                     if (extends)
@@ -264,18 +304,20 @@ public static class MimicraftBody
         {
             for (int z = 0; z < size.Z; z++)
             {
+                int sourceZ = MirrorZ(min, size, z);
+
                 for (int x = 0; x < size.X; x++)
                 {
-                    if (!grid.IsSolid(min.X + x, min.Y + y, min.Z + z))
+                    if (!grid.IsSolid(min.X + x, min.Y + y, sourceZ))
                     {
                         continue;
                     }
 
-                    byte baseColor = grid.GetVoxel(min.X + x, min.Y + y, min.Z + z);
+                    byte baseColor = grid.GetVoxel(min.X + x, min.Y + y, sourceZ);
 
                     for (int f = 0; f < FaceInfo.Count; f++)
                     {
-                        byte painted = grid.GetFaceColor(min.X + x, min.Y + y, min.Z + z, (Face)f);
+                        byte painted = grid.GetFaceColor(min.X + x, min.Y + y, sourceZ, (Face)f);
                         if (painted == baseColor)
                         {
                             // The section is a list of exceptions; a face the same colour as its

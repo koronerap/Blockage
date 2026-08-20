@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Export.Mimicraft;
+using EditorApp.Core.Voxels;
 using EditorApp.Ui;
 using ImGuiNET;
 
@@ -168,6 +169,20 @@ public sealed class MimicraftController(EditorSession session)
 
     private void DrawProblems()
     {
+        // Said rather than enforced. The piece size limit lives in Mimicraft's own source, so it is
+        // a number that can be raised — but a file that goes over it while the game still holds the
+        // stock value is refused there with nothing to show for it but a console line, and that is
+        // worth a sentence here.
+        int largest = MimicraftValidation.LargestExtent(session.Scene, _target);
+        if (largest > MimicraftBody.StockBoxExtent)
+        {
+            ImGui.TextWrapped(
+                $"Largest side is {largest} voxels. An unmodified game stops at "
+                + $"{MimicraftBody.StockBoxExtent} - raise MaxPieceBoxExtent in VoxelBodyCodec if you "
+                + "have not already, or this is refused on the other side.");
+            ImGui.Spacing();
+        }
+
         if (_problems.Count == 0)
         {
             ImGui.TextColored(Theme.Success, "Nothing here would be refused.");

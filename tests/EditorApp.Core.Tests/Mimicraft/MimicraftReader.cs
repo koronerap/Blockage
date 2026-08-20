@@ -93,11 +93,9 @@ public static class MimicraftReader
         int sizeY = piece.BoxSize.Y;
         int sizeZ = piece.BoxSize.Z;
 
-        if (sizeX > 64 || sizeY > 64 || sizeZ > 64)
-        {
-            throw new RejectedException($"Box {sizeX}x{sizeY}x{sizeZ} exceeds 64 on an axis.");
-        }
-
+        // The stock game refuses a piece over 64 on an axis, but that number is in its own source
+        // and this project's copy has been raised, so it is not a rule of the format. What is left
+        // is the field itself: the reader gets whatever a uint16 could hold, and no more.
         long cells = (long)sizeX * sizeY * sizeZ;
 
         uint runCount = ReadVarint(data, ref offset);

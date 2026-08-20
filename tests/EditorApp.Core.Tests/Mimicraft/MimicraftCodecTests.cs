@@ -123,6 +123,57 @@ public class MimicraftCodecTests
     }
 
     [Fact]
+    public void TheDepthAxisIsTurnedRoundForUnity()
+    {
+        // This editor is right-handed and Unity is left-handed, so copying the coordinates across
+        // unchanged hands over the model's mirror image. Turning z round is the whole conversion:
+        // the voxel at the near end of the box has to arrive at the far end of it.
+        Palette palette = DefaultPalette();
+        var grid = Grid((0, 0, 0, 40), (0, 0, 1, 41), (0, 0, 2, 42));
+
+        DecodedBody body = MimicraftReader.ReadBody(MimicraftBody.Encode([new MimicraftPiece("p", grid)], palette));
+        DecodedPiece decoded = body.Pieces[0];
+
+        Assert.Equal(new Int3(1, 1, 3), decoded.BoxSize);
+        Assert.Equal(palette[42], decoded.Voxels[Index(0, 0, 0, decoded.BoxSize)]);
+        Assert.Equal(palette[41], decoded.Voxels[Index(0, 0, 1, decoded.BoxSize)]);
+        Assert.Equal(palette[40], decoded.Voxels[Index(0, 0, 2, decoded.BoxSize)]);
+    }
+
+    [Fact]
+    public void TurningTheDepthAxisLeavesTheOthersAlone()
+    {
+        // Handedness is carried entirely by z. If x or y moved as well the model would come back
+        // rotated rather than converted, and it would still look wrong on the other side.
+        Palette palette = DefaultPalette();
+        var grid = Grid((0, 0, 0, 40), (1, 0, 0, 41), (0, 1, 0, 42));
+
+        DecodedBody body = MimicraftReader.ReadBody(MimicraftBody.Encode([new MimicraftPiece("p", grid)], palette));
+        DecodedPiece decoded = body.Pieces[0];
+
+        Assert.Equal(palette[40], decoded.Voxels[Index(0, 0, 0, decoded.BoxSize)]);
+        Assert.Equal(palette[41], decoded.Voxels[Index(1, 0, 0, decoded.BoxSize)]);
+        Assert.Equal(palette[42], decoded.Voxels[Index(0, 1, 0, decoded.BoxSize)]);
+    }
+
+    [Fact]
+    public void AFaceMovesWithTheVoxelItWasPaintedOn()
+    {
+        // The two halves of the conversion have to agree: the cell is mirrored and the face number
+        // is flipped, so a face painted on the near end's far side arrives on the far end's near
+        // side - still the same physical surface of the same block.
+        Palette palette = DefaultPalette();
+        var grid = Grid((0, 0, 0, 40), (0, 0, 1, 40));
+        grid.SetFaceColor(new Int3(0, 0, 0), Face.NegZ, 90);
+
+        DecodedBody body = MimicraftReader.ReadBody(MimicraftBody.Encode([new MimicraftPiece("p", grid)], palette));
+        DecodedPiece decoded = body.Pieces[0];
+
+        // The voxel at z=0 here is written at z=1 there, and its -Z face is Mimicraft's +Z, face 1.
+        Assert.Equal(palette[90], decoded.Faces[(Index(0, 0, 1, decoded.BoxSize), 1)]);
+    }
+
+    [Fact]
     public void PaintedFacesTravelAsExceptions()
     {
         Palette palette = DefaultPalette();
@@ -145,8 +196,8 @@ public class MimicraftCodecTests
     [InlineData(Face.NegX, 4)]
     [InlineData(Face.PosY, 2)]
     [InlineData(Face.NegY, 3)]
-    [InlineData(Face.PosZ, 1)]
-    [InlineData(Face.NegZ, 0)]
+    [InlineData(Face.PosZ, 0)]
+    [InlineData(Face.NegZ, 1)]
     public void EachFaceIsNumberedTheWayMimicraftNumbersIt(Face face, byte expected)
     {
         // The two orderings disagree, and a face sent through the wrong number lands on the wrong
@@ -175,8 +226,9 @@ public class MimicraftCodecTests
 
         DecodedBody body = MimicraftReader.ReadBody(MimicraftBody.Encode([new MimicraftPiece("p", grid)], palette));
 
+        // PosX is 5, PosY is 2, and NegZ is 1 once the depth axis has been turned round.
         Assert.Equal(3, body.Pieces[0].Faces.Count);
-        Assert.Equal([(0L, (byte)0), (0L, (byte)2), (0L, (byte)5)], body.Pieces[0].Faces.Keys.Order());
+        Assert.Equal([(0L, (byte)1), (0L, (byte)2), (0L, (byte)5)], body.Pieces[0].Faces.Keys.Order());
     }
 
     [Fact]
@@ -294,21 +346,40 @@ public class MimicraftCodecTests
     }
 
     [Fact]
-    public void ABoxOfTheLargestAllowedSizeIsAccepted()
+    public void ABoxWellPastTheStockLimitIsWrittenAndReadBack()
     {
-        // Right on the limit, because an off-by-one here is a file the reader refuses.
+        // The 64 cap belongs to Mimicraft's source rather than to the format, and this project's copy
+        // has been raised. What has to hold is that the bytes still describe the model.
         Palette palette = DefaultPalette();
         var grid = new VoxelWorld();
-        for (int x = 0; x < 64; x++)
+        for (int i = 0; i < 200; i++)
         {
-            grid.SetVoxel(x, 0, 0, 40);
-            grid.SetVoxel(0, x, 0, 40);
-            grid.SetVoxel(0, 0, x, 40);
+            grid.SetVoxel(i, 0, 0, 40);
+            grid.SetVoxel(0, i, 0, 40);
+            grid.SetVoxel(0, 0, i, 40);
         }
 
         DecodedBody body = MimicraftReader.ReadBody(MimicraftBody.Encode([new MimicraftPiece("p", grid)], palette));
 
-        Assert.Equal(new Int3(64, 64, 64), body.Pieces[0].BoxSize);
+        Assert.Equal(new Int3(200, 200, 200), body.Pieces[0].BoxSize);
+        Assert.Equal(grid.SolidCount, body.Pieces[0].Voxels.Count);
+    }
+
+    [Fact]
+    public void ARowLongerThanTheStockLimitIsStillOneRun()
+    {
+        // Runs are capped at 65535, not at the piece size, so a long row does not fragment.
+        Palette palette = DefaultPalette();
+        var grid = new VoxelWorld();
+        for (int x = 0; x < 300; x++)
+        {
+            grid.SetVoxel(x, 0, 0, 40);
+        }
+
+        DecodedBody body = MimicraftReader.ReadBody(MimicraftBody.Encode([new MimicraftPiece("p", grid)], palette));
+
+        Assert.Equal(1, body.Pieces[0].RunCount);
+        Assert.Equal(300, body.Pieces[0].Voxels.Count);
     }
 
     [Fact]
@@ -385,7 +456,9 @@ public class MimicraftCodecTests
                 {
                     for (int x = 0; x < size.X; x++)
                     {
-                        Int3 source = min + new Int3(x, y, z);
+                        // Depth counts the other way on the far side, so the cell written at z came
+                        // from the opposite end of the box.
+                        Int3 source = min + new Int3(x, y, size.Z - 1 - z);
                         long index = Index(x, y, z, size);
 
                         if (!grid.IsSolid(source))

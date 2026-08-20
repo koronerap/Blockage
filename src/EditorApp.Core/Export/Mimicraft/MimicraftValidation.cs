@@ -123,16 +123,13 @@ public static class MimicraftValidation
         }
     }
 
+    /// <summary>
+    /// Only what cannot physically be written. The game's own limit on a piece is a number in its
+    /// source and is expected to be raised to suit; these two are the format's arithmetic and no
+    /// setting moves them.
+    /// </summary>
     private static void CheckExtent(string subject, Int3 size, List<MimicraftProblem> problems)
     {
-        if (size.X <= MimicraftBody.MaxBoxExtent
-            && size.Y <= MimicraftBody.MaxBoxExtent
-            && size.Z <= MimicraftBody.MaxBoxExtent)
-        {
-            return;
-        }
-
-        // Named per axis, because "too big" leaves the modeller measuring it themselves.
         var over = new List<string>();
         if (size.X > MimicraftBody.MaxBoxExtent)
         {
@@ -149,9 +146,53 @@ public static class MimicraftValidation
             over.Add($"Z is {size.Z}");
         }
 
-        problems.Add(new MimicraftProblem(
-            subject,
-            $"{string.Join(", ", over)} - no axis may exceed {MimicraftBody.MaxBoxExtent} voxels."));
+        if (over.Count > 0)
+        {
+            // Named per axis, because "too big" leaves the modeller measuring it themselves.
+            problems.Add(new MimicraftProblem(
+                subject,
+                $"{string.Join(", ", over)} - the box size is a 16-bit field, so no axis can go past "
+                + $"{MimicraftBody.MaxBoxExtent}."));
+            return;
+        }
+
+        long cells = (long)size.X * size.Y * size.Z;
+        if (cells > MimicraftBody.MaxBoxCells)
+        {
+            problems.Add(new MimicraftProblem(
+                subject,
+                $"{size.X}x{size.Y}x{size.Z} is {cells:N0} cells, and a position inside the box is "
+                + "addressed by a 32-bit gap."));
+        }
+    }
+
+    /// <summary>
+    /// The largest axis of anything being written, so the dialog can say what the game would need to
+    /// allow. Informational: nothing here refuses it.
+    /// </summary>
+    public static int LargestExtent(VoxelScene scene, MimicraftTarget target)
+    {
+        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.Visible && !o.IsEmpty)];
+
+        if (target == MimicraftTarget.Weapon)
+        {
+            return TryMergedBounds(objects, out Int3 min, out Int3 max)
+                ? Largest(max - min + Int3.One)
+                : 0;
+        }
+
+        int largest = 0;
+        foreach (VoxelObject o in objects)
+        {
+            if (o.Grid.TryGetBounds(out Int3 objectMin, out Int3 objectMax))
+            {
+                largest = Math.Max(largest, Largest(objectMax - objectMin + Int3.One));
+            }
+        }
+
+        return largest;
+
+        static int Largest(Int3 size) => Math.Max(size.X, Math.Max(size.Y, size.Z));
     }
 
     private static void CheckId(string name, List<MimicraftProblem> problems)
