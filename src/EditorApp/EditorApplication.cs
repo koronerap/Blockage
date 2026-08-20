@@ -70,6 +70,7 @@ public sealed class EditorApplication : IDisposable
     private GlRenderer? _renderer;
     private ProjectController? _project;
     private ExportController? _export;
+    private MimicraftController? _mimicraft;
     private string _windowTitle = string.Empty;
 
     private Vector2 _previousMousePosition;
@@ -165,6 +166,7 @@ public sealed class EditorApplication : IDisposable
 
         _project = new ProjectController(_session, () => _renderer.ResetBuffers());
         _export = new ExportController(_session);
+        _mimicraft = new MimicraftController(_session);
         _extrude = new ExtrudeInteraction(_session);
         _transform = new TransformInteraction(_session);
 
@@ -1066,6 +1068,7 @@ public sealed class EditorApplication : IDisposable
             Session = _session,
             Project = _project!,
             Export = _export!,
+            Mimicraft = _mimicraft!,
             Renderer = _renderer!,
             Camera = _camera,
             Palette = _palettePanel,
@@ -1088,6 +1091,7 @@ public sealed class EditorApplication : IDisposable
 
 
         _export!.Draw();
+        _mimicraft!.Draw();
         _referencePanel.DrawDialogs();
         ToolOptions.DrawDialogs();
 

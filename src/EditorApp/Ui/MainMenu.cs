@@ -13,6 +13,7 @@ public static class MainMenu
         EditorSession session,
         ProjectController project,
         ExportController export,
+        MimicraftController mimicraft,
         ViewActions view,
         Action onExit)
     {
@@ -52,6 +53,13 @@ public static class MainMenu
             if (ImGui.MenuItem("Export mesh...", "Ctrl+E"))
             {
                 export.Show();
+            }
+
+            // Kept apart from the mesh export on purpose: nothing here is meshed and no texture is
+            // written. The voxels themselves go out, in the layout Mimicraft's own decoders read.
+            if (ImGui.MenuItem("Save for Mimicraft..."))
+            {
+                mimicraft.Show();
             }
 
             ImGui.Separator();

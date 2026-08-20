@@ -47,7 +47,7 @@ public sealed class EditorShell
     public ViewportRect Draw(ShellContext context)
     {
         float menuHeight = MainMenu.Draw(
-            context.Session, context.Project, context.Export, context.View, context.OnExit);
+            context.Session, context.Project, context.Export, context.Mimicraft, context.View, context.OnExit);
 
         Vector2 screen = ImGui.GetIO().DisplaySize;
         float optionsHeight = ImGui.GetFrameHeight() + ImGui.GetStyle().WindowPadding.Y * 2f;
@@ -208,6 +208,8 @@ public sealed class ShellContext
     public required ProjectController Project { get; init; }
 
     public required ExportController Export { get; init; }
+
+    public required MimicraftController Mimicraft { get; init; }
 
     public required Rendering.GlRenderer Renderer { get; init; }
 
