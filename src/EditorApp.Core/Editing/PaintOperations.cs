@@ -233,6 +233,94 @@ public static class PaintOperations
         return changed;
     }
 
+    /// <summary>
+    /// Paints every face inside the box rather than only its edges.
+    ///
+    /// The counterpart to <see cref="BoxFrame"/>, and which one a drag gets follows the paint mode:
+    /// a brush draws an outline because that is what a brush stroke around a shape leaves, and a
+    /// bucket fills because filling is the whole of what a bucket does.
+    /// </summary>
+    public static int BoxFilled(Int3 from, Int3 to, Face face, byte paletteIndex, VoxelEditCommand command)
+    {
+        VoxelWorld world = command.Target;
+        VoxelBox box = VoxelBox.FromCorners(from, to);
+
+        int changed = 0;
+        for (int x = box.Min.X; x <= box.Max.X; x++)
+        {
+            for (int y = box.Min.Y; y <= box.Max.Y; y++)
+            {
+                for (int z = box.Min.Z; z <= box.Max.Z; z++)
+                {
+                    // Only faces anything can see, the same rule the brush follows. Painting a
+                    // face buried inside the model is work nobody will ever look at, and it fills
+                    // the sparse override table with entries that exist to be invisible.
+                    var cell = new Int3(x, y, z);
+                    if (IsFaceExposed(world, cell, face) && command.ApplyFace(cell, face, paletteIndex))
+                    {
+                        changed++;
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Paints the whole object one colour: every voxel's base colour, and every painted face
+    /// forgotten.
+    ///
+    /// Not a bucket that reaches further. A bucket walks a surface, so it can only ever reach the
+    /// faces pointing the way the one under the cursor does — which is right for painting a wall and
+    /// no help at all for recolouring a model. This sets the colour underneath, so faces that are
+    /// not exposed yet come out the new colour too rather than the old one reappearing the first
+    /// time something is carved away.
+    /// </summary>
+    public static int FillObject(byte paletteIndex, VoxelEditCommand command)
+    {
+        VoxelWorld world = command.Target;
+
+        if (!world.TryGetBounds(out Int3 min, out Int3 max))
+        {
+            return 0;
+        }
+
+        int changed = 0;
+        for (int x = min.X; x <= max.X; x++)
+        {
+            for (int y = min.Y; y <= max.Y; y++)
+            {
+                for (int z = min.Z; z <= max.Z; z++)
+                {
+                    var cell = new Int3(x, y, z);
+                    if (!world.IsSolid(cell))
+                    {
+                        continue;
+                    }
+
+                    // Recorded before the voxel is written, because writing it is what removes them.
+                    byte under = world.GetVoxel(cell);
+                    for (int f = 0; f < FaceInfo.Count; f++)
+                    {
+                        byte painted = world.GetFaceColor(cell, (Face)f);
+                        if (painted != under)
+                        {
+                            command.RecordFaceLost(cell, (Face)f, painted, paletteIndex);
+                        }
+                    }
+
+                    if (command.Apply(cell, paletteIndex))
+                    {
+                        changed++;
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+
     /// <summary>3D Bresenham: every cell the straight line between two points passes through.</summary>
     public static IEnumerable<Int3> Walk(Int3 from, Int3 to)
     {

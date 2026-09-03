@@ -35,6 +35,26 @@ public sealed class FaceSelection
 
     public int Axis => FaceInfo.Axis(Direction);
 
+    /// <summary>
+    /// The selection's extent, in voxels. The component along the selection's own axis is always 1 —
+    /// every face in it lies in the same plane — so the two that vary are the ones worth reading.
+    /// </summary>
+    public bool TryGetBounds(out Int3 min, out Int3 max)
+    {
+        min = default;
+        max = default;
+
+        bool any = false;
+        foreach (Int3 voxel in _voxels)
+        {
+            min = any ? Int3.Min(min, voxel) : voxel;
+            max = any ? Int3.Max(max, voxel) : voxel;
+            any = true;
+        }
+
+        return any;
+    }
+
     public static FaceSelection Empty(Face direction, int plane) => new(direction, plane, []);
 
     /// <summary>True when a voxel is solid and its face in this direction is exposed.</summary>

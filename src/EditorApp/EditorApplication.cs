@@ -835,11 +835,18 @@ public sealed class EditorApplication : IDisposable
         lines.Transform = focusMatrix;
         gizmos.Transform = focusMatrix;
 
-        AddSelectionOutline(lines, _session.Selection, SelectionColor);
-        AddSelectionOutline(
-            lines,
-            _extrude!.PendingSelection,
-            _extrude.PendingOperation == SelectionOperation.Subtract ? SelectionSubtractColor : SelectionAddColor);
+        // A selection belongs to Extrude, so it is drawn while Extrude is what is being used. It is
+        // not thrown away on the way out — coming back to the tool finds the same surface still
+        // chosen — but a highlighted patch left glowing over the model while painting reads as
+        // something the paint tool is about to do.
+        if (_session.ActiveTool == EditorTool.Extrude)
+        {
+            AddSelectionOutline(lines, _session.Selection, SelectionColor);
+            AddSelectionOutline(
+                lines,
+                _extrude!.PendingSelection,
+                _extrude.PendingOperation == SelectionOperation.Subtract ? SelectionSubtractColor : SelectionAddColor);
+        }
 
         if (_hover is { } hit)
         {

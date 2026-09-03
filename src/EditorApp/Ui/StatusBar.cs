@@ -1,4 +1,5 @@
 using EditorApp.Core.Editing;
+using EditorApp.Core.Voxels;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -24,6 +25,24 @@ public static class StatusBar
         else
         {
             ImGui.TextDisabled("-");
+        }
+
+        // What is selected, and how big it is. The cursor's own coordinates answer "where am I";
+        // this answers "how much have I got", which is the question a selection actually raises.
+        //
+        // Only while Extrude is the tool, for the same reason the outline is only drawn then: a
+        // selection is kept when the tool is left so coming back finds it, and reporting a size
+        // for something no longer on screen is worse than saying nothing.
+        if (session.ActiveTool == EditorTool.Extrude
+            && session.Selection is { IsEmpty: false } selection
+            && selection.TryGetBounds(out Int3 min, out Int3 max))
+        {
+            Int3 size = max - min + Int3.One;
+
+            ImGui.SameLine(0f, 20f);
+            ImGui.TextColored(Theme.Highlight, $"{size.X} x {size.Y} x {size.Z}");
+            ImGui.SameLine(0f, 8f);
+            ImGui.TextDisabled($"· {selection.Count:N0} faces");
         }
 
         if (session.Scene.Focus is { } focus)

@@ -115,12 +115,32 @@ public static class ToolOptions
 
         if (session.PaintMode == PaintMode.Bucket)
         {
+            bool whole = session.BucketWholeObject;
+            if (ImGui.Checkbox("Whole object", ref whole))
+            {
+                session.BucketWholeObject = whole;
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(
+                    "Recolour every voxel of the object instead of the surface under the "
+                    + "cursor, including faces that are not exposed yet.");
+            }
+
+            // The threshold decides how far a surface fill spreads, and a whole-object fill does not
+            // spread at all, so it has nothing left to say.
+            ImGui.BeginDisabled(whole);
+            ImGui.SameLine(0f, 18f);
+
             int threshold = session.BucketThreshold;
             ImGui.SetNextItemWidth(160f);
             if (ImGui.DragInt("Colour match", ref threshold, 1f, 0, 128, threshold == 0 ? "exact" : "within %d"))
             {
                 session.BucketThreshold = threshold;
             }
+
+            ImGui.EndDisabled();
         }
         else
         {

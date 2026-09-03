@@ -96,6 +96,13 @@ public sealed class EditorSession
     /// <summary>How far two colours may differ and still be filled together.</summary>
     public int BucketThreshold { get; set; }
 
+    /// <summary>
+    /// Makes a bucket click recolour the whole object instead of the surface under the cursor.
+    /// A mode of the bucket rather than a fourth tool: it is still "fill with this colour", only
+    /// with a different idea of how far the fill reaches.
+    /// </summary>
+    public bool BucketWholeObject { get; set; }
+
     /// <summary>The tiled image Pattern samples, or null when none has been loaded.</summary>
     public PatternSource? Pattern { get; set; }
 
@@ -306,6 +313,11 @@ public sealed class EditorSession
 
         return PaintMode switch
         {
+            // The whole object rather than the surface under the cursor. Still a fill; only how far
+            // it reaches differs.
+            PaintMode.Bucket when BucketWholeObject =>
+                PaintOperations.FillObject(ActiveColorIndex, _stroke!) > 0,
+
             PaintMode.Bucket => PaintOperations.Bucket(
                 hit.Voxel, hit.Face, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
 
@@ -320,15 +332,25 @@ public sealed class EditorSession
     }
 
     /// <summary>
-    /// Paints a straight line or a hollow box between two cells, as one step. Shift and Ctrl drags
-    /// commit their shape on release rather than as the cursor travels.
+    /// Paints a straight line or a box between two cells, as one step. Shift and Ctrl drags commit
+    /// their shape on release rather than as the cursor travels.
+    ///
+    /// Whether the box is filled or an outline follows the paint mode rather than being a setting of
+    /// its own: a brush stroke around a shape leaves an outline, and filling is the whole of what a
+    /// bucket does.
     /// </summary>
     public bool PaintShape(Int3 from, Int3 to, Face face, bool asBox) =>
         RunStep(
             asBox ? "Paint box" : "Paint line",
             c => asBox
-                ? PaintOperations.BoxFrame(from, to, face, BrushRadius, ActiveColorIndex, c)
+                ? FillsSolid
+                    ? PaintOperations.BoxFilled(from, to, face, ActiveColorIndex, c)
+                    : PaintOperations.BoxFrame(from, to, face, BrushRadius, ActiveColorIndex, c)
                 : PaintOperations.Line(from, to, face, BrushRadius, ActiveColorIndex, c));
+
+    /// <summary>True when the active mode fills a shape rather than outlining it.</summary>
+    public bool FillsSolid => PaintMode is PaintMode.Bucket or PaintMode.Pattern;
+
 
     /// <summary>The eyedropper. Returns false when there is nothing to sample.</summary>
     public bool SampleColor(RaycastHit hit)

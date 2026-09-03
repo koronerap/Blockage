@@ -73,6 +73,25 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
         return true;
     }
 
+    /// <summary>
+    /// Records a face colour that is about to be lost because the voxel underneath is being
+    /// recoloured, without writing anything itself.
+    ///
+    /// Setting a voxel's colour forgets what was painted on its faces, which is deliberate — the
+    /// overrides described the colour it used to be. Undo still has to put them back, and by the
+    /// time the write has happened they are gone, so they are recorded first. Undo replays in
+    /// reverse, so recording the faces BEFORE the voxel is what makes it restore the voxel first and
+    /// the faces after: the other order would have the voxel's own write wipe the faces it had just
+    /// restored.
+    /// </summary>
+    public void RecordFaceLost(Int3 position, Face face, byte before, byte after)
+    {
+        if (before != after)
+        {
+            Record(position, face, before, after);
+        }
+    }
+
     private void Record(Int3 position, Face? face, byte before, byte after)
     {
         if (_touched.Add((position, face)))
