@@ -745,6 +745,11 @@ public sealed class EditorApplication : IDisposable
             framebuffer.X / MathF.Max(logical.X, 1f),
             framebuffer.Y / MathF.Max(logical.Y, 1f));
 
+        // Off while painting. The highlight is a lie about brightness, and it is a useful one right
+        // up until the colours themselves are what is being judged — at which point a face lifted
+        // towards white is not the colour that was just put on it.
+        _renderer.FocusHighlight = _session.ActiveTool != EditorTool.Paint;
+
         _renderer.Render(
             _session.Scene,
             _camera,

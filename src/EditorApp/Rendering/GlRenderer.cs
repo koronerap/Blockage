@@ -252,6 +252,15 @@ public sealed class GlRenderer : IDisposable
     /// <summary>Seconds for the focus fade to substantially complete.</summary>
     public float FocusFadeSeconds { get; set; } = 0.12f;
 
+    /// <summary>
+    /// Whether the focused object is lifted and the rest held back.
+    ///
+    /// Turned off where the colours themselves are the thing being judged. The highlight is a lie
+    /// about brightness — a useful one when the question is which object you are editing, and a
+    /// misleading one when it is what colour that face actually is.
+    /// </summary>
+    public bool FocusHighlight { get; set; } = true;
+
     public void AdvanceFocusFade(VoxelScene scene, float deltaSeconds)
     {
         // Frame-rate independent easing: the same fade whether the editor runs at 60 or 300 fps.
@@ -293,6 +302,7 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.SetVector3("uLightDirection", Lighting.Direction);
         _voxelShader.SetFloat("uLightIntensity", Lighting.Intensity);
         _voxelShader.SetFloat("uAmbient", Lighting.Ambient);
+        _voxelShader.SetFloat("uFocusStrength", FocusHighlight ? 1f : 0f);
 
         VisibleChunks = 0;
         DrawnTriangles = 0;

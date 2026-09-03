@@ -27,6 +27,11 @@ public static class Shaders
         // as a fade rather than a jump.
         uniform float uFocus;
 
+        // How much of the focus effect to apply at all. Neither end of uFocus is neutral - one
+        // dims and the other lifts - so turning the highlight off needs its own way of saying so
+        // rather than a value of uFocus that happens to mean nothing.
+        uniform float uFocusStrength;
+
         // Per-face lookup tables, uploaded once from FaceInfo rather than written out again here,
         // so there is only one place the constants can be wrong.
         uniform vec3 uFaceNormal[6];
@@ -65,7 +70,8 @@ public static class Shaders
 
             // Lift towards white rather than scaling: multiplying leaves an already-white model
             // exactly as it was, which is the one case that has to read as focused.
-            lit = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
+            vec3 highlighted = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
+            lit = mix(lit, highlighted, uFocusStrength);
 
             vColor = vec4(clamp(lit, 0.0, 1.0), aColor.a);
             gl_Position = uViewProjection * uModel * vec4(aPosition, 1.0);
