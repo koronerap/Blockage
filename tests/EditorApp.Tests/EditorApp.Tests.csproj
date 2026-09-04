@@ -36,6 +36,8 @@
   -->
   <ItemGroup>
     <Compile Include="..\..\src\EditorApp.Mobile\Rendering\EsShaders.cs" Link="Mobile\EsShaders.cs" />
+    <Compile Include="..\..\src\EditorApp.Mobile\Rendering\OrbitCamera.cs" Link="Mobile\OrbitCamera.cs" />
+    <Compile Include="..\..\src\EditorApp.Mobile\Rendering\TouchGestureTracker.cs" Link="Mobile\TouchGestureTracker.cs" />
   </ItemGroup>
 
 </Project>

@@ -40,6 +40,18 @@
       keeps that measurement meaningful here. EsShaders retargets the GLSL dialect, nothing else.
     -->
     <Compile Include="..\EditorApp\Rendering\Shaders.cs" Link="Rendering\Shaders.cs" />
+
+    <!--
+      The rest of the desktop's rendering that has no graphics API in it at all: the camera and its
+      ray maths, the frustum planes, how a light angle becomes a direction, how coarse the ground
+      grid is, and the geometry every overlay is built from. Sharing these is what keeps a phone and
+      a desktop agreeing about where a tap landed.
+    -->
+    <Compile Include="..\EditorApp\Rendering\FlyCamera.cs" Link="Rendering\Shared\FlyCamera.cs" />
+    <Compile Include="..\EditorApp\Rendering\Frustum.cs" Link="Rendering\Shared\Frustum.cs" />
+    <Compile Include="..\EditorApp\Rendering\GroundGrid.cs" Link="Rendering\Shared\GroundGrid.cs" />
+    <Compile Include="..\EditorApp\Rendering\LineGeometry.cs" Link="Rendering\Shared\LineGeometry.cs" />
+    <Compile Include="..\EditorApp\Rendering\SceneLighting.cs" Link="Rendering\Shared\SceneLighting.cs" />
   </ItemGroup>
 
   <ItemGroup>

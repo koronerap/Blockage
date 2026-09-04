@@ -31,8 +31,12 @@ public class EsShaderTests
     {
         string translated = EsShaders.Translate(source);
 
-        Assert.StartsWith("#version 300 es\n", translated, StringComparison.Ordinal);
-        Assert.DoesNotContain("#version 330", translated, StringComparison.Ordinal);
+        Assert.True(
+            translated.StartsWith("#version 300 es\n", StringComparison.Ordinal),
+            $"{name} does not open with the ES directive. It opens with: {First(translated)}");
+        Assert.True(
+            !translated.Contains("#version 330", StringComparison.Ordinal),
+            $"{name} still carries a desktop version directive.");
     }
 
     /// <summary>
