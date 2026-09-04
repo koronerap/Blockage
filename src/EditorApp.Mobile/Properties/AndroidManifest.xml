@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    OpenGL ES 3.0 is required, not requested. The renderer uses ES 3.0 features the desktop shaders
+    depend on - integer vertex attributes, gl_VertexID, uniform arrays - and there is no ES 2.0
+    path to fall back to.
+  -->
+  <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+  <application android:label="Blockage" android:allowBackup="true" />
+</manifest>

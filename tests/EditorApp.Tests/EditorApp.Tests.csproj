@@ -28,4 +28,14 @@
     <ProjectReference Include="..\..\src\EditorApp\EditorApp.csproj" />
   </ItemGroup>
 
+  <!--
+    The Android head's shader translation. Compiled in rather than referenced: the mobile project
+    targets net10.0-android and nothing here can reference it, but the translation itself is string
+    work with no Android in it, and it is exactly the kind of thing that would otherwise only fail
+    on a device.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\EditorApp.Mobile\Rendering\EsShaders.cs" Link="Mobile\EsShaders.cs" />
+  </ItemGroup>
+
 </Project>

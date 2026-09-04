@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Android head. Everything that decides what a level is - the voxel world, the meshers, the
+    editing operations, the .vxlevel format - lives in EditorApp.Core and is shared with the
+    desktop editor unchanged. This project only knows how to put that on a screen and how to read
+    a finger.
+
+    Named Mobile rather than Android on purpose: a namespace ending in .Android shadows the
+    Android.* binding namespaces from inside itself, and every qualified reference then has to be
+    written global::Android.Whatever.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+
+    <!-- Android 8.0. Older than anything likely to run a voxel editor comfortably, and low enough
+         that the floor is never the reason a device is out. -->
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>EditorApp.Mobile</RootNamespace>
+    <AssemblyName>Blockage.Mobile</AssemblyName>
+
+    <ApplicationId>com.blockage.editor</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+
+    <!-- An .apk, not an .aab: this is sideloaded onto a phone for testing, not uploaded to Play. -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The shader sources, compiled into this project rather than copied into it. The shading
+      arithmetic was measured against exact byte values on the desktop; sharing the source is what
+      keeps that measurement meaningful here. EsShaders retargets the GLSL dialect, nothing else.
+    -->
+    <Compile Include="..\EditorApp\Rendering\Shaders.cs" Link="Rendering\Shaders.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EditorApp.Core\EditorApp.Core.csproj" />
+  </ItemGroup>
+
+</Project>
