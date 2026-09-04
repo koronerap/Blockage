@@ -14,9 +14,10 @@ namespace EditorApp.Mobile.Ui;
 /// Bringing one in from elsewhere, or sending one out, goes through the system document picker —
 /// the two buttons at the top.
 /// </summary>
-public sealed class FilesSheet : FrameLayout
+public sealed class FilesSheet : FrameLayout, IPage
 {
     private readonly LinearLayout _list;
+    private readonly ScrollView _scroll;
     private readonly TextView _current;
 
     public FilesSheet(Context context)
@@ -55,15 +56,14 @@ public sealed class FilesSheet : FrameLayout
         outputs.SetPadding(0, 0, 0, pad);
         AddAction(context, outputs, "Mesh .glb", () => MeshExportRequested?.Invoke(false));
         AddAction(context, outputs, "Mesh .obj (zip)", () => MeshExportRequested?.Invoke(true));
-        AddAction(context, outputs, ".character", () => MimicraftExportRequested?.Invoke(true));
-        AddAction(context, outputs, ".weapons", () => MimicraftExportRequested?.Invoke(false));
+        AddAction(context, outputs, "For Mimicraft", () => MimicraftRequested?.Invoke());
         page.AddView(outputs);
 
         _list = new LinearLayout(context) { Orientation = Orientation.Vertical };
 
-        var scroll = new ScrollView(context);
-        scroll.AddView(_list);
-        page.AddView(scroll, new LinearLayout.LayoutParams(
+        _scroll = new ScrollView(context);
+        _scroll.AddView(_list);
+        page.AddView(_scroll, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent,
             ViewGroup.LayoutParams.MatchParent));
 
@@ -90,8 +90,7 @@ public sealed class FilesSheet : FrameLayout
     /// <summary>True for the zipped OBJ, false for the single-file GLB.</summary>
     public event Action<bool>? MeshExportRequested;
 
-    /// <summary>True for a character, false for a weapon.</summary>
-    public event Action<bool>? MimicraftExportRequested;
+    public event Action? MimicraftRequested;
 
     public event Action<LevelEntry>? OpenRequested;
 
@@ -171,4 +170,7 @@ public sealed class FilesSheet : FrameLayout
 
         return row;
     }
+
+    /// <summary>A page opens at its top, however far down it was left last time.</summary>
+    public void ResetScroll() => _scroll.ScrollTo(0, 0);
 }

@@ -5,6 +5,7 @@ using Android.OS;
 using Android.Views;
 using Android.Widget;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Export.Mimicraft;
 using EditorApp.Core.Voxels;
 using EditorApp.Mobile.Files;
 using EditorApp.Mobile.Rendering;
@@ -45,6 +46,8 @@ public sealed class MainActivity : Activity
     private PaletteSheet? _palette;
     private FilesSheet? _files;
     private SceneSheet? _scene;
+    private MimicraftSheet? _mimicraft;
+    private MimicraftOptions _mimicraftOptions = MimicraftOptions.Default;
     private FileActions? _actions;
     private ExportActions? _exports;
     private OptionsBar? _options;
@@ -57,6 +60,9 @@ public sealed class MainActivity : Activity
 
     /// <summary>The floating groups, so the system bars can be kept off all of them at once.</summary>
     private readonly List<View> _floating = [];
+
+    /// <summary>The full-screen pages. Exactly one of them is ever visible.</summary>
+    private readonly List<View> _pages = [];
 
     private LinearLayout? _corner;
 
@@ -97,10 +103,10 @@ public sealed class MainActivity : Activity
             _surface.SetColorIndex(index);
             _palette.SetSelected(_surface.PaletteSnapshot(), index);
         };
-        _palette.Dismissed += () => _palette.Visibility = ViewStates.Gone;
+        _palette.Dismissed += () => ShowOnly(null);
 
         _scene = new SceneSheet(this) { Visibility = ViewStates.Gone };
-        _scene.Dismissed += () => _scene.Visibility = ViewStates.Gone;
+        _scene.Dismissed += () => ShowOnly(null);
         _scene.GridChanged += on => { _surface.SetGridVisible(on); ShowScene(); };
         _scene.ShadingChanged += mode => { _surface.ConfigureLighting(l => l.Mode = mode); ShowScene(); };
         _scene.LightAngleChanged += (azimuth, elevation) =>
@@ -116,10 +122,27 @@ public sealed class MainActivity : Activity
         _scene.LightReset += () => { _surface.ConfigureLighting(l => l.ResetAngles()); ShowScene(); };
         _scene.VoxelSizeChanged += size => { _surface.Configure(s => s.SetVoxelSize(size)); ShowScene(); };
         _scene.RotateRequested += direction => { _surface.Configure(s => s.RotateFocus(direction)); ShowScene(); };
-        _scene.FrameRequested += () => { _surface.FrameLevel(); _scene.Visibility = ViewStates.Gone; };
+        _scene.FrameRequested += () => { _surface.FrameLevel(); ShowOnly(null); };
         _scene.ObjectChosen += id => { _surface.Configure(s => s.TryFocus(id)); ShowScene(); };
         _scene.ObjectVisibilityToggled += id => { _surface.ToggleObjectVisible(id); ShowScene(); };
         _scene.ObjectDeleteRequested += id => { _surface.Configure(s => s.DeleteObject(id)); ShowScene(); };
+        _scene.ObjectRenameRequested += o => AskForName("Rename object", o.Name, name =>
+        {
+            _surface.RenameObject(o.Id, name);
+            ShowScene();
+        });
+
+        _mimicraft = new MimicraftSheet(this) { Visibility = ViewStates.Gone };
+        _mimicraft.Dismissed += () => ShowOnly(_files);
+        _mimicraft.OptionsChanged += options => { _mimicraftOptions = options; ShowMimicraft(); };
+        _mimicraft.ExportRequested += options =>
+        {
+            _mimicraftOptions = options;
+            ShowOnly(null);
+            _exports?.Start(
+                options.Target == MimicraftTarget.Character ? ExportKind.Character : ExportKind.Weapon,
+                options);
+        };
 
         // Private storage: emptied if the app is uninstalled, which is exactly why Export sits
         // beside Save rather than somewhere further in.
@@ -127,7 +150,7 @@ public sealed class MainActivity : Activity
         _actions = new FileActions(this, _surface, store);
 
         _files = new FilesSheet(this) { Visibility = ViewStates.Gone };
-        _files.Dismissed += () => _files.Visibility = ViewStates.Gone;
+        _files.Dismissed += () => ShowOnly(null);
         _files.NewRequested += () => _actions.New();
         _files.SaveRequested += () => _actions.Save();
         _files.SaveAsRequested += () => _actions.SaveAs();
@@ -137,8 +160,7 @@ public sealed class MainActivity : Activity
         _exports = new ExportActions(this, _surface, CacheDir!.AbsolutePath);
         _files.MeshExportRequested += zip =>
             _exports.Start(zip ? ExportKind.ObjZip : ExportKind.Glb);
-        _files.MimicraftExportRequested += character =>
-            _exports.Start(character ? ExportKind.Character : ExportKind.Weapon);
+        _files.MimicraftRequested += ShowMimicraft;
         _files.OpenRequested += level => _actions.Open(level);
         _files.DeleteRequested += level => _actions.Delete(level);
 
@@ -168,9 +190,13 @@ public sealed class MainActivity : Activity
         Float(root, _chrome.Actions, GravityFlags.Top | GravityFlags.End);
         Float(root, _chrome.Tools_, GravityFlags.CenterVertical | GravityFlags.Start);
         Float(root, _corner, GravityFlags.Bottom | GravityFlags.Start);
-        root.AddView(_palette, Fill());
-        root.AddView(_scene, Fill());
-        root.AddView(_files, Fill());
+        // Order here is z-order, and one page opening over another that is still visible is exactly
+        // the bug ShowOnly exists to stop.
+        foreach (View page in new View[] { _palette, _scene, _files, _mimicraft })
+        {
+            root.AddView(page, Fill());
+            _pages.Add(page);
+        }
 
         SetContentView(root);
         Refresh();
@@ -204,6 +230,7 @@ public sealed class MainActivity : Activity
         // The pages already carry their own margin inside; all they need from here is the bars.
         _palette?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
         _scene?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
+        _mimicraft?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
         _files?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
     }
 
@@ -235,7 +262,7 @@ public sealed class MainActivity : Activity
 
         Color32[] colors = _surface.PaletteSnapshot();
         _palette.Populate(colors, _surface.ActiveColorIndex);
-        _palette.Visibility = ViewStates.Visible;
+        ShowOnly(_palette);
     }
 
     private void ShowScene()
@@ -246,7 +273,58 @@ public sealed class MainActivity : Activity
         }
 
         _scene.Populate(_surface.SceneState);
-        _scene.Visibility = ViewStates.Visible;
+        ShowOnly(_scene);
+    }
+
+    private void ShowMimicraft()
+    {
+        if (_surface is null || _mimicraft is null || _exports is null)
+        {
+            return;
+        }
+
+        _mimicraft.Populate(
+            _mimicraftOptions,
+            _exports.Problems(_mimicraftOptions.Target),
+            _surface.ProjectName);
+
+        ShowOnly(_mimicraft);
+    }
+
+    /// <summary>
+    /// Brings one page up and puts every other one away. Pages are full-screen and opaque, so two
+    /// visible at once means the one underneath is simply unreachable.
+    /// </summary>
+    private void ShowOnly(View? page)
+    {
+        // Opening is not the same moment as refreshing. A page rebuilt because a choice on it
+        // changed has to stay where it was, or every tap throws the controls out from under the
+        // finger; a page being opened starts at its top.
+        bool opening = page is { Visibility: not ViewStates.Visible };
+
+        foreach (View other in _pages)
+        {
+            other.Visibility = ReferenceEquals(other, page) ? ViewStates.Visible : ViewStates.Gone;
+        }
+
+        if (opening && page is IPage scrollable)
+        {
+            scrollable.ResetScroll();
+        }
+    }
+
+    /// <summary>A one-line text prompt. Renaming and Save as both need exactly this and no more.</summary>
+    private void AskForName(string title, string suggestion, Action<string> accepted)
+    {
+        var input = new EditText(this) { Text = suggestion };
+        input.SetSelection(suggestion.Length);
+
+        new AlertDialog.Builder(this)
+            .SetTitle(title)!
+            .SetView(input)!
+            .SetPositiveButton("OK", (_, _) => accepted(input.Text ?? string.Empty))!
+            .SetNegativeButton("Cancel", (_, _) => { })!
+            .Show();
     }
 
     private void ShowFiles(LevelStore store)
@@ -257,7 +335,7 @@ public sealed class MainActivity : Activity
         }
 
         _files.Populate(store.List(), _surface.ProjectName, _surface.HasUnsavedChanges);
-        _files.Visibility = ViewStates.Visible;
+        ShowOnly(_files);
     }
 
     /// <summary>
@@ -311,22 +389,13 @@ public sealed class MainActivity : Activity
 #pragma warning disable CA1422
     public override void OnBackPressed()
     {
-        if (_palette is { Visibility: ViewStates.Visible })
+        foreach (View page in _pages)
         {
-            _palette.Visibility = ViewStates.Gone;
-            return;
-        }
-
-        if (_files is { Visibility: ViewStates.Visible })
-        {
-            _files.Visibility = ViewStates.Gone;
-            return;
-        }
-
-        if (_scene is { Visibility: ViewStates.Visible })
-        {
-            _scene.Visibility = ViewStates.Gone;
-            return;
+            if (page.Visibility == ViewStates.Visible)
+            {
+                ShowOnly(null);
+                return;
+            }
         }
 
         base.OnBackPressed();

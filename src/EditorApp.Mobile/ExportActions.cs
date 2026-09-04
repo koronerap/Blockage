@@ -7,6 +7,7 @@ using EditorApp.Core.Export.Mimicraft;
 using EditorApp.Core.Meshing;
 using EditorApp.Core.Scene;
 using EditorApp.Mobile.Rendering;
+using EditorApp.Mobile.Ui;
 
 namespace EditorApp.Mobile;
 
@@ -42,13 +43,15 @@ public sealed class ExportActions(Activity activity, EditorSurfaceView surface, 
     public const int Request = 3;
 
     private ExportKind _pending;
+    private MimicraftOptions _options = MimicraftOptions.Default;
 
     /// <summary>How much texture a voxel gets. The desktop's default, and its reasons.</summary>
     private const int TexelsPerVoxel = UvUnwrap.DefaultTexelsPerVoxel;
 
-    public void Start(ExportKind kind)
+    public void Start(ExportKind kind, MimicraftOptions? options = null)
     {
         _pending = kind;
+        _options = options ?? MimicraftOptions.Default;
 
         var intent = new Intent(Intent.ActionCreateDocument);
         intent.AddCategory(Intent.CategoryOpenable);
@@ -106,18 +109,18 @@ public sealed class ExportActions(Activity activity, EditorSurfaceView surface, 
         return true;
     }
 
-    private IReadOnlyList<MimicraftProblem>? Problems(ExportKind kind)
+    private IReadOnlyList<MimicraftProblem>? Problems(ExportKind kind) =>
+        kind is ExportKind.Character or ExportKind.Weapon
+            ? Problems(kind == ExportKind.Character ? MimicraftTarget.Character : MimicraftTarget.Weapon)
+            : null;
+
+    /// <summary>
+    /// Everything standing between this level and a file the game will load. Asked for by the page
+    /// as choices change, so the list is on screen before the export button is ever pressed.
+    /// </summary>
+    public IReadOnlyList<MimicraftProblem> Problems(MimicraftTarget target)
     {
-        if (kind is not (ExportKind.Character or ExportKind.Weapon))
-        {
-            return null;
-        }
-
-        MimicraftTarget target = kind == ExportKind.Character
-            ? MimicraftTarget.Character
-            : MimicraftTarget.Weapon;
-
-        IReadOnlyList<MimicraftProblem>? found = null;
+        IReadOnlyList<MimicraftProblem> found = [];
         surface.UseScene(scene => found = MimicraftValidation.Check(scene, target));
         return found;
     }
@@ -136,20 +139,26 @@ public sealed class ExportActions(Activity activity, EditorSurfaceView surface, 
                 ExportKind.ObjZip => BuildMesh(scene, name, new ObjExporter(), zip: true),
                 ExportKind.Character => MimicraftFiles.EncodeCharacter(
                     name,
-                    rigId: string.Empty,
+                    _options.Id,
                     MimicraftScene.BuildCharacterParts(scene),
                     scene.Palette,
-                    new MimicraftOrientation()),
+                    _options.Orientation),
+
+                // The weapon's id is what the game looks it up by, so it is the one the page asked
+                // for rather than whatever the file happens to be called.
                 _ => MimicraftFiles.EncodeWeapon(
-                    name,
-                    MimicraftScene.BuildWeaponPiece(scene, name),
+                    WeaponId(name),
+                    MimicraftScene.BuildWeaponPiece(scene, WeaponId(name)),
                     scene.Palette,
-                    new MimicraftOrientation()),
+                    _options.Orientation),
             };
         });
 
         return result ?? throw new InvalidOperationException("Nothing was produced.");
     }
+
+    private string WeaponId(string fallback) =>
+        _options.Id.Trim().Length > 0 ? _options.Id.Trim() : fallback;
 
     /// <summary>
     /// Runs the export the desktop runs — greedy mesh, unwrap, atlas — into a scratch directory, then

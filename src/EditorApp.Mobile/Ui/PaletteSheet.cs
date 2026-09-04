@@ -15,9 +15,10 @@ namespace EditorApp.Mobile.Ui;
 /// Empty custom slots are left out. There are sixty-four of them and, until one is saved, every one
 /// looks the same as the last.
 /// </summary>
-public sealed class PaletteSheet : FrameLayout
+public sealed class PaletteSheet : FrameLayout, IPage
 {
     private readonly LinearLayout _rows;
+    private readonly ScrollView _scroll;
     private readonly Dictionary<int, View> _swatches = new();
 
     public PaletteSheet(Context context)
@@ -47,9 +48,9 @@ public sealed class PaletteSheet : FrameLayout
         _rows = new LinearLayout(context) { Orientation = Orientation.Vertical };
         _rows.SetPadding(0, Style.Dp(context, 12f), 0, Style.Dp(context, 12f));
 
-        var scroll = new ScrollView(context);
-        scroll.AddView(_rows);
-        page.AddView(scroll, new LinearLayout.LayoutParams(
+        _scroll = new ScrollView(context);
+        _scroll.AddView(_rows);
+        page.AddView(_scroll, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent,
             ViewGroup.LayoutParams.MatchParent));
 
@@ -134,4 +135,7 @@ public sealed class PaletteSheet : FrameLayout
                 index == selected ? Style.Accent : null);
         }
     }
+
+    /// <summary>A page opens at its top, however far down it was left last time.</summary>
+    public void ResetScroll() => _scroll.ScrollTo(0, 0);
 }

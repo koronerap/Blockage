@@ -228,6 +228,34 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         Changed();
     }
 
+    /// <summary>
+    /// Renames an object. Not an undo step, and deliberately: on the desktop it is not one either,
+    /// and a name is not part of what the voxels are.
+    /// </summary>
+    public void RenameObject(int id, string name)
+    {
+        string trimmed = name.Trim();
+        if (trimmed.Length == 0)
+        {
+            return;
+        }
+
+        lock (_sceneGate)
+        {
+            foreach (VoxelObject o in _session.Scene.Objects)
+            {
+                if (o.Id == id)
+                {
+                    o.Name = trimmed;
+                    _session.HasUnsavedChanges = true;
+                    break;
+                }
+            }
+        }
+
+        Changed();
+    }
+
     public void FrameLevel()
     {
         lock (_sceneGate)

@@ -31,6 +31,9 @@ public static class Style
     /// <summary>The selected tool, and the ring around the selected colour.</summary>
     public static readonly Color Accent = Color.Argb(255, 96, 165, 250);
 
+    /// <summary>What a problem is written in. Read, never pressed.</summary>
+    public static readonly Color Warning = Color.Argb(255, 255, 138, 128);
+
     public static readonly Color ButtonIdle = Color.Argb(255, 48, 53, 61);
 
     /// <summary>

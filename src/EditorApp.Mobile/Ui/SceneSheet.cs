@@ -15,9 +15,10 @@ namespace EditorApp.Mobile.Ui;
 /// which a phone has no room to keep open. They are the same controls, gathered where they can have
 /// the width they need and cost nothing while they are closed.
 /// </summary>
-public sealed class SceneSheet : FrameLayout
+public sealed class SceneSheet : FrameLayout, IPage
 {
     private readonly LinearLayout _body;
+    private readonly ScrollView _scroll;
 
     public SceneSheet(Context context)
         : base(context)
@@ -44,9 +45,9 @@ public sealed class SceneSheet : FrameLayout
         _body = new LinearLayout(context) { Orientation = Orientation.Vertical };
         _body.SetPadding(0, pad, 0, pad);
 
-        var scroll = new ScrollView(context);
-        scroll.AddView(_body);
-        page.AddView(scroll, new LinearLayout.LayoutParams(
+        _scroll = new ScrollView(context);
+        _scroll.AddView(_body);
+        page.AddView(_scroll, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent,
             ViewGroup.LayoutParams.MatchParent));
 
@@ -81,6 +82,13 @@ public sealed class SceneSheet : FrameLayout
     public event Action<int>? ObjectVisibilityToggled;
 
     public event Action<int>? ObjectDeleteRequested;
+
+    /// <summary>
+    /// Renaming matters more here than it looks. A Mimicraft character writes each object's name as
+    /// the rig slot it fills, so a level whose objects are still called "Object 1" exports a file
+    /// that is valid and fits nothing.
+    /// </summary>
+    public event Action<ObjectState>? ObjectRenameRequested;
 
     public void Populate(SceneState state)
     {
@@ -195,6 +203,10 @@ public sealed class SceneSheet : FrameLayout
         layout.SetMargins(Style.Dp(context, 6f), 0, Style.Dp(context, 6f), 0);
         row.AddView(name, layout);
 
+        var rename = new IconButtonView(context, Resource.Drawable.ic_rename, "Rename this object");
+        rename.Click += (_, _) => ObjectRenameRequested?.Invoke(o);
+        row.AddView(rename);
+
         // The last object cannot go: a scene with nothing in it has no grid to edit and no focus to
         // hold, and the session would have to invent one back immediately.
         var remove = new IconButtonView(context, Resource.Drawable.ic_delete, "Delete this object")
@@ -278,4 +290,7 @@ public sealed class SceneSheet : FrameLayout
     {
         LayoutParameters = new LinearLayout.LayoutParams(Style.Dp(Context!, 12f), 0),
     };
+
+    /// <summary>A page opens at its top, however far down it was left last time.</summary>
+    public void ResetScroll() => _scroll.ScrollTo(0, 0);
 }
