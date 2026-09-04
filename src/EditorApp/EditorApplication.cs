@@ -22,35 +22,6 @@ namespace EditorApp;
 /// </summary>
 public sealed class EditorApplication : IDisposable
 {
-    private static readonly Color32 GridMinor = new(60, 66, 74);
-    private static readonly Color32 GridMajor = new(92, 100, 110);
-    private static readonly Color32 HighlightColor = new(255, 236, 120);
-    private static readonly Color32 BrushOutlineColor = new(255, 160, 60);
-    private static readonly Color32 SelectionColor = new(120, 230, 140);
-    private static readonly Color32 SelectionAddColor = new(120, 230, 140);
-
-    // Subtract has to look different from add: until the click lands, the two gestures are
-    // otherwise indistinguishable (EditorApp.md, "Extrude").
-    private static readonly Color32 SelectionSubtractColor = new(255, 110, 110);
-    private static readonly Color32 ArrowColor = new(255, 210, 90);
-    private static readonly Color32 CutPlaneColor = new(255, 130, 220);
-    // Straight from the theme, so an axis is the same colour in the gizmo, the corner indicator and
-    // the dimension labels.
-    private static readonly Color32 GizmoXColor = Color32.FromVector4(Theme.AxisX);
-    private static readonly Color32 GizmoYColor = Color32.FromVector4(Theme.AxisY);
-    private static readonly Color32 GizmoZColor = Color32.FromVector4(Theme.AxisZ);
-    private static readonly Color32 GizmoEdgeColor = new(150, 150, 165);
-    private static readonly Color32 GizmoActiveColor = new(255, 240, 140);
-
-    /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
-    private const int MaxOutlinedFaces = 3000;
-
-    // Overlay stroke widths, as multiples of the batch's screen-constant thickness. Heavy enough to
-    // grab, light enough not to become the thing you look at.
-    private const float SelectionWidth = 1.1f;
-    private const float GizmoWidth = 1.8f;
-    private const float GizmoEdgeWidth = 1.5f;
-    private const float ArrowWidth = 1.8f;
 
     private readonly IWindow _window;
     private readonly int _smokeFrames;
@@ -831,8 +802,8 @@ public sealed class EditorApplication : IDisposable
             lines.AddGroundGrid(
                 GroundGrid.HalfExtentCells,
                 GroundGrid.Spacing(_session.Scene.VoxelSize),
-                GridMinor,
-                GridMajor);
+                EditorOverlays.GridMinor,
+                EditorOverlays.GridMajor);
         }
 
         // Everything from here on is expressed in the focused object's own space.
@@ -846,16 +817,16 @@ public sealed class EditorApplication : IDisposable
         // something the paint tool is about to do.
         if (_session.ActiveTool == EditorTool.Extrude)
         {
-            AddSelectionOutline(lines, _session.Selection, SelectionColor);
-            AddSelectionOutline(
+            EditorOverlays.AddSelectionOutline(lines, _session.Selection, EditorOverlays.Selection);
+            EditorOverlays.AddSelectionOutline(
                 lines,
                 _extrude!.PendingSelection,
-                _extrude.PendingOperation == SelectionOperation.Subtract ? SelectionSubtractColor : SelectionAddColor);
+                _extrude.PendingOperation == SelectionOperation.Subtract ? EditorOverlays.SelectionSubtract : EditorOverlays.SelectionAdd);
         }
 
         if (_hover is { } hit)
         {
-            lines.AddVoxelFace(hit.Voxel, hit.Face, HighlightColor, width: SelectionWidth);
+            lines.AddVoxelFace(hit.Voxel, hit.Face, EditorOverlays.Highlight, width: EditorOverlays.SelectionWidth);
 
             if (_session.ActiveTool == EditorTool.Paint)
             {
@@ -865,177 +836,14 @@ public sealed class EditorApplication : IDisposable
         }
 
         // The cut plane runs through the middle of the model, so depth testing would hide it.
-        AddCutPreview(gizmos);
+        EditorOverlays.AddCutPreview(gizmos, _session);
 
         // Everything below is already in world space.
         lines.Transform = Matrix4x4.Identity;
         gizmos.Transform = Matrix4x4.Identity;
 
-        AddExtrudeArrow(gizmos);
-        AddTransformGizmo(gizmos);
-    }
-
-    /// <summary>Draws the move arrows, the box edges and the rotate rings.</summary>
-    private void AddTransformGizmo(LineBatch lines)
-    {
-        if (_session.ActiveTool != EditorTool.Transform || _transform is null)
-        {
-            return;
-        }
-
-        foreach (GizmoHandle handle in _transform.Handles(_camera))
-        {
-            if (!_transform.ShouldDraw(handle))
-            {
-                continue;
-            }
-
-            Color32 color = _transform.IsHighlighted(handle) ? GizmoActiveColor : ColorFor(handle);
-
-            if (handle.Kind == GizmoKind.RotateRing)
-            {
-                Vector3? previous = null;
-                foreach (Vector3 point in _transform.RingPoints(handle, _camera))
-                {
-                    if (previous is { } from)
-                    {
-                        lines.AddThickLine(from, point, color, GizmoWidth);
-                    }
-
-                    previous = point;
-                }
-
-                continue;
-            }
-
-            (Vector3 start, Vector3 end) = _transform.Segment(handle, _camera);
-
-            if (handle.Kind == GizmoKind.MoveAxis)
-            {
-                AddArrow(lines, start, end, color, GizmoWidth);
-                continue;
-            }
-
-            lines.AddThickLine(start, end, color, GizmoEdgeWidth);
-        }
-
-        // The pivot a rotation is turning about, so a hinge is not a mystery mid-drag.
-        if (_input is { Mice.Count: > 0 }
-            && _transform.ActivePivot(_viewport.ToLocal(_input.Mice[0].Position), _viewport.Size, _camera)
-                is { } pivot)
-        {
-            var size = new Vector3(0.25f);
-            lines.AddBox(pivot - size, pivot + size, GizmoActiveColor, GizmoEdgeWidth);
-        }
-    }
-
-    /// <summary>
-    /// A shaft that stops at the base of a solid cone. Running the shaft all the way to the tip
-    /// leaves a thick stub poking out of the cone's point, which is the part of an arrow that has
-    /// to look sharp.
-    /// </summary>
-    private static void AddArrow(LineBatch lines, Vector3 start, Vector3 end, Color32 color, float width)
-    {
-        Vector3 along = end - start;
-        float length = along.Length();
-        if (length < 1e-4f)
-        {
-            return;
-        }
-
-        Vector3 direction = along / length;
-        float coneLength = length * 0.28f;
-        Vector3 coneBase = end - direction * coneLength;
-
-        lines.AddThickLine(start, coneBase, color, width);
-        lines.AddCone(end, coneBase, coneLength * 0.42f, color);
-    }
-
-    private static Color32 ColorFor(GizmoHandle handle) => handle.Kind switch
-    {
-        GizmoKind.EdgeHinge => GizmoEdgeColor,
-        _ => handle.Axis switch
-        {
-            0 => GizmoXColor,
-            1 => GizmoYColor,
-            _ => GizmoZColor,
-        },
-    };
-
-    /// <summary>Draws the loop cut plane as a rectangle spanning the object's bounds.</summary>
-    private void AddCutPreview(LineBatch lines)
-    {
-        // Gated on the tool as well as on the plane: a preview must never outlive its own tool.
-        if (_session.ActiveTool != EditorTool.LoopCut
-            || _session.PreviewCutPlane is not { } plane
-            || _session.Scene.Focus is not { } focus
-            || !focus.Grid.TryGetBounds(out Int3 min, out Int3 max))
-        {
-            return;
-        }
-
-        int axis = plane.AxisIndex;
-        int uAxis = axis == 0 ? 1 : 0;
-        int vAxis = axis == 2 ? 1 : 2;
-
-        Vector3 Corner(float u, float v)
-        {
-            Span<float> parts = stackalloc float[3];
-            parts[axis] = plane.Coordinate;
-            parts[uAxis] = u;
-            parts[vAxis] = v;
-            return new Vector3(parts[0], parts[1], parts[2]);
-        }
-
-        float uMin = VoxelBox.Component(min, uAxis);
-        float uMax = VoxelBox.Component(max, uAxis) + 1f;
-        float vMin = VoxelBox.Component(min, vAxis);
-        float vMax = VoxelBox.Component(max, vAxis) + 1f;
-
-        Vector3 a = Corner(uMin, vMin);
-        Vector3 b = Corner(uMax, vMin);
-        Vector3 c = Corner(uMax, vMax);
-        Vector3 d = Corner(uMin, vMax);
-
-        lines.AddThickLine(a, b, CutPlaneColor, SelectionWidth);
-        lines.AddThickLine(b, c, CutPlaneColor, SelectionWidth);
-        lines.AddThickLine(c, d, CutPlaneColor, SelectionWidth);
-        lines.AddThickLine(d, a, CutPlaneColor, SelectionWidth);
-
-        // A diagonal makes the plane read as a surface rather than an empty frame.
-        lines.AddThickLine(a, c, CutPlaneColor, SelectionWidth);
-    }
-
-    private static void AddSelectionOutline(LineBatch lines, FaceSelection? selection, Color32 color)
-    {
-        if (selection is not { IsEmpty: false })
-        {
-            return;
-        }
-
-        // Outlining thousands of individual faces costs more than it communicates; past the cap the
-        // bounding box says the same thing for four orders of magnitude fewer lines.
-        if (selection.Count > MaxOutlinedFaces)
-        {
-            (Vector3 min, Vector3 max) = selection.Bounds().ToWorldBounds();
-            lines.AddBox(min, max, color, SelectionWidth);
-            return;
-        }
-
-        foreach (Int3 voxel in selection.Voxels)
-        {
-            lines.AddVoxelFace(voxel, selection.Direction, color, offset: 0.02f, width: SelectionWidth);
-        }
-    }
-
-    private void AddExtrudeArrow(LineBatch lines)
-    {
-        if (_session.ActiveTool != EditorTool.Extrude || _extrude!.Arrow() is not { } arrow)
-        {
-            return;
-        }
-
-        AddArrow(lines, arrow.Start, arrow.End, ArrowColor, ArrowWidth);
+        EditorOverlays.AddExtrudeArrow(gizmos, _session, _extrude!);
+        EditorOverlays.AddTransformGizmo(gizmos, _session, _transform!, _camera);
     }
 
     /// <summary>Shows where a Shift or Ctrl drag would land before it is committed.</summary>
@@ -1051,15 +859,15 @@ public sealed class EditorApplication : IDisposable
         if (_paintShapeIsBox)
         {
             (Vector3 min, Vector3 max) = VoxelBox.FromCorners(anchor, cursor).ToWorldBounds();
-            lines.AddBox(min, max, BrushOutlineColor, SelectionWidth);
+            lines.AddBox(min, max, EditorOverlays.BrushOutline, EditorOverlays.SelectionWidth);
             return;
         }
 
         lines.AddThickLine(
             anchor.ToVector3() + half,
             cursor.ToVector3() + half,
-            BrushOutlineColor,
-            SelectionWidth);
+            EditorOverlays.BrushOutline,
+            EditorOverlays.SelectionWidth);
     }
 
     private void AddBrushOutline(LineBatch lines, Int3 center)
@@ -1068,7 +876,7 @@ public sealed class EditorApplication : IDisposable
         Vector3 centre = center.ToVector3() + new Vector3(0.5f);
         var extent = new Vector3(radius + 0.5f);
 
-        lines.AddBox(centre - extent, centre + extent, BrushOutlineColor);
+        lines.AddBox(centre - extent, centre + extent, EditorOverlays.BrushOutline);
     }
 
     private void DrawUi()

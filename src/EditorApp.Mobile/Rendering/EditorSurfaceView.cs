@@ -3,8 +3,8 @@ using Android.Content;
 using Android.Opengl;
 using Android.Views;
 using EditorApp.Core.Editing;
-using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
+using EditorApp.Mobile.Tools;
 using EditorApp.Rendering;
 using Javax.Microedition.Khronos.Opengles;
 
@@ -14,22 +14,18 @@ namespace EditorApp.Mobile.Rendering;
 /// The GL surface the editor draws into, the renderer that draws it, and the fingers that move it.
 ///
 /// Two threads meet here. Everything from <see cref="OnSurfaceCreated"/> down runs on the GL thread;
-/// touch events arrive on the UI thread. The session and the camera are read by one and written by
-/// the other, so both go through <see cref="_sceneGate"/> — a voxel world being remeshed while an
-/// edit is landing in it would be a very hard bug to find later.
+/// touch events and the interface arrive on the UI thread. The session, the camera and the tools are
+/// read by one and written by the other, so every path through them takes <see cref="_sceneGate"/> —
+/// a voxel world being remeshed while an edit lands in it would be a very hard bug to find later.
 /// </summary>
 public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
 {
-    /// <summary>Colour of the ground grid's ordinary lines, matching the desktop.</summary>
-    private static readonly Color32 GridMinor = new(70, 76, 84);
-
-    /// <summary>Every tenth line, so the grid can be counted rather than just seen.</summary>
-    private static readonly Color32 GridMajor = new(96, 104, 114);
-
     private readonly Lock _sceneGate = new();
     private readonly EditorSession _session = new();
     private readonly OrbitCamera _camera = new();
-    private readonly TouchGestures _gestures = new();
+    private readonly TouchGestureTracker _tracker = new();
+    private readonly TouchGestures _gestures;
+    private readonly MobileTools _tools;
 
     private MobileRenderer? _renderer;
     private Vector2 _viewportSize = Vector2.One;
@@ -47,6 +43,9 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         // comes back empty.
         PreserveEGLContextOnPause = true;
 
+        _gestures = new TouchGestures(_tracker);
+        _tools = new MobileTools(_session);
+
         _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
         FrameScene();
 
@@ -61,6 +60,9 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
     /// <summary>Raised on the UI thread whenever <see cref="Report"/> changes.</summary>
     public event Action? ReportChanged;
 
+    /// <summary>Raised on the UI thread when something the tool bar shows has changed.</summary>
+    public event Action? SessionChanged;
+
     /// <summary>
     /// What the GL thread found when it came up: the driver's own identification, or the reason
     /// nothing is on screen.
@@ -74,6 +76,125 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
                 return _report;
             }
         }
+    }
+
+    public EditorTool ActiveTool
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.ActiveTool;
+            }
+        }
+    }
+
+    public byte ActiveColorIndex
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.ActiveColorIndex;
+            }
+        }
+    }
+
+    public Color32 ActiveColor
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.World.Palette[_session.ActiveColorIndex];
+            }
+        }
+    }
+
+    public bool CanUndo
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.History.CanUndo;
+            }
+        }
+    }
+
+    public bool CanRedo
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.History.CanRedo;
+            }
+        }
+    }
+
+    /// <summary>A copy, because the caller is on another thread and the palette can change.</summary>
+    public Color32[] PaletteSnapshot()
+    {
+        lock (_sceneGate)
+        {
+            return _session.World.Palette.Colors.ToArray();
+        }
+    }
+
+    public void SetTool(EditorTool tool)
+    {
+        lock (_sceneGate)
+        {
+            if (_session.ActiveTool == tool)
+            {
+                return;
+            }
+
+            _session.ActiveTool = tool;
+
+            // A preview must never outlive its own tool: a cut plane left hanging would be armed
+            // and invisible the next time Loop Cut came back.
+            _session.PreviewCutPlane = null;
+        }
+
+        Changed();
+    }
+
+    public void SetColorIndex(byte index)
+    {
+        lock (_sceneGate)
+        {
+            _session.ActiveColorIndex = index;
+        }
+
+        Changed();
+    }
+
+    public void Undo()
+    {
+        lock (_sceneGate)
+        {
+            _session.Undo();
+        }
+
+        Changed();
+    }
+
+    public void Redo()
+    {
+        lock (_sceneGate)
+        {
+            _session.Redo();
+        }
+
+        Changed();
+    }
+
+    private void Changed()
+    {
+        RequestRender();
+        Post(() => SessionChanged?.Invoke());
     }
 
     private void FrameScene()
@@ -139,15 +260,7 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         lock (_sceneGate)
         {
             _renderer.SyncDirtyChunks(_session.Scene);
-
-            _renderer.Lines.Clear();
-            _renderer.Lines.CameraPosition = _camera.Camera.Position;
-            _renderer.Lines.AddGroundGrid(
-                GroundGrid.HalfExtentCells,
-                GroundGrid.Spacing(_session.Scene.VoxelSize),
-                GridMinor,
-                GridMajor);
-
+            BuildOverlays();
             _renderer.Render(_session.Scene, _camera.Camera, _viewportSize);
 
             // A large edit is remeshed over several frames on a budget, so the queue has to ask for
@@ -159,6 +272,47 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         }
     }
 
+    /// <summary>
+    /// The same overlays the desktop draws, from the same code. Depth-tested things go in
+    /// <c>Lines</c>; things that must never be swallowed by the model go in <c>GizmoLines</c>,
+    /// which is drawn on a cleared depth buffer.
+    /// </summary>
+    private void BuildOverlays()
+    {
+        LineGeometry lines = _renderer!.Lines;
+        LineGeometry gizmos = _renderer.GizmoLines;
+
+        lines.Clear();
+        gizmos.Clear();
+        lines.CameraPosition = _camera.Camera.Position;
+        gizmos.CameraPosition = _camera.Camera.Position;
+
+        lines.AddGroundGrid(
+            GroundGrid.HalfExtentCells,
+            GroundGrid.Spacing(_session.Scene.VoxelSize),
+            EditorOverlays.GridMinor,
+            EditorOverlays.GridMajor);
+
+        // Everything from here to the reset is expressed in the focused object's own space.
+        Matrix4x4 focusMatrix = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;
+        lines.Transform = focusMatrix;
+        gizmos.Transform = focusMatrix;
+
+        if (_session.ActiveTool == EditorTool.Extrude)
+        {
+            EditorOverlays.AddSelectionOutline(lines, _session.Selection, EditorOverlays.Selection);
+        }
+
+        // The cut plane runs through the middle of the model, so depth testing would hide it.
+        EditorOverlays.AddCutPreview(gizmos, _session);
+
+        lines.Transform = Matrix4x4.Identity;
+        gizmos.Transform = Matrix4x4.Identity;
+
+        EditorOverlays.AddExtrudeArrow(gizmos, _session, _tools.Extrude);
+        EditorOverlays.AddTransformGizmo(gizmos, _session, _tools.Transform, _camera.Camera);
+    }
+
     public override bool OnTouchEvent(MotionEvent? e)
     {
         if (e is null)
@@ -167,13 +321,27 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         }
 
         TouchGesture gesture = _gestures.Consume(e);
+        bool changed = false;
 
         lock (_sceneGate)
         {
             switch (gesture.Kind)
             {
+                case TouchGestureKind.Began:
+                    _tools.Press(gesture.Position, _viewportSize, _camera.Camera);
+                    break;
+
                 case TouchGestureKind.Orbit:
-                    _camera.Orbit(gesture.Delta);
+                    if (_tools.IsCapturing)
+                    {
+                        _tools.Drag(gesture.Position, _viewportSize, _camera.Camera);
+                        changed = true;
+                    }
+                    else
+                    {
+                        _camera.Orbit(gesture.Delta);
+                    }
+
                     break;
 
                 case TouchGestureKind.PanAndZoom:
@@ -181,12 +349,25 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
                     _camera.Zoom(gesture.Scale);
                     break;
 
+                case TouchGestureKind.Ended:
+                    changed = _tools.Release(
+                        gesture.Position, _viewportSize, _camera.Camera, gesture.WasTap);
+                    break;
+
                 case TouchGestureKind.None:
                     return true;    // a finger landing or leaving moved nothing
             }
         }
 
-        RequestRender();
+        if (changed)
+        {
+            Changed();
+        }
+        else
+        {
+            RequestRender();
+        }
+
         return true;
     }
 

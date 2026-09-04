@@ -1,30 +1,30 @@
 using Android.App;
 using Android.Content.PM;
-using Android.Graphics;
 using Android.OS;
-using Android.Util;
 using Android.Views;
 using Android.Widget;
+using EditorApp.Core.Voxels;
 using EditorApp.Mobile.Rendering;
+using EditorApp.Mobile.Ui;
 
 namespace EditorApp.Mobile;
 
 /// <summary>
-/// The one screen the editor lives on: a GL surface with the interface drawn over it as ordinary
-/// Android views. No layout XML — the hierarchy is small enough that building it here keeps it in
-/// one readable place, and a resource file would only add a second one to keep in step.
+/// The one screen the editor lives on: a GL surface with the interface over it as ordinary Android
+/// views. No layout XML — the hierarchy is small enough that building it here keeps it in one
+/// readable place, and a resource file would only add a second one to keep in step.
 /// </summary>
 [Activity(
     Label = "Blockage",
     MainLauncher = true,
 
-    // No title bar and no status bar. A viewport this size cannot spare the height, and the app
-    // has nothing to say in a title bar that the screen does not already show.
+    // No title bar and no status bar. A viewport this size cannot spare the height, and the app has
+    // nothing to say in a title bar that the screen does not already show.
     Theme = "@android:style/Theme.Material.NoActionBar.Fullscreen",
 
-    // A viewport wants width, and locking the orientation also keeps the GL context off the
-    // rotation path entirely while the renderer is still young. Worth revisiting once the surface
-    // survives being recreated.
+    // A viewport wants width, and locking the orientation also keeps the GL context off the rotation
+    // path entirely while the renderer is still young. Worth revisiting once the surface survives
+    // being recreated.
     ScreenOrientation = ScreenOrientation.UserLandscape,
 
     // Handle these rather than being torn down and rebuilt for them.
@@ -38,52 +38,92 @@ namespace EditorApp.Mobile;
 public sealed class MainActivity : Activity
 {
     private EditorSurfaceView? _surface;
-    private TextView? _reportView;
+    private ToolBar? _toolBar;
+    private PaletteSheet? _palette;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
 
         _surface = new EditorSurfaceView(this);
-        _surface.ReportChanged += UpdateReport;
+        _surface.SessionChanged += Refresh;
 
-        _reportView = new TextView(this)
+        _toolBar = new ToolBar(this);
+        _toolBar.ToolChosen += tool => _surface.SetTool(tool);
+        _toolBar.UndoRequested += () => _surface.Undo();
+        _toolBar.RedoRequested += () => _surface.Redo();
+        _toolBar.PaletteRequested += ShowPalette;
+
+        _palette = new PaletteSheet(this) { Visibility = ViewStates.Gone };
+        _palette.ColorChosen += index =>
         {
-            Typeface = Typeface.Monospace,
-            Text = _surface.Report,
+            _surface.SetColorIndex(index);
+            _palette.SetSelected(_surface.PaletteSnapshot(), index);
         };
-        _reportView.SetTextSize(ComplexUnitType.Sp, 11);
-        _reportView.SetTextColor(Color.Argb(255, 226, 230, 236));
-        _reportView.SetBackgroundColor(Color.Argb(150, 0, 0, 0));
-        _reportView.SetPadding(24, 24, 24, 24);
+        _palette.Dismissed += () => _palette.Visibility = ViewStates.Gone;
 
         FrameLayout root = new(this);
+        root.AddView(_surface, Fill());
         root.AddView(
-            _surface,
+            _toolBar,
             new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent,
-                ViewGroup.LayoutParams.MatchParent));
-        root.AddView(
-            _reportView,
-            new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WrapContent,
                 ViewGroup.LayoutParams.WrapContent)
             {
-                Gravity = GravityFlags.Top | GravityFlags.Start,
-                LeftMargin = 32,
-                TopMargin = 32,
+                Gravity = GravityFlags.Bottom,
             });
+        root.AddView(_palette, Fill());
 
         SetContentView(root);
+        Refresh();
     }
 
-    private void UpdateReport()
+    private static FrameLayout.LayoutParams Fill() =>
+        new(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent);
+
+    private void ShowPalette()
     {
-        if (_reportView is not null && _surface is not null)
+        if (_surface is null || _palette is null)
         {
-            _reportView.Text = _surface.Report;
+            return;
+        }
+
+        Color32[] colors = _surface.PaletteSnapshot();
+        _palette.Populate(colors, _surface.ActiveColorIndex);
+        _palette.Visibility = ViewStates.Visible;
+    }
+
+    private void Refresh()
+    {
+        if (_surface is not null && _toolBar is not null)
+        {
+            _toolBar.Refresh(
+                _surface.ActiveTool,
+                _surface.CanUndo,
+                _surface.CanRedo,
+                _surface.ActiveColor);
         }
     }
+
+    /// <summary>
+    /// The palette is a page, so the back gesture should close it before leaving the app.
+    ///
+    /// Marked obsolete from Android 33, where the replacement is an OnBackInvokedCallback — but that
+    /// only runs for an app that has opted into predictive back in its manifest, which this one has
+    /// not. Until it does, this override is still the path the system takes.
+    /// </summary>
+#pragma warning disable CA1422
+    public override void OnBackPressed()
+    {
+        if (_palette is { Visibility: ViewStates.Visible })
+        {
+            _palette.Visibility = ViewStates.Gone;
+            return;
+        }
+
+        base.OnBackPressed();
+    }
+#pragma warning restore CA1422
 
     protected override void OnPause()
     {

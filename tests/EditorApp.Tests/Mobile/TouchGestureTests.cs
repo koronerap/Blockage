@@ -15,15 +15,20 @@ public class TouchGestureTests
         [new Vector2(x1, y1), new Vector2(x2, y2)];
 
     /// <summary>
-    /// The frame a finger lands on has nothing to compare against, so it must report no movement —
-    /// otherwise every gesture would begin by throwing the camera at wherever the finger touched.
+    /// The frame a finger lands on has nothing to compare against, so it announces the touch and
+    /// reports no movement — otherwise every gesture would begin by throwing the camera at wherever
+    /// the finger happened to land.
     /// </summary>
     [Fact]
-    public void FirstFrameOfATouchReportsNothing()
+    public void FirstFrameOfATouchBeginsWithoutMoving()
     {
         var tracker = new TouchGestureTracker();
 
-        Assert.Equal(TouchGestureKind.None, tracker.Update(One(100, 100)).Kind);
+        TouchGesture began = tracker.Update(One(100, 100));
+
+        Assert.Equal(TouchGestureKind.Began, began.Kind);
+        Assert.Equal(Vector2.Zero, began.Delta);
+        Assert.Equal(new Vector2(100, 100), began.Position);
     }
 
     [Fact]
@@ -128,7 +133,62 @@ public class TouchGestureTests
         var tracker = new TouchGestureTracker();
         tracker.Update(One(100, 100));
 
-        Assert.Equal(TouchGestureKind.None, tracker.Update([]).Kind);
+        Assert.Equal(TouchGestureKind.Ended, tracker.Update([]).Kind);
+    }
+
+    /// <summary>A touch that goes nowhere is a tap, and a tap is how a tool gets used.</summary>
+    [Fact]
+    public void ATouchThatDoesNotTravelIsATap()
+    {
+        var tracker = new TouchGestureTracker();
+        tracker.Update(One(100, 100));
+        tracker.Update(One(104, 97));
+
+        TouchGesture ended = tracker.Update([]);
+
+        Assert.True(ended.WasTap);
+        Assert.Equal(new Vector2(104, 97), ended.Position);
+    }
+
+    [Fact]
+    public void ATouchThatTravelsIsNotATap()
+    {
+        var tracker = new TouchGestureTracker();
+        tracker.Update(One(100, 100));
+        tracker.Update(One(400, 100));
+
+        Assert.False(tracker.Update([]).WasTap);
+    }
+
+    /// <summary>
+    /// Distance travelled, not distance moved. A finger that wanders out and comes back has ended up
+    /// where it started, and calling that a tap would fire a tool at the end of a camera drag.
+    /// </summary>
+    [Fact]
+    public void AFingerThatWandersAndReturnsIsNotATap()
+    {
+        var tracker = new TouchGestureTracker();
+        tracker.Update(One(100, 100));
+        tracker.Update(One(400, 100));
+        tracker.Update(One(100, 100));
+
+        Assert.False(tracker.Update([]).WasTap);
+    }
+
+    /// <summary>
+    /// A pinch usually ends with the fingers close to where they started, so measuring travel alone
+    /// would call it a tap and fire a tool the moment the user let go of a zoom.
+    /// </summary>
+    [Fact]
+    public void APinchIsNeverATapHoweverLittleItMoved()
+    {
+        var tracker = new TouchGestureTracker();
+        tracker.Update(One(200, 200));
+        tracker.Update(Two(200, 200, 260, 200));
+        tracker.Update(Two(199, 201, 261, 199));
+        tracker.Update(One(200, 200));
+
+        Assert.False(tracker.Update([]).WasTap);
     }
 
     /// <summary>
@@ -140,8 +200,22 @@ public class TouchGestureTests
     {
         var tracker = new TouchGestureTracker();
         tracker.Update(One(100, 100));
+        tracker.Update(One(600, 600));
         tracker.Update([]);
 
-        Assert.Equal(TouchGestureKind.None, tracker.Update(One(900, 900)).Kind);
+        TouchGesture began = tracker.Update(One(900, 900));
+
+        Assert.Equal(TouchGestureKind.Began, began.Kind);
+        Assert.Equal(Vector2.Zero, began.Delta);
+
+        // The travel from the drag before must not follow the new touch into its tap test.
+        Assert.True(tracker.Update([]).WasTap);
+    }
+
+    /// <summary>Lifting when nothing was down is not the end of anything.</summary>
+    [Fact]
+    public void LiftingWithNoFingersDownReportsNothing()
+    {
+        Assert.Equal(TouchGestureKind.None, new TouchGestureTracker().Update([]).Kind);
     }
 }

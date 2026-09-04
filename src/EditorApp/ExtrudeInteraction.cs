@@ -14,7 +14,12 @@ namespace EditorApp;
 public sealed class ExtrudeInteraction(EditorSession session)
 {
     /// <summary>How close in pixels the cursor has to be to the arrow to grab it.</summary>
-    private const float ArrowGrabPixels = 14f;
+    /// <summary>
+    /// How near the arrow a press has to land to grab it, in pixels. Settable because a fingertip
+    /// covers several times what a cursor points at — the desktop default would be unhittable on a
+    /// phone.
+    /// </summary>
+    public float ArrowGrabPixels { get; set; } = 14f;
 
     /// <summary>Arrow length in voxels. Long enough to aim at, short enough not to cover the model.</summary>
     private const float ArrowLength = 3f;

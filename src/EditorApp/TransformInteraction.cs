@@ -37,7 +37,11 @@ public readonly record struct GizmoHandle(
 /// </summary>
 public sealed class TransformInteraction(EditorSession session)
 {
-    private const float GrabPixels = 12f;
+    /// <summary>
+    /// How near a handle a press has to land to grab it, in pixels. Settable for the same reason as
+    /// the extrude arrow: a fingertip is not a cursor.
+    /// </summary>
+    public float GrabPixels { get; set; } = 12f;
 
     /// <summary>Gizmo size as a fraction of its distance from the camera, so it keeps a constant look.</summary>
     private const float ScreenScale = 0.16f;

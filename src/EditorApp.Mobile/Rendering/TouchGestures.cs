@@ -16,7 +16,9 @@ public sealed class TouchGestures
     /// </summary>
     private const int MaxPointers = 4;
 
-    private readonly TouchGestureTracker _tracker = new();
+    private readonly TouchGestureTracker _tracker;
+
+    public TouchGestures(TouchGestureTracker tracker) => _tracker = tracker;
 
     public TouchGesture Consume(MotionEvent e)
     {

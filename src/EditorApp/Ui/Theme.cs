@@ -55,9 +55,11 @@ public static class Theme
 
     // The three axes, shared by the gizmo, the axis indicator and the dimension labels, so a colour
     // means the same axis everywhere in the interface.
-    public static readonly Vector4 AxisX = Rgb(0xEB5A5A);
-    public static readonly Vector4 AxisY = Rgb(0x78DC6E);
-    public static readonly Vector4 AxisZ = Rgb(0x6496FA);
+    // Taken from the overlay table rather than repeated, so an axis is the same colour in the
+    // gizmo, the corner indicator and the dimension labels.
+    public static readonly Vector4 AxisX = Rendering.EditorOverlays.AxisX.ToVector4();
+    public static readonly Vector4 AxisY = Rendering.EditorOverlays.AxisY.ToVector4();
+    public static readonly Vector4 AxisZ = Rendering.EditorOverlays.AxisZ.ToVector4();
 
     /// <summary>The 3D viewport's gradient, lighter at the top so the scene reads as having a horizon.</summary>
     public static readonly Vector4 Viewport = Rgb(0x323232);
