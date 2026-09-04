@@ -62,6 +62,10 @@ public sealed class ToolBar : LinearLayout
         _palette = Style.Button(context, "Colour");
         _palette.Click += (_, _) => PaletteRequested?.Invoke();
         Add(_palette, gap);
+
+        TextView files = Style.Button(context, "Files");
+        files.Click += (_, _) => FilesRequested?.Invoke();
+        Add(files, gap);
     }
 
     public event Action<EditorTool>? ToolChosen;
@@ -71,6 +75,8 @@ public sealed class ToolBar : LinearLayout
     public event Action? RedoRequested;
 
     public event Action? PaletteRequested;
+
+    public event Action? FilesRequested;
 
     private void Add(View view, int gap, float weight = 0f)
     {

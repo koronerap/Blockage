@@ -76,6 +76,22 @@ public static class VxLevelFile
         }
     }
 
+    /// <summary>
+    /// Writes the level into an already-open stream, leaving it open.
+    ///
+    /// The counterpart to <see cref="LoadScene(Stream)"/>, and the only way to save on a platform
+    /// that hands out a stream for the document the user picked rather than a path — Android's
+    /// storage has no path a process may simply write to.
+    ///
+    /// The path overload's safety net does not apply here: it builds beside the target and moves
+    /// into place, and a stream cannot be moved. Whoever opened it decides what a failure means.
+    /// </summary>
+    public static void Save(VoxelScene scene, Stream stream, string name)
+    {
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true);
+        WriteArchive(scene, archive, name);
+    }
+
     /// <summary>Convenience for a single-grid level.</summary>
     public static void Save(VoxelWorld world, string path, string? name = null)
     {

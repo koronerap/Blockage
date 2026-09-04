@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using EditorApp.Core.Project;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Tests;
@@ -280,5 +281,81 @@ public class VxLevelFileTests : IDisposable
         archive.GetEntry("manifest.json")!.Delete();
         using Stream entry = archive.CreateEntry("manifest.json").Open();
         entry.Write(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest)));
+    }
+}
+
+/// <summary>
+/// Saving to an open stream rather than a path. Android has no directory a process may simply write
+/// to — the user picks a document and the system hands back a stream — so this overload is the only
+/// way the phone can save at all.
+/// </summary>
+public class VxLevelStreamTests
+{
+    private static VoxelScene Build()
+    {
+        var world = new VoxelWorld();
+        world.SetVoxel(0, 0, 0, 3);
+        world.SetVoxel(1, 0, 0, 3);
+        world.SetVoxel(0, 5, 9, 42);
+
+        var scene = new VoxelScene();
+        scene.ReplacePalette(world.Palette);
+        scene.Add(world, ObjectTransform.Identity, "Object 1");
+        scene.VoxelSize = 0.25f;
+        return scene;
+    }
+
+    [Fact]
+    public void SceneSurvivesARoundTripThroughAStream()
+    {
+        VoxelScene original = Build();
+
+        using var buffer = new MemoryStream();
+        VxLevelFile.Save(original, buffer, "streamed");
+        buffer.Position = 0;
+
+        VoxelScene loaded = VxLevelFile.LoadScene(buffer);
+
+        Assert.Equal(original.Objects.Count, loaded.Objects.Count);
+        Assert.Equal(0.25f, loaded.VoxelSize, 5);
+
+        VoxelWorld before = original.Objects[0].Grid;
+        VoxelWorld after = loaded.Objects[0].Grid;
+        Assert.Equal(before.SolidCount, after.SolidCount);
+        Assert.Equal(3, after.GetVoxel(0, 0, 0));
+        Assert.Equal(42, after.GetVoxel(0, 5, 9));
+    }
+
+    /// <summary>
+    /// The stream belongs to the caller — on Android it is a document the system opened and expects
+    /// to close itself. Closing it here would turn every export into an error nobody could see.
+    /// </summary>
+    [Fact]
+    public void SavingLeavesTheStreamOpen()
+    {
+        using var buffer = new MemoryStream();
+
+        VxLevelFile.Save(Build(), buffer, "streamed");
+
+        Assert.True(buffer.CanWrite);
+        Assert.True(buffer.Length > 0);
+    }
+
+    /// <summary>
+    /// The name is what the level calls itself inside the file, which is not the same thing as what
+    /// the document is called outside it — a stream has no filename to fall back on.
+    /// </summary>
+    [Fact]
+    public void TheGivenNameIsWhatTheManifestCarries()
+    {
+        using var buffer = new MemoryStream();
+        VxLevelFile.Save(Build(), buffer, "a chosen name");
+        buffer.Position = 0;
+
+        using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
+        using Stream entry = archive.GetEntry("manifest.json")!.Open();
+        LevelManifest manifest = JsonSerializer.Deserialize<LevelManifest>(entry)!;
+
+        Assert.Equal("a chosen name", manifest.Name);
     }
 }

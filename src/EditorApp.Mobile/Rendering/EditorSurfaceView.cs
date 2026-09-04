@@ -3,6 +3,7 @@ using Android.Content;
 using Android.Opengl;
 using Android.Views;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Mobile.Tools;
 using EditorApp.Rendering;
@@ -29,6 +30,12 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
 
     private MobileRenderer? _renderer;
     private Vector2 _viewportSize = Vector2.One;
+
+    /// <summary>
+    /// Set when the level is replaced. Every chunk buffer belongs to the old scene and has to go,
+    /// but only the GL thread may delete them, so the request is left here for the next frame.
+    /// </summary>
+    private bool _dropBuffers;
 
     private readonly Lock _reportGate = new();
     private string _report = "Waiting for the GL thread…";
@@ -140,6 +147,95 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         {
             return _session.World.Palette.Colors.ToArray();
         }
+    }
+
+    public string ProjectName
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.ProjectName;
+            }
+        }
+    }
+
+    public string? ProjectPath
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.ProjectPath;
+            }
+        }
+    }
+
+    public bool HasUnsavedChanges
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return _session.HasUnsavedChanges;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Runs something against the live scene while the GL thread is held off it. Used for saving:
+    /// copying the whole scene out first would double a large level in memory for no reason, and
+    /// reading it unguarded could catch it mid-remesh.
+    /// </summary>
+    public void UseScene(Action<VoxelScene> action)
+    {
+        lock (_sceneGate)
+        {
+            action(_session.Scene);
+        }
+    }
+
+    /// <summary>Records that the level now lives somewhere, and has nothing outstanding.</summary>
+    public void MarkSaved(string? path)
+    {
+        lock (_sceneGate)
+        {
+            _session.ProjectPath = path;
+            _session.HasUnsavedChanges = false;
+        }
+
+        Changed();
+    }
+
+    public void NewLevel()
+    {
+        lock (_sceneGate)
+        {
+            _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
+            AfterLevelChanged();
+        }
+
+        Changed();
+    }
+
+    public void ReplaceScene(VoxelScene scene, string? path)
+    {
+        lock (_sceneGate)
+        {
+            _session.ReplaceScene(scene, path);
+            AfterLevelChanged();
+        }
+
+        Changed();
+    }
+
+    /// <summary>Call inside the lock: nothing of the old level may survive into the new one.</summary>
+    private void AfterLevelChanged()
+    {
+        _dropBuffers = true;
+        _session.ClearSelection();
+        _session.PreviewCutPlane = null;
+        FrameScene();
     }
 
     public void SetTool(EditorTool tool)
@@ -259,6 +355,13 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
 
         lock (_sceneGate)
         {
+            if (_dropBuffers)
+            {
+                _renderer.ResetBuffers();
+                _session.Scene.MarkAllDirty();
+                _dropBuffers = false;
+            }
+
             _renderer.SyncDirtyChunks(_session.Scene);
             BuildOverlays();
             _renderer.Render(_session.Scene, _camera.Camera, _viewportSize);

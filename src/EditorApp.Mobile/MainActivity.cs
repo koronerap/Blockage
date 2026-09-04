@@ -1,9 +1,11 @@
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
 using EditorApp.Core.Voxels;
+using EditorApp.Mobile.Files;
 using EditorApp.Mobile.Rendering;
 using EditorApp.Mobile.Ui;
 
@@ -40,6 +42,8 @@ public sealed class MainActivity : Activity
     private EditorSurfaceView? _surface;
     private ToolBar? _toolBar;
     private PaletteSheet? _palette;
+    private FilesSheet? _files;
+    private FileActions? _actions;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -62,6 +66,26 @@ public sealed class MainActivity : Activity
         };
         _palette.Dismissed += () => _palette.Visibility = ViewStates.Gone;
 
+        // Private storage: emptied if the app is uninstalled, which is exactly why Export sits
+        // beside Save rather than somewhere further in.
+        var store = new LevelStore(Path.Combine(FilesDir!.AbsolutePath, "levels"));
+        _actions = new FileActions(this, _surface, store);
+
+        _files = new FilesSheet(this) { Visibility = ViewStates.Gone };
+        _files.Dismissed += () => _files.Visibility = ViewStates.Gone;
+        _files.NewRequested += () => _actions.New();
+        _files.SaveRequested += () => _actions.Save();
+        _files.SaveAsRequested += () => _actions.SaveAs();
+        _files.ImportRequested += () => _actions.Import();
+        _files.ExportRequested += () => _actions.Export();
+        _files.OpenRequested += level => _actions.Open(level);
+        _files.DeleteRequested += level => _actions.Delete(level);
+
+        // The library only changes through these actions, so this is the one place the list can go
+        // stale without anyone noticing.
+        _actions.LibraryChanged += () => ShowFiles(store);
+        _toolBar.FilesRequested += () => ShowFiles(store);
+
         FrameLayout root = new(this);
         root.AddView(_surface, Fill());
         root.AddView(
@@ -73,6 +97,7 @@ public sealed class MainActivity : Activity
                 Gravity = GravityFlags.Bottom,
             });
         root.AddView(_palette, Fill());
+        root.AddView(_files, Fill());
 
         SetContentView(root);
         Refresh();
@@ -92,6 +117,30 @@ public sealed class MainActivity : Activity
         _palette.Populate(colors, _surface.ActiveColorIndex);
         _palette.Visibility = ViewStates.Visible;
     }
+
+    private void ShowFiles(LevelStore store)
+    {
+        if (_surface is null || _files is null)
+        {
+            return;
+        }
+
+        _files.Populate(store.List(), _surface.ProjectName, _surface.HasUnsavedChanges);
+        _files.Visibility = ViewStates.Visible;
+    }
+
+    /// <summary>
+    /// The document picker's answer. Deprecated in favour of the AndroidX result APIs, which this
+    /// app does not carry — it has no AndroidX at all, and one intent in each direction does not
+    /// justify the dependency.
+    /// </summary>
+#pragma warning disable CA1422
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        _actions?.OnPicked(requestCode, resultCode, data);
+    }
+#pragma warning restore CA1422
 
     private void Refresh()
     {
@@ -118,6 +167,12 @@ public sealed class MainActivity : Activity
         if (_palette is { Visibility: ViewStates.Visible })
         {
             _palette.Visibility = ViewStates.Gone;
+            return;
+        }
+
+        if (_files is { Visibility: ViewStates.Visible })
+        {
+            _files.Visibility = ViewStates.Gone;
             return;
         }
 
