@@ -4,6 +4,7 @@ using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using EditorApp.Core.Editing;
 using EditorApp.Core.Voxels;
 using EditorApp.Mobile.Files;
 using EditorApp.Mobile.Rendering;
@@ -44,6 +45,7 @@ public sealed class MainActivity : Activity
     private PaletteSheet? _palette;
     private FilesSheet? _files;
     private FileActions? _actions;
+    private OptionsBar? _options;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -51,6 +53,16 @@ public sealed class MainActivity : Activity
 
         _surface = new EditorSurfaceView(this);
         _surface.SessionChanged += Refresh;
+
+        _options = new OptionsBar(this);
+        _options.TransformModeChosen += mode => _surface.Configure(s => s.TransformMode = mode);
+        _options.TransformSpaceChosen += space => _surface.Configure(s => s.TransformSpace = space);
+        _options.ExtrudeCreatesObjectChanged += on => _surface.Configure(s => s.ExtrudeCreatesObject = on);
+        _options.ExtrudeStepped += steps => _surface.StepExtrude(steps);
+        _options.PaintModeChosen += mode => _surface.Configure(s => s.PaintMode = mode);
+        _options.BrushRadiusChanged += radius => _surface.Configure(s => s.BrushRadius = radius);
+        _options.BucketThresholdChanged += value => _surface.Configure(s => s.BucketThreshold = value);
+        _options.BucketWholeObjectChanged += on => _surface.Configure(s => s.BucketWholeObject = on);
 
         _toolBar = new ToolBar(this);
         _toolBar.ToolChosen += tool => _surface.SetTool(tool);
@@ -86,10 +98,21 @@ public sealed class MainActivity : Activity
         _actions.LibraryChanged += () => ShowFiles(store);
         _toolBar.FilesRequested += () => ShowFiles(store);
 
-        FrameLayout root = new(this);
+        // The two bars travel together at the bottom, so the options for a tool are next to the
+        // button that chose it rather than at the far end of the screen.
+        var bars = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        bars.AddView(_options, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent,
+            ViewGroup.LayoutParams.WrapContent));
+        bars.AddView(_toolBar, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent,
+            ViewGroup.LayoutParams.WrapContent));
+
+        InsetRoot root = new(this);
+        root.InsetsChanged += ApplyInsets;
         root.AddView(_surface, Fill());
         root.AddView(
-            _toolBar,
+            bars,
             new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent,
                 ViewGroup.LayoutParams.WrapContent)
@@ -101,6 +124,23 @@ public sealed class MainActivity : Activity
 
         SetContentView(root);
         Refresh();
+    }
+
+    /// <summary>
+    /// Holds the interface clear of the system's bars. The GL surface keeps the whole window — a
+    /// viewport wants every pixel — but a button underneath the navigation bar cannot be pressed,
+    /// and in landscape that bar takes the side the last button is on.
+    /// </summary>
+    private void ApplyInsets(EdgeInsets insets)
+    {
+        int gap = Style.Dp(this, 6f);
+
+        _toolBar?.SetPadding(insets.Left + gap, gap, insets.Right + gap, insets.Bottom + gap);
+        _options?.SetPadding(insets.Left + gap, gap, insets.Right + gap, gap);
+
+        // The pages already carry their own margin inside; all they need from here is the bars.
+        _palette?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
+        _files?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
     }
 
     private static FrameLayout.LayoutParams Fill() =>
@@ -151,6 +191,8 @@ public sealed class MainActivity : Activity
                 _surface.CanUndo,
                 _surface.CanRedo,
                 _surface.ActiveColor);
+
+            _options?.Refresh(_surface.State);
         }
     }
 

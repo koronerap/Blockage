@@ -149,6 +149,65 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         }
     }
 
+    /// <summary>Everything the options bar needs, taken in one go while the lock is held.</summary>
+    public ToolState State
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                return new ToolState(
+                    _session.ActiveTool,
+                    _session.TransformMode,
+                    _session.TransformSpace,
+                    _session.ExtrudeCreatesObject,
+                    _session.PaintMode,
+                    _session.BrushRadius,
+                    _session.BucketThreshold,
+                    _session.BucketWholeObject,
+                    _session.Selection?.Count ?? 0,
+                    _session.PreviewCutPlane is not null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies a change to the session and tells everyone. One entry point for every option, so a
+    /// new one cannot be added without the lock and the redraw coming with it.
+    /// </summary>
+    public void Configure(Action<EditorSession> change)
+    {
+        lock (_sceneGate)
+        {
+            change(_session);
+        }
+
+        Changed();
+    }
+
+    /// <summary>
+    /// Extrudes the current selection by whole steps and commits.
+    ///
+    /// Dragging the arrow is the gesture, but a fingertip covering the surface it is judging cannot
+    /// place it to the voxel. This is the same operation asked for exactly rather than approximately,
+    /// and each tap is its own undo step.
+    /// </summary>
+    public void StepExtrude(int steps)
+    {
+        lock (_sceneGate)
+        {
+            if (_session.Selection is not { IsEmpty: false })
+            {
+                return;
+            }
+
+            _session.PreviewExtrude(steps);
+            _session.ConfirmExtrude();
+        }
+
+        Changed();
+    }
+
     public string ProjectName
     {
         get
