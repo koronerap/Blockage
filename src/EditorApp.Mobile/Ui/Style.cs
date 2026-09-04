@@ -40,22 +40,28 @@ public static class Style
     public const float TouchTargetDp = 48f;
 
     /// <summary>
-    /// One icon button's side. Smaller than the touch-target floor above because a row of them is
-    /// spaced apart, so the gap between two buttons belongs to neither and a miss lands on nothing
-    /// rather than on the wrong thing.
+    /// One icon button's side. Smaller than the touch-target floor above because the buttons are
+    /// spaced apart, so the gap between two belongs to neither and a miss lands on nothing rather
+    /// than on the wrong thing.
     /// </summary>
-    public const float IconButtonDp = 44f;
+    public const float IconButtonDp = 40f;
+
+    /// <summary>How much of that button the mark itself takes. The rest is breathing room.</summary>
+    public const float IconGlyphDp = 21f;
+
+    /// <summary>Corner radius of a floating group of buttons.</summary>
+    public const float PanelRadiusDp = 12f;
 
     public static int Dp(Context context, float dp) =>
         (int)TypedValue.ApplyDimension(ComplexUnitType.Dip, dp, context.Resources!.DisplayMetrics);
 
     /// <summary>A rounded rectangle, optionally ringed. Used for buttons and colour swatches alike.</summary>
-    public static GradientDrawable RoundedFill(Context context, Color fill, Color? ring = null)
+    public static GradientDrawable RoundedFill(Context context, Color fill, Color? ring = null, float radiusDp = 8f)
     {
         var shape = new GradientDrawable();
         shape.SetShape(ShapeType.Rectangle);
         shape.SetColor(fill.ToArgb());
-        shape.SetCornerRadius(Dp(context, 8f));
+        shape.SetCornerRadius(Dp(context, radiusDp));
 
         if (ring is { } outline)
         {

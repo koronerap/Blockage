@@ -33,10 +33,10 @@ public sealed class FilesSheet : FrameLayout
 
         _current = new TextView(context);
         _current.SetTextColor(Style.Text);
-        _current.SetTextSize(ComplexUnitType.Sp, 16f);
+        _current.SetTextSize(ComplexUnitType.Sp, 14f);
         header.AddView(_current, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        var close = new IconButtonView(context, EditorApp.Ui.Icons.Close, "Close");
+        var close = new IconButtonView(context, Resource.Drawable.ic_close, "Close");
         close.Click += (_, _) => Dismissed?.Invoke();
         header.AddView(close);
 
@@ -124,7 +124,7 @@ public sealed class FilesSheet : FrameLayout
                 Text = "No levels saved on this device yet. Save one, or import a .vxlevel.",
             };
             empty.SetTextColor(Style.TextDim);
-            empty.SetTextSize(ComplexUnitType.Sp, 13f);
+            empty.SetTextSize(ComplexUnitType.Sp, 11.5f);
             empty.SetPadding(0, Style.Dp(context, 8f), 0, 0);
             _list.AddView(empty);
             return;
@@ -148,7 +148,7 @@ public sealed class FilesSheet : FrameLayout
             Background = Style.RoundedFill(context, Style.ButtonIdle),
         };
         label.SetTextColor(Style.Text);
-        label.SetTextSize(ComplexUnitType.Sp, 14f);
+        label.SetTextSize(ComplexUnitType.Sp, 13f);
         label.SetPadding(Style.Dp(context, 12f), 0, Style.Dp(context, 12f), 0);
         label.SetMinimumHeight(Style.Dp(context, Style.TouchTargetDp));
         label.Gravity = GravityFlags.CenterVertical;

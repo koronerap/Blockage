@@ -5,7 +5,6 @@ using Android.Widget;
 using EditorApp.Core.Editing;
 using EditorApp.Mobile.Tools;
 using EditorApp.Rendering;
-using EditorApp.Ui;
 
 namespace EditorApp.Mobile.Ui;
 
@@ -34,10 +33,10 @@ public sealed class SceneSheet : FrameLayout
 
         var title = new TextView(context) { Text = "Level" };
         title.SetTextColor(Style.Text);
-        title.SetTextSize(ComplexUnitType.Sp, 16f);
+        title.SetTextSize(ComplexUnitType.Sp, 14f);
         header.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        var close = new IconButtonView(context, Icons.Close, "Close");
+        var close = new IconButtonView(context, Resource.Drawable.ic_close, "Close");
         close.Click += (_, _) => Dismissed?.Invoke();
         header.AddView(close);
         page.AddView(header);
@@ -90,12 +89,12 @@ public sealed class SceneSheet : FrameLayout
 
         Heading("View");
         Row(
-            Toggle(Icons.Grid, "Ground grid", state.GridVisible, () => GridChanged?.Invoke(!state.GridVisible)),
+            Toggle(Resource.Drawable.ic_grid, "Ground grid", state.GridVisible, () => GridChanged?.Invoke(!state.GridVisible)),
             Space(),
-            Toggle(Icons.Lit, "Lit", state.Lighting.IsLit, () => ShadingChanged?.Invoke(ShadingMode.Lit)),
-            Toggle(Icons.Unlit, "Unlit", !state.Lighting.IsLit, () => ShadingChanged?.Invoke(ShadingMode.Unlit)),
+            Toggle(Resource.Drawable.ic_lit, "Lit", state.Lighting.IsLit, () => ShadingChanged?.Invoke(ShadingMode.Lit)),
+            Toggle(Resource.Drawable.ic_unlit, "Unlit", !state.Lighting.IsLit, () => ShadingChanged?.Invoke(ShadingMode.Unlit)),
             Space(),
-            Toggle(Icons.FaceSelect, "Frame the level", false, () => FrameRequested?.Invoke()));
+            Toggle(Resource.Drawable.ic_frame, "Frame the level", false, () => FrameRequested?.Invoke()));
 
         if (state.Lighting.IsLit)
         {
@@ -126,7 +125,7 @@ public sealed class SceneSheet : FrameLayout
                     () => LightStrengthChanged?.Invoke(state.Lighting.Intensity, MathF.Max(0f, state.Lighting.Ambient - 0.05f)),
                     () => LightStrengthChanged?.Invoke(state.Lighting.Intensity, MathF.Min(1f, state.Lighting.Ambient + 0.05f))),
                 Space(),
-                Toggle(Icons.Rotate, "Reset the light", false, () => LightReset?.Invoke()));
+                Toggle(Resource.Drawable.ic_rotate, "Reset the light", false, () => LightReset?.Invoke()));
 
             Note("The light is a way of looking at the level, not part of it. It is never saved and "
                 + "never reaches an export.");
@@ -147,11 +146,11 @@ public sealed class SceneSheet : FrameLayout
 
         Heading("Turn the focused object");
         Row(
-            Toggle(Icons.RotateLeft, "Turn left", false, () => RotateRequested?.Invoke(RotateDirection.Left)),
-            Toggle(Icons.RotateRight, "Turn right", false, () => RotateRequested?.Invoke(RotateDirection.Right)),
+            Toggle(Resource.Drawable.ic_rotate_left, "Turn left", false, () => RotateRequested?.Invoke(RotateDirection.Left)),
+            Toggle(Resource.Drawable.ic_rotate_right, "Turn right", false, () => RotateRequested?.Invoke(RotateDirection.Right)),
             Space(),
-            Toggle(Icons.RotateUp, "Tip up", false, () => RotateRequested?.Invoke(RotateDirection.Up)),
-            Toggle(Icons.RotateDown, "Tip down", false, () => RotateRequested?.Invoke(RotateDirection.Down)));
+            Toggle(Resource.Drawable.ic_tip_up, "Tip up", false, () => RotateRequested?.Invoke(RotateDirection.Up)),
+            Toggle(Resource.Drawable.ic_tip_down, "Tip down", false, () => RotateRequested?.Invoke(RotateDirection.Down)));
 
         Note("Turns the voxels themselves, a quarter at a time. Nothing to do with the axes an "
             + "export is written in.");
@@ -172,7 +171,7 @@ public sealed class SceneSheet : FrameLayout
         row.SetGravity(GravityFlags.CenterVertical);
         row.SetPadding(0, Style.Dp(context, 3f), 0, Style.Dp(context, 3f));
 
-        var eye = new IconButtonView(context, o.Visible ? Icons.Lit : Icons.Unlit, "Show or hide")
+        var eye = new IconButtonView(context, o.Visible ? Resource.Drawable.ic_visible : Resource.Drawable.ic_hidden, "Show or hide")
         {
             Chosen = o.Visible,
         };
@@ -187,7 +186,7 @@ public sealed class SceneSheet : FrameLayout
         };
 
         name.SetTextColor(o.Focused ? Style.PanelSolid : Style.Text);
-        name.SetTextSize(ComplexUnitType.Sp, 14f);
+        name.SetTextSize(ComplexUnitType.Sp, 13f);
         name.SetPadding(Style.Dp(context, 12f), 0, Style.Dp(context, 12f), 0);
         name.SetMinimumHeight(Style.Dp(context, Style.TouchTargetDp));
         name.Click += (_, _) => ObjectChosen?.Invoke(o.Id);
@@ -198,7 +197,7 @@ public sealed class SceneSheet : FrameLayout
 
         // The last object cannot go: a scene with nothing in it has no grid to edit and no focus to
         // hold, and the session would have to invent one back immediately.
-        var remove = new IconButtonView(context, Icons.Close, "Delete this object")
+        var remove = new IconButtonView(context, Resource.Drawable.ic_delete, "Delete this object")
         {
             Available = total > 1,
         };
@@ -215,7 +214,7 @@ public sealed class SceneSheet : FrameLayout
     {
         var view = new TextView(Context!) { Text = text };
         view.SetTextColor(Style.Text);
-        view.SetTextSize(ComplexUnitType.Sp, 13f);
+        view.SetTextSize(ComplexUnitType.Sp, 12f);
         view.SetPadding(0, Style.Dp(Context!, 14f), 0, Style.Dp(Context!, 6f));
         _body.AddView(view);
     }
@@ -224,7 +223,7 @@ public sealed class SceneSheet : FrameLayout
     {
         var view = new TextView(Context!) { Text = text };
         view.SetTextColor(Style.TextDim);
-        view.SetTextSize(ComplexUnitType.Sp, 11f);
+        view.SetTextSize(ComplexUnitType.Sp, 10.5f);
         view.SetPadding(0, Style.Dp(Context!, 4f), 0, 0);
         _body.AddView(view);
     }
@@ -233,6 +232,10 @@ public sealed class SceneSheet : FrameLayout
     {
         var row = new LinearLayout(Context!) { Orientation = Orientation.Horizontal };
         row.SetGravity(GravityFlags.CenterVertical);
+
+        // Rows of forty-dip buttons touch each other without this, and two steppers stacked up read
+        // as one tall control rather than two.
+        row.SetPadding(0, Style.Dp(Context!, 3f), 0, Style.Dp(Context!, 3f));
 
         foreach (View child in children)
         {
@@ -247,7 +250,7 @@ public sealed class SceneSheet : FrameLayout
         _body.AddView(row);
     }
 
-    private View Toggle(Icons.Painter icon, string name, bool chosen, Action clicked)
+    private View Toggle(int icon, string name, bool chosen, Action clicked)
     {
         var button = new IconButtonView(Context!, icon, name) { Chosen = chosen };
         button.Click += (_, _) => clicked();
@@ -259,15 +262,15 @@ public sealed class SceneSheet : FrameLayout
         var group = new LinearLayout(Context!) { Orientation = Orientation.Horizontal };
         group.SetGravity(GravityFlags.CenterVertical);
 
-        group.AddView(Toggle(Icons.Minus, $"{name}: less", false, down));
+        group.AddView(Toggle(Resource.Drawable.ic_remove, $"{name}: less", false, down));
 
         var label = new TextView(Context!) { Text = value, Gravity = GravityFlags.Center };
         label.SetTextColor(Style.Text);
-        label.SetTextSize(ComplexUnitType.Sp, 12f);
+        label.SetTextSize(ComplexUnitType.Sp, 11.5f);
         label.SetMinimumWidth(Style.Dp(Context!, 84f));
         group.AddView(label);
 
-        group.AddView(Toggle(Icons.Plus, $"{name}: more", false, up));
+        group.AddView(Toggle(Resource.Drawable.ic_add, $"{name}: more", false, up));
         return group;
     }
 

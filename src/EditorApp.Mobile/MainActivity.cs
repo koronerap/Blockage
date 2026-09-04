@@ -41,7 +41,7 @@ namespace EditorApp.Mobile;
 public sealed class MainActivity : Activity
 {
     private EditorSurfaceView? _surface;
-    private ToolBar? _toolBar;
+    private EditorChrome? _chrome;
     private PaletteSheet? _palette;
     private FilesSheet? _files;
     private SceneSheet? _scene;
@@ -54,6 +54,11 @@ public sealed class MainActivity : Activity
     /// alone, and a row that is always there is a row the viewport does not get.
     /// </summary>
     private bool _optionsOpen;
+
+    /// <summary>The floating groups, so the system bars can be kept off all of them at once.</summary>
+    private readonly List<View> _floating = [];
+
+    private LinearLayout? _corner;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -74,13 +79,13 @@ public sealed class MainActivity : Activity
         _options.BucketWholeObjectChanged += on => _surface.Configure(s => s.BucketWholeObject = on);
         _options.SamplerArmed += armed => _surface.ArmSampler(armed);
 
-        _toolBar = new ToolBar(this);
-        _toolBar.ToolChosen += tool => _surface.SetTool(tool);
-        _toolBar.UndoRequested += () => _surface.Undo();
-        _toolBar.RedoRequested += () => _surface.Redo();
-        _toolBar.PaletteRequested += ShowPalette;
-        _toolBar.SceneRequested += ShowScene;
-        _toolBar.OptionsToggled += () =>
+        _chrome = new EditorChrome(this);
+        _chrome.ToolChosen += tool => _surface.SetTool(tool);
+        _chrome.UndoRequested += () => _surface.Undo();
+        _chrome.RedoRequested += () => _surface.Redo();
+        _chrome.PaletteRequested += ShowPalette;
+        _chrome.SceneRequested += ShowScene;
+        _chrome.OptionsToggled += () =>
         {
             _optionsOpen = !_optionsOpen;
             Refresh();
@@ -140,29 +145,29 @@ public sealed class MainActivity : Activity
         // The library only changes through these actions, so this is the one place the list can go
         // stale without anyone noticing.
         _actions.LibraryChanged += () => ShowFiles(store);
-        _toolBar.FilesRequested += () => ShowFiles(store);
+        _chrome.FilesRequested += () => ShowFiles(store);
 
-        // The two bars travel together at the bottom, so the options for a tool are next to the
-        // button that chose it rather than at the far end of the screen.
-        var bars = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        bars.AddView(_options, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent,
-            ViewGroup.LayoutParams.WrapContent));
-        bars.AddView(_toolBar, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent,
+        // The options open upwards out of the handle that asked for them, rather than pushing a
+        // second bar across the whole screen.
+        _corner = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        var optionsLayout = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent,
+            ViewGroup.LayoutParams.WrapContent);
+
+        optionsLayout.SetMargins(0, 0, 0, Style.Dp(this, 6f));
+        _corner.AddView(_options, optionsLayout);
+        _corner.AddView(_chrome.Handles, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent,
             ViewGroup.LayoutParams.WrapContent));
 
         InsetRoot root = new(this);
         root.InsetsChanged += ApplyInsets;
         root.AddView(_surface, Fill());
-        root.AddView(
-            bars,
-            new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MatchParent,
-                ViewGroup.LayoutParams.WrapContent)
-            {
-                Gravity = GravityFlags.Bottom,
-            });
+
+        Float(root, _chrome.Title, GravityFlags.Top | GravityFlags.Start);
+        Float(root, _chrome.Actions, GravityFlags.Top | GravityFlags.End);
+        Float(root, _chrome.Tools_, GravityFlags.CenterVertical | GravityFlags.Start);
+        Float(root, _corner, GravityFlags.Bottom | GravityFlags.Start);
         root.AddView(_palette, Fill());
         root.AddView(_scene, Fill());
         root.AddView(_files, Fill());
@@ -178,15 +183,44 @@ public sealed class MainActivity : Activity
     /// </summary>
     private void ApplyInsets(EdgeInsets insets)
     {
-        int gap = Style.Dp(this, 6f);
+        // Each group is pushed off the edges it is actually against, so a bar down one side moves
+        // only what that side holds.
+        int margin = Style.Dp(this, 8f);
 
-        _toolBar?.SetPadding(insets.Left + gap, gap, insets.Right + gap, insets.Bottom + gap);
-        _options?.SetPadding(insets.Left + gap, gap, insets.Right + gap, gap);
+        foreach (View group in _floating)
+        {
+            if (group.LayoutParameters is FrameLayout.LayoutParams layout)
+            {
+                layout.SetMargins(
+                    insets.Left + margin,
+                    insets.Top + margin,
+                    insets.Right + margin,
+                    insets.Bottom + margin);
+
+                group.LayoutParameters = layout;
+            }
+        }
 
         // The pages already carry their own margin inside; all they need from here is the bars.
         _palette?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
         _scene?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
         _files?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
+    }
+
+    /// <summary>Places one floating group against an edge, clear of the system bars.</summary>
+    private void Float(ViewGroup root, View group, GravityFlags gravity)
+    {
+        int margin = Style.Dp(this, 8f);
+        var layout = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent,
+            ViewGroup.LayoutParams.WrapContent)
+        {
+            Gravity = gravity,
+        };
+
+        layout.SetMargins(margin, margin, margin, margin);
+        root.AddView(group, layout);
+        _floating.Add(group);
     }
 
     private static FrameLayout.LayoutParams Fill() =>
@@ -244,14 +278,16 @@ public sealed class MainActivity : Activity
 
     private void Refresh()
     {
-        if (_surface is not null && _toolBar is not null)
+        if (_surface is not null && _chrome is not null)
         {
-            _toolBar.Refresh(
+            _chrome.Refresh(
                 _surface.ActiveTool,
                 _surface.CanUndo,
                 _surface.CanRedo,
                 _surface.ActiveColor,
-                _optionsOpen);
+                _optionsOpen,
+                _surface.ProjectName,
+                _surface.HasUnsavedChanges);
 
             if (_options is not null)
             {

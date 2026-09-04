@@ -35,10 +35,10 @@ public sealed class PaletteSheet : FrameLayout
 
         var title = new TextView(context) { Text = "Colour" };
         title.SetTextColor(Style.Text);
-        title.SetTextSize(Android.Util.ComplexUnitType.Sp, 16f);
+        title.SetTextSize(Android.Util.ComplexUnitType.Sp, 14f);
         header.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        var close = new IconButtonView(context, EditorApp.Ui.Icons.Close, "Close");
+        var close = new IconButtonView(context, Resource.Drawable.ic_close, "Close");
         close.Click += (_, _) => Dismissed?.Invoke();
         header.AddView(close);
 

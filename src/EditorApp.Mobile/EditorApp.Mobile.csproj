@@ -52,8 +52,6 @@
     <Compile Include="..\EditorApp\Rendering\GroundGrid.cs" Link="Rendering\Shared\GroundGrid.cs" />
     <Compile Include="..\EditorApp\Rendering\LineGeometry.cs" Link="Rendering\Shared\LineGeometry.cs" />
     <Compile Include="..\EditorApp\Rendering\EditorOverlays.cs" Link="Rendering\Shared\EditorOverlays.cs" />
-    <Compile Include="..\EditorApp\Ui\IconCanvas.cs" Link="Ui\Shared\IconCanvas.cs" />
-    <Compile Include="..\EditorApp\Ui\Icons.cs" Link="Ui\Shared\Icons.cs" />
     <Compile Include="..\EditorApp\Rendering\SceneLighting.cs" Link="Rendering\Shared\SceneLighting.cs" />
 
     <!--

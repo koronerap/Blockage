@@ -4,7 +4,6 @@ using Android.Views;
 using Android.Widget;
 using EditorApp.Core.Editing;
 using EditorApp.Mobile.Tools;
-using EditorApp.Ui;
 
 namespace EditorApp.Mobile.Ui;
 
@@ -28,7 +27,10 @@ public sealed class OptionsBar : LinearLayout
         : base(context)
     {
         Orientation = Orientation.Vertical;
-        SetBackgroundColor(Style.Panel);
+
+        // The same floating panel the chrome groups use, so an opened option reads as one more of
+        // them rather than as a bar that appeared.
+        Background = Style.RoundedFill(context, Style.Panel, radiusDp: Style.PanelRadiusDp);
 
         int gap = Style.Dp(context, 6f);
         SetPadding(gap, gap, gap, gap);
@@ -41,7 +43,7 @@ public sealed class OptionsBar : LinearLayout
         // tooltip has nowhere else to go — and it is only on screen while the options are open.
         _hint = new TextView(context);
         _hint.SetTextColor(Style.TextDim);
-        _hint.SetTextSize(ComplexUnitType.Sp, 11f);
+        _hint.SetTextSize(ComplexUnitType.Sp, 10.5f);
         _hint.SetPadding(Style.Dp(context, 2f), Style.Dp(context, 4f), 0, 0);
         AddView(_hint);
     }
@@ -97,21 +99,21 @@ public sealed class OptionsBar : LinearLayout
     {
         bool moving = state.TransformMode == TransformMode.Move;
 
-        Choice(Icons.Move, "Move", moving, () => TransformModeChosen?.Invoke(TransformMode.Move));
-        Choice(Icons.Rotate, "Rotate", !moving, () => TransformModeChosen?.Invoke(TransformMode.Rotate));
+        Choice(Resource.Drawable.ic_move, "Move", moving, () => TransformModeChosen?.Invoke(TransformMode.Move));
+        Choice(Resource.Drawable.ic_rotate, "Rotate", !moving, () => TransformModeChosen?.Invoke(TransformMode.Rotate));
 
         Gap();
 
         // The edge hinge a rotation turns about is always in the object's own space, so the choice
         // has nothing to say while rotating.
         Choice(
-            Icons.Global, "Global space",
+            Resource.Drawable.ic_global, "Global space",
             state.TransformSpace == TransformSpace.Global,
             () => TransformSpaceChosen?.Invoke(TransformSpace.Global),
             moving);
 
         Choice(
-            Icons.Local, "Local space",
+            Resource.Drawable.ic_local, "Local space",
             state.TransformSpace == TransformSpace.Local,
             () => TransformSpaceChosen?.Invoke(TransformSpace.Local),
             moving);
@@ -125,24 +127,24 @@ public sealed class OptionsBar : LinearLayout
     {
         bool box = state.ExtrudeSelectionMode == ExtrudeSelectionMode.Box;
 
-        Choice(Icons.BoxSelect, "Drag out a rectangle", box,
+        Choice(Resource.Drawable.ic_box_select, "Drag out a rectangle", box,
             () => ExtrudeSelectionModeChosen?.Invoke(ExtrudeSelectionMode.Box));
-        Choice(Icons.FaceSelect, "Take the whole flat patch", !box,
+        Choice(Resource.Drawable.ic_face_select, "Take the whole flat patch", !box,
             () => ExtrudeSelectionModeChosen?.Invoke(ExtrudeSelectionMode.Face));
 
         Gap();
 
         Choice(
-            Icons.Cut, "Extrude into a new object",
+            Resource.Drawable.ic_new_object, "Extrude into a new object",
             state.ExtrudeCreatesObject,
             () => ExtrudeCreatesObjectChanged?.Invoke(!state.ExtrudeCreatesObject));
 
         Gap();
 
         bool hasSelection = state.SelectedFaces > 0;
-        Choice(Icons.Minus, "Push in one voxel", false, () => ExtrudeStepped?.Invoke(-1), hasSelection);
+        Choice(Resource.Drawable.ic_remove, "Push in one voxel", false, () => ExtrudeStepped?.Invoke(-1), hasSelection);
         Label(hasSelection ? $"{state.SelectedFaces} faces" : "nothing");
-        Choice(Icons.Plus, "Pull out one voxel", false, () => ExtrudeStepped?.Invoke(1), hasSelection);
+        Choice(Resource.Drawable.ic_add, "Pull out one voxel", false, () => ExtrudeStepped?.Invoke(1), hasSelection);
 
         _hint.Text = hasSelection
             ? "Drag the arrow, or step one voxel at a time."
@@ -155,13 +157,13 @@ public sealed class OptionsBar : LinearLayout
     {
         bool bucket = state.PaintMode == PaintMode.Bucket;
 
-        Choice(Icons.Brush, "Brush", !bucket, () => PaintModeChosen?.Invoke(PaintMode.Brush));
-        Choice(Icons.Bucket, "Bucket fill", bucket, () => PaintModeChosen?.Invoke(PaintMode.Bucket));
+        Choice(Resource.Drawable.ic_brush, "Brush", !bucket, () => PaintModeChosen?.Invoke(PaintMode.Brush));
+        Choice(Resource.Drawable.ic_bucket, "Bucket fill", bucket, () => PaintModeChosen?.Invoke(PaintMode.Bucket));
 
         Gap();
 
         Choice(
-            Icons.Eyedropper, "Take a colour from the model",
+            Resource.Drawable.ic_eyedropper, "Take a colour from the model",
             state.SamplerArmed,
             () => SamplerArmed?.Invoke(!state.SamplerArmed));
 
@@ -170,7 +172,7 @@ public sealed class OptionsBar : LinearLayout
         if (bucket)
         {
             Choice(
-                Icons.Pattern, "Recolour the whole object",
+                Resource.Drawable.ic_pattern, "Recolour the whole object",
                 state.BucketWholeObject,
                 () => BucketWholeObjectChanged?.Invoke(!state.BucketWholeObject));
 
@@ -205,7 +207,7 @@ public sealed class OptionsBar : LinearLayout
     }
 
     private void Choice(
-        Icons.Painter icon,
+        int icon,
         string name,
         bool chosen,
         Action clicked,
@@ -218,16 +220,16 @@ public sealed class OptionsBar : LinearLayout
 
     private void Stepper(string value, string name, Action down, Action up, bool available = true)
     {
-        Choice(Icons.Minus, $"{name}: less", false, down, available);
+        Choice(Resource.Drawable.ic_remove, $"{name}: less", false, down, available);
         Label(value, available);
-        Choice(Icons.Plus, $"{name}: more", false, up, available);
+        Choice(Resource.Drawable.ic_add, $"{name}: more", false, up, available);
     }
 
     private void Label(string text, bool available = true)
     {
         var view = new TextView(Context!) { Text = text, Gravity = GravityFlags.Center };
         view.SetTextColor(available ? Style.Text : Style.TextDim);
-        view.SetTextSize(ComplexUnitType.Sp, 12f);
+        view.SetTextSize(ComplexUnitType.Sp, 11.5f);
         view.SetMinimumWidth(Style.Dp(Context!, 62f));
         Add(view);
     }
