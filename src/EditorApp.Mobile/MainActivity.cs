@@ -44,7 +44,9 @@ public sealed class MainActivity : Activity
     private ToolBar? _toolBar;
     private PaletteSheet? _palette;
     private FilesSheet? _files;
+    private SceneSheet? _scene;
     private FileActions? _actions;
+    private ExportActions? _exports;
     private OptionsBar? _options;
 
     /// <summary>
@@ -63,18 +65,21 @@ public sealed class MainActivity : Activity
         _options = new OptionsBar(this);
         _options.TransformModeChosen += mode => _surface.Configure(s => s.TransformMode = mode);
         _options.TransformSpaceChosen += space => _surface.Configure(s => s.TransformSpace = space);
+        _options.ExtrudeSelectionModeChosen += mode => _surface.Configure(s => s.ExtrudeSelectionMode = mode);
         _options.ExtrudeCreatesObjectChanged += on => _surface.Configure(s => s.ExtrudeCreatesObject = on);
         _options.ExtrudeStepped += steps => _surface.StepExtrude(steps);
         _options.PaintModeChosen += mode => _surface.Configure(s => s.PaintMode = mode);
         _options.BrushRadiusChanged += radius => _surface.Configure(s => s.BrushRadius = radius);
         _options.BucketThresholdChanged += value => _surface.Configure(s => s.BucketThreshold = value);
         _options.BucketWholeObjectChanged += on => _surface.Configure(s => s.BucketWholeObject = on);
+        _options.SamplerArmed += armed => _surface.ArmSampler(armed);
 
         _toolBar = new ToolBar(this);
         _toolBar.ToolChosen += tool => _surface.SetTool(tool);
         _toolBar.UndoRequested += () => _surface.Undo();
         _toolBar.RedoRequested += () => _surface.Redo();
         _toolBar.PaletteRequested += ShowPalette;
+        _toolBar.SceneRequested += ShowScene;
         _toolBar.OptionsToggled += () =>
         {
             _optionsOpen = !_optionsOpen;
@@ -89,6 +94,28 @@ public sealed class MainActivity : Activity
         };
         _palette.Dismissed += () => _palette.Visibility = ViewStates.Gone;
 
+        _scene = new SceneSheet(this) { Visibility = ViewStates.Gone };
+        _scene.Dismissed += () => _scene.Visibility = ViewStates.Gone;
+        _scene.GridChanged += on => { _surface.SetGridVisible(on); ShowScene(); };
+        _scene.ShadingChanged += mode => { _surface.ConfigureLighting(l => l.Mode = mode); ShowScene(); };
+        _scene.LightAngleChanged += (azimuth, elevation) =>
+        {
+            _surface.ConfigureLighting(l => { l.Azimuth = azimuth; l.Elevation = elevation; });
+            ShowScene();
+        };
+        _scene.LightStrengthChanged += (intensity, ambient) =>
+        {
+            _surface.ConfigureLighting(l => { l.Intensity = intensity; l.Ambient = ambient; });
+            ShowScene();
+        };
+        _scene.LightReset += () => { _surface.ConfigureLighting(l => l.ResetAngles()); ShowScene(); };
+        _scene.VoxelSizeChanged += size => { _surface.Configure(s => s.SetVoxelSize(size)); ShowScene(); };
+        _scene.RotateRequested += direction => { _surface.Configure(s => s.RotateFocus(direction)); ShowScene(); };
+        _scene.FrameRequested += () => { _surface.FrameLevel(); _scene.Visibility = ViewStates.Gone; };
+        _scene.ObjectChosen += id => { _surface.Configure(s => s.TryFocus(id)); ShowScene(); };
+        _scene.ObjectVisibilityToggled += id => { _surface.ToggleObjectVisible(id); ShowScene(); };
+        _scene.ObjectDeleteRequested += id => { _surface.Configure(s => s.DeleteObject(id)); ShowScene(); };
+
         // Private storage: emptied if the app is uninstalled, which is exactly why Export sits
         // beside Save rather than somewhere further in.
         var store = new LevelStore(Path.Combine(FilesDir!.AbsolutePath, "levels"));
@@ -101,6 +128,12 @@ public sealed class MainActivity : Activity
         _files.SaveAsRequested += () => _actions.SaveAs();
         _files.ImportRequested += () => _actions.Import();
         _files.ExportRequested += () => _actions.Export();
+
+        _exports = new ExportActions(this, _surface, CacheDir!.AbsolutePath);
+        _files.MeshExportRequested += zip =>
+            _exports.Start(zip ? ExportKind.ObjZip : ExportKind.Glb);
+        _files.MimicraftExportRequested += character =>
+            _exports.Start(character ? ExportKind.Character : ExportKind.Weapon);
         _files.OpenRequested += level => _actions.Open(level);
         _files.DeleteRequested += level => _actions.Delete(level);
 
@@ -131,6 +164,7 @@ public sealed class MainActivity : Activity
                 Gravity = GravityFlags.Bottom,
             });
         root.AddView(_palette, Fill());
+        root.AddView(_scene, Fill());
         root.AddView(_files, Fill());
 
         SetContentView(root);
@@ -151,6 +185,7 @@ public sealed class MainActivity : Activity
 
         // The pages already carry their own margin inside; all they need from here is the bars.
         _palette?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
+        _scene?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
         _files?.SetPadding(insets.Left, insets.Top, insets.Right, insets.Bottom);
     }
 
@@ -167,6 +202,17 @@ public sealed class MainActivity : Activity
         Color32[] colors = _surface.PaletteSnapshot();
         _palette.Populate(colors, _surface.ActiveColorIndex);
         _palette.Visibility = ViewStates.Visible;
+    }
+
+    private void ShowScene()
+    {
+        if (_surface is null || _scene is null)
+        {
+            return;
+        }
+
+        _scene.Populate(_surface.SceneState);
+        _scene.Visibility = ViewStates.Visible;
     }
 
     private void ShowFiles(LevelStore store)
@@ -189,7 +235,10 @@ public sealed class MainActivity : Activity
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
     {
         base.OnActivityResult(requestCode, resultCode, data);
-        _actions?.OnPicked(requestCode, resultCode, data);
+        if (_actions?.OnPicked(requestCode, resultCode, data) != true)
+        {
+            _exports?.OnPicked(requestCode, resultCode, data);
+        }
     }
 #pragma warning restore CA1422
 
@@ -235,6 +284,12 @@ public sealed class MainActivity : Activity
         if (_files is { Visibility: ViewStates.Visible })
         {
             _files.Visibility = ViewStates.Gone;
+            return;
+        }
+
+        if (_scene is { Visibility: ViewStates.Visible })
+        {
+            _scene.Visibility = ViewStates.Gone;
             return;
         }
 

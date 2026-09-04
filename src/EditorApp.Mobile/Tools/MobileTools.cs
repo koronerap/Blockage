@@ -59,6 +59,15 @@ public sealed class MobileTools
 
     public TransformInteraction Transform => _transform;
 
+    /// <summary>
+    /// Whether the next tap takes a colour instead of laying one down.
+    ///
+    /// The desktop samples with Alt held. A finger holds nothing, so this is a mode — but one that
+    /// lasts exactly one tap, because a sampler left armed is indistinguishable from a brush that
+    /// has stopped working.
+    /// </summary>
+    public bool SamplerArmed { get; set; }
+
     /// <summary>True while the tool has hold of the finger, so the camera must leave it alone.</summary>
     public bool IsCapturing => _holder != Holder.None;
 
@@ -113,6 +122,13 @@ public sealed class MobileTools
             case EditorTool.Paint:
                 if (pick is not { } surface || !_session.TryFocus(surface.Object.Id))
                 {
+                    return Holder.None;
+                }
+
+                if (SamplerArmed)
+                {
+                    _session.SampleColor(surface.Hit);
+                    SamplerArmed = false;
                     return Holder.None;
                 }
 

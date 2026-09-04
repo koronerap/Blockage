@@ -28,6 +28,12 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
     private readonly TouchGestures _gestures;
     private readonly MobileTools _tools;
 
+    /// <summary>
+    /// Owned here rather than by the renderer, which is built and destroyed with the GL context. A
+    /// light angle the user chose must not go with it.
+    /// </summary>
+    private readonly SceneLighting _lighting = new();
+
     private MobileRenderer? _renderer;
     private Vector2 _viewportSize = Vector2.One;
 
@@ -149,6 +155,89 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         }
     }
 
+    /// <summary>Whether the ground grid is drawn. Purely a way of looking, never part of a level.</summary>
+    public bool GridVisible { get; private set; } = true;
+
+    /// <summary>Everything the level page shows, taken in one go while the lock is held.</summary>
+    public SceneState SceneState
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                var objects = new List<ObjectState>(_session.Scene.Objects.Count);
+
+                foreach (VoxelObject o in _session.Scene.Objects)
+                {
+                    objects.Add(new ObjectState(
+                        o.Id, o.Name, o.Visible, o.Id == _session.Scene.FocusId, o.Grid.SolidCount));
+                }
+
+                Vector3? extent = null;
+                if (_session.Scene.TryGetWorldBounds(out Vector3 min, out Vector3 max))
+                {
+                    extent = (max - min) / _session.Scene.VoxelSize;
+                }
+
+                return new SceneState(
+                    GridVisible,
+                    LightingState.From(_lighting),
+                    _session.Scene.VoxelSize,
+                    extent,
+                    _session.Scene.SolidCount,
+                    objects);
+            }
+        }
+    }
+
+    public void SetGridVisible(bool visible)
+    {
+        GridVisible = visible;
+        Changed();
+    }
+
+    /// <summary>Changes the light. Held under the lock because the GL thread reads it every frame.</summary>
+    public void ConfigureLighting(Action<SceneLighting> change)
+    {
+        lock (_sceneGate)
+        {
+            change(_lighting);
+        }
+
+        Changed();
+    }
+
+    /// <summary>
+    /// Hiding an object is a way of looking, not an edit, so it goes around the undo stack — and the
+    /// chunks it owns have to be dropped or a hidden object would keep its buffers forever.
+    /// </summary>
+    public void ToggleObjectVisible(int id)
+    {
+        lock (_sceneGate)
+        {
+            foreach (VoxelObject o in _session.Scene.Objects)
+            {
+                if (o.Id == id)
+                {
+                    o.Visible = !o.Visible;
+                    break;
+                }
+            }
+        }
+
+        Changed();
+    }
+
+    public void FrameLevel()
+    {
+        lock (_sceneGate)
+        {
+            FrameScene();
+        }
+
+        Changed();
+    }
+
     /// <summary>Everything the options bar needs, taken in one go while the lock is held.</summary>
     public ToolState State
     {
@@ -160,13 +249,15 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
                     _session.ActiveTool,
                     _session.TransformMode,
                     _session.TransformSpace,
+                    _session.ExtrudeSelectionMode,
                     _session.ExtrudeCreatesObject,
                     _session.PaintMode,
                     _session.BrushRadius,
                     _session.BucketThreshold,
                     _session.BucketWholeObject,
                     _session.Selection?.Count ?? 0,
-                    _session.PreviewCutPlane is not null);
+                    _session.PreviewCutPlane is not null,
+                    _tools.SamplerArmed);
             }
         }
     }
@@ -316,6 +407,17 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         Changed();
     }
 
+    /// <summary>Arms the colour sampler for exactly one tap.</summary>
+    public void ArmSampler(bool armed)
+    {
+        lock (_sceneGate)
+        {
+            _tools.SamplerArmed = armed;
+        }
+
+        Changed();
+    }
+
     public void SetColorIndex(byte index)
     {
         lock (_sceneGate)
@@ -373,7 +475,7 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         try
         {
             _renderer?.Dispose();
-            _renderer = new MobileRenderer();
+            _renderer = new MobileRenderer { Lighting = _lighting };
 
             lock (_sceneGate)
             {
@@ -449,11 +551,14 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         lines.CameraPosition = _camera.Camera.Position;
         gizmos.CameraPosition = _camera.Camera.Position;
 
-        lines.AddGroundGrid(
-            GroundGrid.HalfExtentCells,
-            GroundGrid.Spacing(_session.Scene.VoxelSize),
-            EditorOverlays.GridMinor,
-            EditorOverlays.GridMajor);
+        if (GridVisible)
+        {
+            lines.AddGroundGrid(
+                GroundGrid.HalfExtentCells,
+                GroundGrid.Spacing(_session.Scene.VoxelSize),
+                EditorOverlays.GridMinor,
+                EditorOverlays.GridMajor);
+        }
 
         // Everything from here to the reset is expressed in the focused object's own space.
         Matrix4x4 focusMatrix = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;

@@ -50,6 +50,8 @@ public sealed class OptionsBar : LinearLayout
 
     public event Action<TransformSpace>? TransformSpaceChosen;
 
+    public event Action<ExtrudeSelectionMode>? ExtrudeSelectionModeChosen;
+
     public event Action<bool>? ExtrudeCreatesObjectChanged;
 
     /// <summary>Extrude by a number of whole steps, positive out and negative in.</summary>
@@ -62,6 +64,8 @@ public sealed class OptionsBar : LinearLayout
     public event Action<int>? BucketThresholdChanged;
 
     public event Action<bool>? BucketWholeObjectChanged;
+
+    public event Action<bool>? SamplerArmed;
 
     public void Refresh(ToolState state)
     {
@@ -119,8 +123,17 @@ public sealed class OptionsBar : LinearLayout
 
     private void BuildExtrude(ToolState state)
     {
+        bool box = state.ExtrudeSelectionMode == ExtrudeSelectionMode.Box;
+
+        Choice(Icons.BoxSelect, "Drag out a rectangle", box,
+            () => ExtrudeSelectionModeChosen?.Invoke(ExtrudeSelectionMode.Box));
+        Choice(Icons.FaceSelect, "Take the whole flat patch", !box,
+            () => ExtrudeSelectionModeChosen?.Invoke(ExtrudeSelectionMode.Face));
+
+        Gap();
+
         Choice(
-            Icons.FaceSelect, "Extrude into a new object",
+            Icons.Cut, "Extrude into a new object",
             state.ExtrudeCreatesObject,
             () => ExtrudeCreatesObjectChanged?.Invoke(!state.ExtrudeCreatesObject));
 
@@ -133,7 +146,9 @@ public sealed class OptionsBar : LinearLayout
 
         _hint.Text = hasSelection
             ? "Drag the arrow, or step one voxel at a time."
-            : "Tap a surface to select the whole flat patch it belongs to.";
+            : box
+                ? "Drag across a surface to select a rectangle of it. Drag off the model to turn the view."
+                : "Tap a surface to take the whole flat patch it belongs to.";
     }
 
     private void BuildPaint(ToolState state)
@@ -142,6 +157,13 @@ public sealed class OptionsBar : LinearLayout
 
         Choice(Icons.Brush, "Brush", !bucket, () => PaintModeChosen?.Invoke(PaintMode.Brush));
         Choice(Icons.Bucket, "Bucket fill", bucket, () => PaintModeChosen?.Invoke(PaintMode.Bucket));
+
+        Gap();
+
+        Choice(
+            Icons.Eyedropper, "Take a colour from the model",
+            state.SamplerArmed,
+            () => SamplerArmed?.Invoke(!state.SamplerArmed));
 
         Gap();
 
@@ -163,9 +185,11 @@ public sealed class OptionsBar : LinearLayout
                 () => BucketThresholdChanged?.Invoke(Math.Min(128, state.BucketThreshold + 8)),
                 spreads);
 
-            _hint.Text = state.BucketWholeObject
-                ? "Recolours every voxel of the object, including faces nothing can see yet."
-                : "Fills the connected surface under the tap. Match widens what counts as the same colour.";
+            _hint.Text = state.SamplerArmed
+                ? "The next tap takes that face's colour instead of filling with it."
+                : state.BucketWholeObject
+                    ? "Recolours every voxel of the object, including faces nothing can see yet."
+                    : "Fills the connected surface under the tap. Match widens what counts as the same colour.";
             return;
         }
 
@@ -175,7 +199,9 @@ public sealed class OptionsBar : LinearLayout
             () => BrushRadiusChanged?.Invoke(MathF.Max(0f, state.BrushRadius - 0.5f)),
             () => BrushRadiusChanged?.Invoke(MathF.Min(12f, state.BrushRadius + 0.5f)));
 
-        _hint.Text = "Tap a face to paint it. Dragging turns the model, so paint one tap at a time.";
+        _hint.Text = state.SamplerArmed
+            ? "The next tap takes that face's colour instead of painting it."
+            : "Drag across the model to paint. Drag off it to turn the view.";
     }
 
     private void Choice(

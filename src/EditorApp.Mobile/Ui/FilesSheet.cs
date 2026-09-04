@@ -51,6 +51,14 @@ public sealed class FilesSheet : FrameLayout
         AddAction(context, actions, "Export", () => ExportRequested?.Invoke());
         page.AddView(actions);
 
+        var outputs = new LinearLayout(context) { Orientation = Orientation.Horizontal };
+        outputs.SetPadding(0, 0, 0, pad);
+        AddAction(context, outputs, "Mesh .glb", () => MeshExportRequested?.Invoke(false));
+        AddAction(context, outputs, "Mesh .obj (zip)", () => MeshExportRequested?.Invoke(true));
+        AddAction(context, outputs, ".character", () => MimicraftExportRequested?.Invoke(true));
+        AddAction(context, outputs, ".weapons", () => MimicraftExportRequested?.Invoke(false));
+        page.AddView(outputs);
+
         _list = new LinearLayout(context) { Orientation = Orientation.Vertical };
 
         var scroll = new ScrollView(context);
@@ -78,6 +86,12 @@ public sealed class FilesSheet : FrameLayout
     public event Action? ImportRequested;
 
     public event Action? ExportRequested;
+
+    /// <summary>True for the zipped OBJ, false for the single-file GLB.</summary>
+    public event Action<bool>? MeshExportRequested;
+
+    /// <summary>True for a character, false for a weapon.</summary>
+    public event Action<bool>? MimicraftExportRequested;
 
     public event Action<LevelEntry>? OpenRequested;
 

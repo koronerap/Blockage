@@ -168,6 +168,26 @@ public static class Icons
         canvas.FilledCircle(centre + new Vector2(r * 0.85f, r * 0.5f), r * 0.2f);
     }
 
+    /// <summary>
+    /// Eyedropper: a pipette. What the desktop does with Alt held, which a finger cannot do, so on
+    /// a phone it is a mode that lasts exactly one tap.
+    /// </summary>
+    public static void Eyedropper(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        // The barrel, running corner to corner.
+        canvas.Line(
+            centre + new Vector2(-r * 0.55f, r * 0.55f),
+            centre + new Vector2(r * 0.4f, -r * 0.4f),
+            1.6f);
+
+        // The bulb at the top, and the drop at the tip.
+        canvas.FilledCircle(centre + new Vector2(r * 0.6f, -r * 0.6f), r * 0.3f);
+        canvas.FilledTriangle(
+            centre + new Vector2(-r * 0.82f, r * 0.82f),
+            centre + new Vector2(-r * 0.3f, r * 0.5f),
+            centre + new Vector2(-r * 0.5f, r * 0.3f));
+    }
+
     /// <summary>Pattern: a chequer.</summary>
     public static void Pattern(IIconCanvas canvas, Vector2 centre, float r)
     {
@@ -317,6 +337,23 @@ public static class Icons
         Vector2 tip = centre + new Vector2(-sign * r * 0.62f, r * 0.2f);
         canvas.Line(tip, tip + new Vector2(0f, r * 0.5f));
         Arrowhead(canvas, tip + new Vector2(0f, r * 0.62f), new Vector2(0f, 1f), r * 0.4f);
+    }
+
+    /// <summary>
+    /// Adjust: sliders. Everything about the level and the way it is looked at lives behind this on
+    /// the phone, where the desktop has four separate panels.
+    /// </summary>
+    public static void Adjust(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Span<float> rows = [-0.55f, 0f, 0.55f];
+        Span<float> knobs = [0.3f, -0.35f, 0.15f];
+
+        for (int i = 0; i < rows.Length; i++)
+        {
+            float y = centre.Y + (rows[i] * r);
+            canvas.Line(new Vector2(centre.X - (r * 0.85f), y), new Vector2(centre.X + (r * 0.85f), y), 0.8f);
+            canvas.FilledCircle(new Vector2(centre.X + (knobs[i] * r), y), r * 0.24f);
+        }
     }
 
     /// <summary>Files: a stack of sheets.</summary>

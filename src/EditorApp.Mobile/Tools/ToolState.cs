@@ -14,10 +14,12 @@ public readonly record struct ToolState(
     EditorTool Tool,
     TransformMode TransformMode,
     TransformSpace TransformSpace,
+    ExtrudeSelectionMode ExtrudeSelectionMode,
     bool ExtrudeCreatesObject,
     PaintMode PaintMode,
     float BrushRadius,
     int BucketThreshold,
     bool BucketWholeObject,
     int SelectedFaces,
-    bool HasCutPreview);
+    bool HasCutPreview,
+    bool SamplerArmed);

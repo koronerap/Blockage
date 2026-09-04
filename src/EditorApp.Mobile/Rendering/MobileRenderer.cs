@@ -45,8 +45,13 @@ public sealed class MobileRenderer : IDisposable
     /// <summary>Overlays drawn on a cleared depth buffer, so a gizmo is never swallowed by a model.</summary>
     public EsLineBatch GizmoLines { get; }
 
-    /// <summary>How the viewport shades faces. A way of looking at the level, not part of it.</summary>
-    public SceneLighting Lighting { get; } = new();
+    /// <summary>
+    /// How the viewport shades faces. A way of looking at the level, not part of it.
+    ///
+    /// Settable so the surface can own it: the renderer is built and destroyed with the GL context,
+    /// and a light angle the user chose must not go with it.
+    /// </summary>
+    public SceneLighting Lighting { get; set; } = new();
 
     public int VisibleChunks { get; private set; }
 

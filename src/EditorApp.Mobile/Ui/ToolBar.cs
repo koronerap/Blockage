@@ -65,6 +65,10 @@ public sealed class ToolBar : LinearLayout
         _colour.Click += (_, _) => PaletteRequested?.Invoke();
         Add(_colour);
 
+        var scene = new IconButtonView(context, Icons.Adjust, "Level and view");
+        scene.Click += (_, _) => SceneRequested?.Invoke();
+        Add(scene);
+
         var files = new IconButtonView(context, Icons.Files, "Levels");
         files.Click += (_, _) => FilesRequested?.Invoke();
         Add(files);
@@ -84,6 +88,8 @@ public sealed class ToolBar : LinearLayout
     public event Action? RedoRequested;
 
     public event Action? PaletteRequested;
+
+    public event Action? SceneRequested;
 
     public event Action? FilesRequested;
 
