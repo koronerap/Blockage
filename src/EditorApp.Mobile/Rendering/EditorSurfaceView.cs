@@ -463,6 +463,15 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         if (_session.ActiveTool == EditorTool.Extrude)
         {
             EditorOverlays.AddSelectionOutline(lines, _session.Selection, EditorOverlays.Selection);
+
+            // The rectangle being dragged out right now, before it is committed. Without it a box
+            // selection is invisible until the finger leaves, which is too late to aim it.
+            EditorOverlays.AddSelectionOutline(
+                lines,
+                _tools.Extrude.PendingSelection,
+                _tools.Extrude.PendingOperation == SelectionOperation.Subtract
+                    ? EditorOverlays.SelectionSubtract
+                    : EditorOverlays.SelectionAdd);
         }
 
         // The cut plane runs through the middle of the model, so depth testing would hide it.
@@ -494,10 +503,11 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
                     break;
 
                 case TouchGestureKind.Orbit:
+                    // Whatever the press landed on is still holding the finger. Only the camera is
+                    // left when nothing was.
                     if (_tools.IsCapturing)
                     {
                         _tools.Drag(gesture.Position, _viewportSize, _camera.Camera);
-                        changed = true;
                     }
                     else
                     {

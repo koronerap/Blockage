@@ -10,16 +10,18 @@ namespace EditorApp.Mobile.Tools;
 /// <summary>
 /// What a finger does to the level.
 ///
-/// The state machines themselves are the desktop's — <see cref="ExtrudeInteraction"/> and
+/// The state machines are the desktop's — <see cref="ExtrudeInteraction"/> and
 /// <see cref="TransformInteraction"/> are compiled into this project unchanged. All this adds is the
-/// one rule a touchscreen needs and a mouse does not: **a drag belongs to the camera unless it
-/// started on a gizmo.**
+/// rule a touchscreen needs and a mouse does not, which is how one finger can be both the camera and
+/// the tool:
 ///
-/// A mouse can hover, so the desktop always knows what a press will hit before it happens. A finger
-/// cannot, and there is only one of it, so every drag would otherwise have to be either a camera
-/// move or an edit and never both. Splitting it by what the press landed on gives both without a
-/// mode to remember: grab the arrow and you are extruding, touch anywhere else and you are turning
-/// the model. Tapping — a touch that goes nowhere — is what uses the tool.
+/// **whatever the press landed on owns the drag.** A gizmo first, then the model, then the sky.
+/// Touch a face and you are painting it or selecting it; touch the space around the model and you
+/// are turning the view. Two fingers are always the camera, so there is a way to reframe without
+/// letting go of anything.
+///
+/// The alternative — every drag belonging to the camera — made the two tools that are drags at heart
+/// unusable: a brush that paints one face per tap, and an extrude that cannot draw a rectangle.
 /// </summary>
 public sealed class MobileTools
 {
@@ -33,166 +35,161 @@ public sealed class MobileTools
     private readonly ExtrudeInteraction _extrude;
     private readonly TransformInteraction _transform;
 
+    /// <summary>What the drag in progress is doing, decided when the finger landed.</summary>
+    private Holder _holder;
+
+    private enum Holder
+    {
+        /// <summary>Nobody: the press found empty space, so the camera has it.</summary>
+        None,
+
+        Gizmo,
+        Painting,
+        Selecting,
+    }
+
     public MobileTools(EditorSession session)
     {
         _session = session;
         _extrude = new ExtrudeInteraction(session) { ArrowGrabPixels = TouchGrabPixels };
         _transform = new TransformInteraction(session) { GrabPixels = TouchGrabPixels };
-
-        // Box selection is a drag, and a drag is the camera's. Face mode asks for exactly one tap,
-        // which is the gesture a phone actually has to give.
-        session.ExtrudeSelectionMode = ExtrudeSelectionMode.Face;
     }
 
     public ExtrudeInteraction Extrude => _extrude;
 
     public TransformInteraction Transform => _transform;
 
-    /// <summary>True while a gizmo has hold of the finger, so the camera must leave it alone.</summary>
-    public bool IsCapturing { get; private set; }
+    /// <summary>True while the tool has hold of the finger, so the camera must leave it alone.</summary>
+    public bool IsCapturing => _holder != Holder.None;
 
     /// <summary>
-    /// A finger has landed. Returns true when a gizmo took it, in which case every move until the
+    /// A finger has landed. Returns true when the tool took it, in which case every move until the
     /// finger leaves belongs to the tool rather than to the camera.
     /// </summary>
     public bool Press(Vector2 point, Vector2 viewport, FlyCamera camera)
     {
-        IsCapturing = _session.ActiveTool switch
-        {
-            EditorTool.Transform => PressTransform(point, viewport, camera),
-            EditorTool.Extrude => PressExtrude(point, viewport, camera),
-            _ => false,
-        };
-
+        _holder = Decide(point, viewport, camera);
         return IsCapturing;
     }
 
-    private bool PressTransform(Vector2 point, Vector2 viewport, FlyCamera camera)
+    private Holder Decide(Vector2 point, Vector2 viewport, FlyCamera camera)
     {
-        // The gizmo decides what it is holding from where the cursor is, and on a touchscreen it has
-        // never been told. So it is told now, immediately before being asked.
-        _transform.UpdateHover(point, viewport, camera);
-        return _transform.OnPress(point, viewport, camera);
-    }
-
-    private bool PressExtrude(Vector2 point, Vector2 viewport, FlyCamera camera)
-    {
-        if (_session.Selection is not { IsEmpty: false })
-        {
-            return false;   // nothing selected, so there is no arrow to grab
-        }
-
-        _extrude.OnPress(Pick(point, viewport, camera), point, viewport, camera, shift: false, alt: false);
-
-        if (_extrude.IsDraggingArrow)
-        {
-            return true;
-        }
-
-        // Not the arrow: the press has re-selected whatever was under it, which is what a tap on a
-        // face means anyway. Let go of it so the drag can reach the camera.
-        _extrude.OnRelease();
-        return false;
-    }
-
-    public void Drag(Vector2 point, Vector2 viewport, FlyCamera camera)
-    {
-        if (!IsCapturing)
-        {
-            return;
-        }
+        ScenePick? pick = Pick(point, viewport, camera);
 
         switch (_session.ActiveTool)
         {
             case EditorTool.Transform:
+                // The gizmo decides what it is holding from where the cursor is, and on a
+                // touchscreen it has never been told. So it is told now, immediately before asking.
+                _transform.UpdateHover(point, viewport, camera);
+                if (_transform.OnPress(point, viewport, camera))
+                {
+                    return Holder.Gizmo;
+                }
+
+                // Not a handle. Touching an object still chooses it, but the drag is the camera's:
+                // there is nothing else for a finger to drag an object by.
+                if (pick is { } target)
+                {
+                    _session.TryFocus(target.Object.Id);
+                }
+
+                return Holder.None;
+
+            case EditorTool.Extrude:
+                // The arrow is drawn in front of everything, so grabbing it must never be read as a
+                // press on whatever happens to be behind it. OnPress tries that first itself.
+                _extrude.OnPress(pick, point, viewport, camera, shift: false, alt: false);
+
+                if (_extrude.IsDraggingArrow)
+                {
+                    return Holder.Gizmo;
+                }
+
+                // Box mode leaves a rectangle being dragged out; Face mode has already taken the
+                // whole patch and has nothing left to follow the finger.
+                return _extrude.IsSelecting ? Holder.Selecting : Holder.None;
+
+            case EditorTool.Paint:
+                if (pick is not { } surface || !_session.TryFocus(surface.Object.Id))
+                {
+                    return Holder.None;
+                }
+
+                // One stroke is one undo step, however many faces the finger crosses.
+                _session.BeginStroke();
+                _session.Paint(surface.Hit);
+                return Holder.Painting;
+
+            default:
+                return Holder.None;
+        }
+    }
+
+    public void Drag(Vector2 point, Vector2 viewport, FlyCamera camera)
+    {
+        switch (_holder)
+        {
+            case Holder.Gizmo when _session.ActiveTool == EditorTool.Transform:
                 // freeform: false — a finger cannot hold shift, and snapping to whole voxels is the
                 // behaviour worth having by default.
                 _transform.OnDrag(point, viewport, camera, freeform: false);
                 break;
 
-            case EditorTool.Extrude:
+            case Holder.Gizmo:
+            case Holder.Selecting:
                 _extrude.OnDrag(Hover(point, viewport, camera), point, viewport, camera);
+                break;
+
+            case Holder.Painting:
+                if (Hover(point, viewport, camera) is { } hit)
+                {
+                    _session.Paint(hit);
+                }
+
                 break;
         }
     }
 
     /// <summary>
-    /// The finger has left. A tap that never travelled is the tool being used; anything else was
-    /// the camera, and only a captured gizmo has anything to finish.
+    /// The finger has left. Returns true when the level changed and the view needs redrawing.
     /// </summary>
     public bool Release(Vector2 point, Vector2 viewport, FlyCamera camera, bool wasTap)
     {
-        if (IsCapturing)
+        Holder holder = _holder;
+        _holder = Holder.None;
+
+        switch (holder)
         {
-            IsCapturing = false;
+            case Holder.Gizmo when _session.ActiveTool == EditorTool.Transform:
+                _transform.OnRelease();
+                return true;
 
-            switch (_session.ActiveTool)
-            {
-                case EditorTool.Transform:
-                    _transform.OnRelease();
-                    return true;
+            case Holder.Gizmo:
+            case Holder.Selecting:
+                // Letting go commits. Asked for on the desktop and even more true here, where there
+                // is no Enter key to reach for.
+                _extrude.OnRelease();
+                return true;
 
-                case EditorTool.Extrude:
-                    // Letting go commits. Asked for on the desktop and even more true here, where
-                    // there is no Enter key to reach for.
-                    _extrude.OnRelease();
-                    return true;
-            }
-
-            return false;
+            case Holder.Painting:
+                _session.EndStroke();
+                return true;
         }
 
+        // Nothing was held, so this was the camera — unless the finger never moved, in which case it
+        // was a tap on something, and the two tools that act on a tap get their turn.
         return wasTap && Tap(point, viewport, camera);
     }
 
-    /// <summary>Returns true when the level changed and the view needs redrawing.</summary>
     private bool Tap(Vector2 point, Vector2 viewport, FlyCamera camera)
     {
-        ScenePick? pick = Pick(point, viewport, camera);
-        if (pick is not { } target)
+        if (Pick(point, viewport, camera) is not { } target)
         {
             return false;
         }
 
-        return _session.ActiveTool switch
-        {
-            EditorTool.Paint => TapPaint(target),
-            EditorTool.Extrude => TapExtrude(target),
-            EditorTool.LoopCut => TapLoopCut(target),
-            EditorTool.Transform => _session.TryFocus(target.Object.Id),
-            _ => false,
-        };
-    }
-
-    private bool TapPaint(ScenePick target)
-    {
-        if (!_session.TryFocus(target.Object.Id))
-        {
-            return false;
-        }
-
-        // One tap is one undo step. Without the stroke around it, a bucket fill and a single face
-        // would both land as bare edits and undo would take them apart differently.
-        _session.BeginStroke();
-        bool painted = _session.Paint(target.Hit);
-        _session.EndStroke();
-
-        return painted;
-    }
-
-    private bool TapExtrude(ScenePick target)
-    {
-        if (target.Object.Id != _session.Scene.FocusId)
-        {
-            _session.ClearSelection();
-            if (!_session.TryFocus(target.Object.Id))
-            {
-                return false;
-            }
-        }
-
-        _session.SelectPatch(target.Hit);
-        return true;
+        return _session.ActiveTool == EditorTool.LoopCut && TapLoopCut(target);
     }
 
     /// <summary>
@@ -229,6 +226,12 @@ public sealed class MobileTools
         _session.PreviewCutPlane = null;
         return _session.ApplyLoopCut(plane);
     }
+
+    /// <summary>Takes the colour of whatever is under the point, the way Alt-click does on desktop.</summary>
+    public bool Sample(Vector2 point, Vector2 viewport, FlyCamera camera) =>
+        Pick(point, viewport, camera) is { } target
+            && _session.TryFocus(target.Object.Id)
+            && _session.SampleColor(target.Hit);
 
     /// <summary>Whatever is under the finger, in any object.</summary>
     public ScenePick? Pick(Vector2 point, Vector2 viewport, FlyCamera camera)
