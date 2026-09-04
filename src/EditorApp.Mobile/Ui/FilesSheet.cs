@@ -36,7 +36,10 @@ public sealed class FilesSheet : FrameLayout
         _current.SetTextSize(ComplexUnitType.Sp, 16f);
         header.AddView(_current, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        AddAction(context, header, "Done", () => Dismissed?.Invoke());
+        var close = new IconButtonView(context, EditorApp.Ui.Icons.Close, "Close");
+        close.Click += (_, _) => Dismissed?.Invoke();
+        header.AddView(close);
+
         page.AddView(header);
 
         var actions = new LinearLayout(context) { Orientation = Orientation.Horizontal };

@@ -3,69 +3,78 @@ using Android.Views;
 using Android.Widget;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Voxels;
+using EditorApp.Ui;
 
 namespace EditorApp.Mobile.Ui;
 
 /// <summary>
-/// The bar along the bottom: which tool is in hand, undo and redo, and the way into the palette.
+/// The bar along the bottom: which tool is in hand, undo and redo, the colour, the files, and the
+/// handle that opens the tool's own options.
 ///
-/// It sits at the bottom because that is the part of a phone a thumb reaches without regripping,
-/// and it is the only chrome over the viewport — everything else the editor can do is either a
-/// gesture or behind the palette button.
+/// One row of pictograms and nothing else. Words were costing a third of the screen's width in
+/// landscape, and there are only nine things here — few enough to learn, and each one has its name
+/// on a long press for the first day.
 /// </summary>
 public sealed class ToolBar : LinearLayout
 {
-    private static readonly (EditorTool Tool, string Label)[] Tools =
+    private static readonly (EditorTool Tool, Icons.Painter Icon, string Name)[] Tools =
     [
-        (EditorTool.Transform, "Move"),
-        (EditorTool.Extrude, "Extrude"),
-        (EditorTool.Paint, "Paint"),
-        (EditorTool.LoopCut, "Cut"),
+        (EditorTool.Transform, Icons.Move, "Move"),
+        (EditorTool.Extrude, Icons.Extrude, "Extrude"),
+        (EditorTool.Paint, Icons.Paint, "Paint"),
+        (EditorTool.LoopCut, Icons.Cut, "Loop cut"),
     ];
 
-    private readonly Dictionary<EditorTool, TextView> _toolButtons = new();
-    private readonly TextView _undo;
-    private readonly TextView _redo;
-    private readonly TextView _palette;
+    private readonly Dictionary<EditorTool, IconButtonView> _toolButtons = new();
+    private readonly IconButtonView _undo;
+    private readonly IconButtonView _redo;
+    private readonly IconButtonView _options;
+    private readonly View _colour;
 
     public ToolBar(Context context)
         : base(context)
     {
         Orientation = Orientation.Horizontal;
-        SetGravity(GravityFlags.Center);
+        SetGravity(GravityFlags.CenterVertical);
         SetBackgroundColor(Style.Panel);
 
-        int gap = Style.Dp(context, 6f);
-        SetPadding(gap, gap, gap, gap);
-
-        foreach ((EditorTool tool, string label) in Tools)
+        foreach ((EditorTool tool, Icons.Painter icon, string name) in Tools)
         {
-            TextView button = Style.Button(context, label);
+            var button = new IconButtonView(context, icon, name);
             button.Click += (_, _) => ToolChosen?.Invoke(tool);
 
             _toolButtons.Add(tool, button);
-            Add(button, gap, weight: 1f);
+            Add(button);
         }
 
-        // A gap, so undo is never hit while reaching for a tool.
-        var spacer = new Space(context);
-        AddView(spacer, new LayoutParams(Style.Dp(context, 10f), 0));
+        Gap();
 
-        _undo = Style.Button(context, "Undo");
+        _undo = new IconButtonView(context, Icons.Undo, "Undo");
         _undo.Click += (_, _) => UndoRequested?.Invoke();
-        Add(_undo, gap);
+        Add(_undo);
 
-        _redo = Style.Button(context, "Redo");
+        _redo = new IconButtonView(context, Icons.Redo, "Redo");
         _redo.Click += (_, _) => RedoRequested?.Invoke();
-        Add(_redo, gap);
+        Add(_redo);
 
-        _palette = Style.Button(context, "Colour");
-        _palette.Click += (_, _) => PaletteRequested?.Invoke();
-        Add(_palette, gap);
+        Gap();
 
-        TextView files = Style.Button(context, "Files");
+        // The colour is its own colour — a pictogram of a swatch would be a picture of the thing
+        // standing next to the thing.
+        _colour = new View(context) { ContentDescription = "Colour", Clickable = true };
+        _colour.Click += (_, _) => PaletteRequested?.Invoke();
+        Add(_colour);
+
+        var files = new IconButtonView(context, Icons.Files, "Levels");
         files.Click += (_, _) => FilesRequested?.Invoke();
-        Add(files, gap);
+        Add(files);
+
+        // Pushed to the far end, where a thumb rests, and away from anything destructive.
+        AddView(new Space(context), new LayoutParams(0, 0, 1f));
+
+        _options = new IconButtonView(context, Icons.ChevronUp, "Tool options");
+        _options.Click += (_, _) => OptionsToggled?.Invoke();
+        Add(_options);
     }
 
     public event Action<EditorTool>? ToolChosen;
@@ -78,37 +87,29 @@ public sealed class ToolBar : LinearLayout
 
     public event Action? FilesRequested;
 
-    private void Add(View view, int gap, float weight = 0f)
-    {
-        var layout = new LayoutParams(
-            weight > 0f ? 0 : ViewGroup.LayoutParams.WrapContent,
-            ViewGroup.LayoutParams.WrapContent,
-            weight);
+    public event Action? OptionsToggled;
 
-        layout.SetMargins(gap / 2, 0, gap / 2, 0);
+    private void Add(View view)
+    {
+        int side = Style.Dp(Context!, Style.IconButtonDp);
+        var layout = new LayoutParams(side, side);
+        layout.SetMargins(Style.Dp(Context!, 3f), 0, Style.Dp(Context!, 3f), 0);
         AddView(view, layout);
     }
 
-    /// <summary>
-    /// Brings the bar up to date with the session. Undo and redo are dimmed rather than removed when
-    /// there is nothing to undo — a button that comes and goes is harder to aim at than a dull one.
-    /// </summary>
-    public void Refresh(EditorTool active, bool canUndo, bool canRedo, Color32 color)
+    private void Gap() => AddView(new Space(Context!), new LayoutParams(Style.Dp(Context!, 12f), 0));
+
+    public void Refresh(EditorTool active, bool canUndo, bool canRedo, Color32 colour, bool optionsOpen)
     {
-        foreach ((EditorTool tool, TextView button) in _toolButtons)
+        foreach ((EditorTool tool, IconButtonView button) in _toolButtons)
         {
-            Style.SetSelected(Context!, button, tool == active);
+            button.Chosen = tool == active;
         }
 
-        Style.SetEnabledLook(_undo, canUndo);
-        Style.SetEnabledLook(_redo, canRedo);
+        _undo.Available = canUndo;
+        _redo.Available = canRedo;
 
-        // The swatch is the button: what colour is loaded matters more often than the word does.
-        _palette.Background = Style.RoundedFill(Context!, Style.ToAndroid(color), Style.Accent);
-        _palette.SetTextColor(Luminance(color) > 140 ? Style.Panel : Style.Text);
+        _colour.Background = Style.RoundedFill(Context!, Style.ToAndroid(colour), Style.Accent);
+        _options.Chosen = optionsOpen;
     }
-
-    /// <summary>Rec. 601 luma — enough to decide whether a label reads better dark or light.</summary>
-    private static int Luminance(Color32 color) =>
-        ((color.R * 299) + (color.G * 587) + (color.B * 114)) / 1000;
 }

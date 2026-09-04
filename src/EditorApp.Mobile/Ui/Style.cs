@@ -39,6 +39,13 @@ public static class Style
     /// </summary>
     public const float TouchTargetDp = 48f;
 
+    /// <summary>
+    /// One icon button's side. Smaller than the touch-target floor above because a row of them is
+    /// spaced apart, so the gap between two buttons belongs to neither and a miss lands on nothing
+    /// rather than on the wrong thing.
+    /// </summary>
+    public const float IconButtonDp = 44f;
+
     public static int Dp(Context context, float dp) =>
         (int)TypedValue.ApplyDimension(ComplexUnitType.Dip, dp, context.Resources!.DisplayMetrics);
 

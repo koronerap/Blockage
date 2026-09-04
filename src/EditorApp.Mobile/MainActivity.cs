@@ -47,6 +47,12 @@ public sealed class MainActivity : Activity
     private FileActions? _actions;
     private OptionsBar? _options;
 
+    /// <summary>
+    /// Whether the tool's options are showing. Closed to begin with: they are set once and then left
+    /// alone, and a row that is always there is a row the viewport does not get.
+    /// </summary>
+    private bool _optionsOpen;
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -69,6 +75,11 @@ public sealed class MainActivity : Activity
         _toolBar.UndoRequested += () => _surface.Undo();
         _toolBar.RedoRequested += () => _surface.Redo();
         _toolBar.PaletteRequested += ShowPalette;
+        _toolBar.OptionsToggled += () =>
+        {
+            _optionsOpen = !_optionsOpen;
+            Refresh();
+        };
 
         _palette = new PaletteSheet(this) { Visibility = ViewStates.Gone };
         _palette.ColorChosen += index =>
@@ -190,9 +201,18 @@ public sealed class MainActivity : Activity
                 _surface.ActiveTool,
                 _surface.CanUndo,
                 _surface.CanRedo,
-                _surface.ActiveColor);
+                _surface.ActiveColor,
+                _optionsOpen);
 
-            _options?.Refresh(_surface.State);
+            if (_options is not null)
+            {
+                _options.Visibility = _optionsOpen ? ViewStates.Visible : ViewStates.Gone;
+
+                if (_optionsOpen)
+                {
+                    _options.Refresh(_surface.State);
+                }
+            }
         }
     }
 

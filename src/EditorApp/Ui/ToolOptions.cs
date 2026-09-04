@@ -238,7 +238,7 @@ public static class ToolOptions
 
             (Icons.Painter icon, string name) = options[i];
 
-            if (Icons.Button($"{id}{i}", icon, i == selected, $"{name}  ({shortcut} cycles)", size) && i != selected)
+            if (IconButton.Draw($"{id}{i}", icon, i == selected, $"{name}  ({shortcut} cycles)", size) && i != selected)
             {
                 onChange(i);
             }

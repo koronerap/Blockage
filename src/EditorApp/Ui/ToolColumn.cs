@@ -26,7 +26,7 @@ public static class ToolColumn
     {
         foreach ((EditorTool tool, Icons.Painter icon, string name, string shortcut, string help) in Tools)
         {
-            if (Icons.Button(
+            if (IconButton.Draw(
                     tool.ToString(),
                     icon,
                     session.ActiveTool == tool,

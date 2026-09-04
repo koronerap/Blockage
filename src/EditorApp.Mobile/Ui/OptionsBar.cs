@@ -4,19 +4,20 @@ using Android.Views;
 using Android.Widget;
 using EditorApp.Core.Editing;
 using EditorApp.Mobile.Tools;
+using EditorApp.Ui;
 
 namespace EditorApp.Mobile.Ui;
 
 /// <summary>
-/// The row above the tool bar: whatever the tool in hand can be told to do differently.
+/// Whatever the tool in hand can be told to do differently, shown only when asked for.
 ///
-/// The desktop puts these in a strip under the menu with tooltips explaining each one. A phone has
-/// no tooltip and no hover, so the same options are shown as buttons that say what they are, with a
-/// line of plain text where the desktop would have waited for the cursor to rest.
+/// Closed by default, because the options are set once and then left alone for a long stretch of
+/// modelling, and every row that is always there is a row the viewport does not get. The chevron at
+/// the end of the tool bar opens it.
 ///
 /// Numbers are steppers rather than sliders. A slider is a poor thing to aim a fingertip at, and
-/// every number here — a brush radius, a colour match — is one the user wants an exact value of far
-/// more often than a rough one.
+/// every number here — a brush radius, a colour match — is one you want an exact value of far more
+/// often than a rough one.
 /// </summary>
 public sealed class OptionsBar : LinearLayout
 {
@@ -36,6 +37,8 @@ public sealed class OptionsBar : LinearLayout
         _controls.SetGravity(GravityFlags.CenterVertical);
         AddView(_controls);
 
+        // The one piece of prose left. A phone has no hover, so the sentence the desktop keeps in a
+        // tooltip has nowhere else to go — and it is only on screen while the options are open.
         _hint = new TextView(context);
         _hint.SetTextColor(Style.TextDim);
         _hint.SetTextSize(ComplexUnitType.Sp, 11f);
@@ -88,22 +91,27 @@ public sealed class OptionsBar : LinearLayout
 
     private void BuildTransform(ToolState state)
     {
-        Segmented(
-            [("Move", state.TransformMode == TransformMode.Move),
-             ("Rotate", state.TransformMode == TransformMode.Rotate)],
-            index => TransformModeChosen?.Invoke((TransformMode)index));
+        bool moving = state.TransformMode == TransformMode.Move;
+
+        Choice(Icons.Move, "Move", moving, () => TransformModeChosen?.Invoke(TransformMode.Move));
+        Choice(Icons.Rotate, "Rotate", !moving, () => TransformModeChosen?.Invoke(TransformMode.Rotate));
 
         Gap();
 
-        bool moving = state.TransformMode == TransformMode.Move;
-        Segmented(
-            [("Global", state.TransformSpace == TransformSpace.Global),
-             ("Local", state.TransformSpace == TransformSpace.Local)],
-            index => TransformSpaceChosen?.Invoke((TransformSpace)index),
-            enabled: moving);
-
         // The edge hinge a rotation turns about is always in the object's own space, so the choice
         // has nothing to say while rotating.
+        Choice(
+            Icons.Global, "Global space",
+            state.TransformSpace == TransformSpace.Global,
+            () => TransformSpaceChosen?.Invoke(TransformSpace.Global),
+            moving);
+
+        Choice(
+            Icons.Local, "Local space",
+            state.TransformSpace == TransformSpace.Local,
+            () => TransformSpaceChosen?.Invoke(TransformSpace.Local),
+            moving);
+
         _hint.Text = moving
             ? "Drag an arrow to move the object. Movement snaps to whole voxels."
             : "Drag a ring to turn the object. Global and local mean the same thing here.";
@@ -111,17 +119,20 @@ public sealed class OptionsBar : LinearLayout
 
     private void BuildExtrude(ToolState state)
     {
-        Toggle("New object", state.ExtrudeCreatesObject,
-            value => ExtrudeCreatesObjectChanged?.Invoke(value));
+        Choice(
+            Icons.FaceSelect, "Extrude into a new object",
+            state.ExtrudeCreatesObject,
+            () => ExtrudeCreatesObjectChanged?.Invoke(!state.ExtrudeCreatesObject));
 
         Gap();
 
         bool hasSelection = state.SelectedFaces > 0;
-        Button("Pull out", () => ExtrudeStepped?.Invoke(1), hasSelection);
-        Button("Push in", () => ExtrudeStepped?.Invoke(-1), hasSelection);
+        Choice(Icons.Minus, "Push in one voxel", false, () => ExtrudeStepped?.Invoke(-1), hasSelection);
+        Label(hasSelection ? $"{state.SelectedFaces} faces" : "nothing");
+        Choice(Icons.Plus, "Pull out one voxel", false, () => ExtrudeStepped?.Invoke(1), hasSelection);
 
         _hint.Text = hasSelection
-            ? $"{state.SelectedFaces} face(s) selected — drag the arrow, or step one voxel at a time."
+            ? "Drag the arrow, or step one voxel at a time."
             : "Tap a surface to select the whole flat patch it belongs to.";
     }
 
@@ -129,25 +140,28 @@ public sealed class OptionsBar : LinearLayout
     {
         bool bucket = state.PaintMode == PaintMode.Bucket;
 
-        Segmented(
-            [("Brush", !bucket), ("Bucket", bucket)],
-            index => PaintModeChosen?.Invoke(index == 0 ? PaintMode.Brush : PaintMode.Bucket));
+        Choice(Icons.Brush, "Brush", !bucket, () => PaintModeChosen?.Invoke(PaintMode.Brush));
+        Choice(Icons.Bucket, "Bucket fill", bucket, () => PaintModeChosen?.Invoke(PaintMode.Bucket));
 
         Gap();
 
         if (bucket)
         {
-            Toggle("Whole object", state.BucketWholeObject,
-                value => BucketWholeObjectChanged?.Invoke(value));
+            Choice(
+                Icons.Pattern, "Recolour the whole object",
+                state.BucketWholeObject,
+                () => BucketWholeObjectChanged?.Invoke(!state.BucketWholeObject));
 
             Gap();
 
             // A whole-object fill does not spread, so how far it would have spread means nothing.
+            bool spreads = !state.BucketWholeObject;
             Stepper(
-                state.BucketThreshold == 0 ? "Match: exact" : $"Match: {state.BucketThreshold}",
+                state.BucketThreshold == 0 ? "exact" : $"±{state.BucketThreshold}",
+                "Colour match",
                 () => BucketThresholdChanged?.Invoke(Math.Max(0, state.BucketThreshold - 8)),
                 () => BucketThresholdChanged?.Invoke(Math.Min(128, state.BucketThreshold + 8)),
-                enabled: !state.BucketWholeObject);
+                spreads);
 
             _hint.Text = state.BucketWholeObject
                 ? "Recolours every voxel of the object, including faces nothing can see yet."
@@ -156,81 +170,40 @@ public sealed class OptionsBar : LinearLayout
         }
 
         Stepper(
-            state.BrushRadius < 0.5f ? "Radius: one face" : $"Radius: {state.BrushRadius:0.0}",
+            state.BrushRadius < 0.5f ? "1 face" : $"{state.BrushRadius:0.0}",
+            "Brush radius",
             () => BrushRadiusChanged?.Invoke(MathF.Max(0f, state.BrushRadius - 0.5f)),
             () => BrushRadiusChanged?.Invoke(MathF.Min(12f, state.BrushRadius + 0.5f)));
 
         _hint.Text = "Tap a face to paint it. Dragging turns the model, so paint one tap at a time.";
     }
 
-    private void Segmented((string Label, bool Selected)[] items, Action<int> chosen, bool enabled = true)
+    private void Choice(
+        Icons.Painter icon,
+        string name,
+        bool chosen,
+        Action clicked,
+        bool available = true)
     {
-        for (int i = 0; i < items.Length; i++)
-        {
-            int index = i;
-            TextView button = Style.Button(Context!, items[i].Label);
-            Style.SetSelected(Context!, button, items[i].Selected);
-            Style.SetEnabledLook(button, enabled);
-            button.Click += (_, _) => chosen(index);
-            Add(button);
-        }
-    }
-
-    private void Toggle(string label, bool on, Action<bool> changed)
-    {
-        TextView button = Style.Button(Context!, label);
-        Style.SetSelected(Context!, button, on);
-        button.Click += (_, _) => changed(!on);
+        var button = new IconButtonView(Context!, icon, name) { Chosen = chosen, Available = available };
+        button.Click += (_, _) => clicked();
         Add(button);
     }
 
-    private void Button(string label, Action clicked, bool enabled)
+    private void Stepper(string value, string name, Action down, Action up, bool available = true)
     {
-        TextView button = Style.Button(Context!, label);
-        Style.SetEnabledLook(button, enabled);
-        button.Click += (_, _) =>
-        {
-            if (enabled)
-            {
-                clicked();
-            }
-        };
-
-        Add(button);
+        Choice(Icons.Minus, $"{name}: less", false, down, available);
+        Label(value, available);
+        Choice(Icons.Plus, $"{name}: more", false, up, available);
     }
 
-    private void Stepper(string label, Action down, Action up, bool enabled = true)
+    private void Label(string text, bool available = true)
     {
-        TextView less = Style.Button(Context!, "−");
-        Style.SetEnabledLook(less, enabled);
-        less.Click += (_, _) =>
-        {
-            if (enabled)
-            {
-                down();
-            }
-        };
-
-        Add(less);
-
-        var value = new TextView(Context!) { Text = label, Gravity = GravityFlags.Center };
-        value.SetTextColor(enabled ? Style.Text : Style.TextDim);
-        value.SetTextSize(ComplexUnitType.Sp, 12f);
-        value.SetPadding(Style.Dp(Context!, 10f), 0, Style.Dp(Context!, 10f), 0);
-        value.SetMinimumWidth(Style.Dp(Context!, 110f));
-        Add(value);
-
-        TextView more = Style.Button(Context!, "+");
-        Style.SetEnabledLook(more, enabled);
-        more.Click += (_, _) =>
-        {
-            if (enabled)
-            {
-                up();
-            }
-        };
-
-        Add(more);
+        var view = new TextView(Context!) { Text = text, Gravity = GravityFlags.Center };
+        view.SetTextColor(available ? Style.Text : Style.TextDim);
+        view.SetTextSize(ComplexUnitType.Sp, 12f);
+        view.SetMinimumWidth(Style.Dp(Context!, 62f));
+        Add(view);
     }
 
     private void Add(View view)

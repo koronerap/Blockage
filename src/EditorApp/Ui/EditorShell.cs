@@ -122,14 +122,14 @@ public sealed class EditorShell
 
         ImGui.SameLine(0f, GroupGap);
 
-        if (Icons.Button("grid", Icons.Grid, context.View.GridVisible(), "Ground grid  (G)", button))
+        if (IconButton.Draw("grid", Icons.Grid, context.View.GridVisible(), "Ground grid  (G)", button))
         {
             context.View.ToggleGrid();
         }
 
         ImGui.SameLine();
 
-        if (Icons.Button("measure", Icons.Measure, context.View.MeasurementsVisible(), "Measurements  (D)", button))
+        if (IconButton.Draw("measure", Icons.Measure, context.View.MeasurementsVisible(), "Measurements  (D)", button))
         {
             context.View.ToggleMeasurements();
         }
@@ -138,14 +138,14 @@ public sealed class EditorShell
 
         ImGui.SameLine(0f, GroupGap);
 
-        if (Icons.Button("lit", Icons.Lit, lighting.IsLit, "Lit  -  one directional light", button))
+        if (IconButton.Draw("lit", Icons.Lit, lighting.IsLit, "Lit  -  one directional light", button))
         {
             lighting.Mode = ShadingMode.Lit;
         }
 
         ImGui.SameLine();
 
-        if (Icons.Button("unlit", Icons.Unlit, !lighting.IsLit, "Unlit  -  flat per-face shade", button))
+        if (IconButton.Draw("unlit", Icons.Unlit, !lighting.IsLit, "Unlit  -  flat per-face shade", button))
         {
             lighting.Mode = ShadingMode.Unlit;
         }
@@ -181,7 +181,7 @@ public sealed class EditorShell
 
             (string id, Icons.Painter icon, string tip, RotateDirection direction) = turns[i];
 
-            if (Icons.Button(id, icon, active: false, $"{tip}  -  turns the object's voxels", button))
+            if (IconButton.Draw(id, icon, active: false, $"{tip}  -  turns the object's voxels", button))
             {
                 session.RotateFocus(direction);
             }

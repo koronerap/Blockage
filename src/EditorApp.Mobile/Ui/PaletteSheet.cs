@@ -38,7 +38,7 @@ public sealed class PaletteSheet : FrameLayout
         title.SetTextSize(Android.Util.ComplexUnitType.Sp, 16f);
         header.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        TextView close = Style.Button(context, "Done");
+        var close = new IconButtonView(context, EditorApp.Ui.Icons.Close, "Close");
         close.Click += (_, _) => Dismissed?.Invoke();
         header.AddView(close);
 
