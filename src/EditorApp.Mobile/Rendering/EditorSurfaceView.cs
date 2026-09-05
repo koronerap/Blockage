@@ -146,15 +146,6 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         }
     }
 
-    /// <summary>A copy, because the caller is on another thread and the palette can change.</summary>
-    public Color32[] PaletteSnapshot()
-    {
-        lock (_sceneGate)
-        {
-            return _session.World.Palette.Colors.ToArray();
-        }
-    }
-
     /// <summary>Whether the ground grid is drawn. Purely a way of looking, never part of a level.</summary>
     public bool GridVisible { get; private set; } = true;
 
@@ -433,6 +424,99 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         }
 
         Changed();
+    }
+
+    /// <summary>
+    /// Makes an arbitrary colour the active one, live.
+    ///
+    /// Not the same thing as recolouring a slot, and the difference is the whole point: if the
+    /// palette already holds this colour that entry is chosen, and otherwise it goes into a working
+    /// slot that is nobody's swatch until it is saved. Writing it over the active entry instead
+    /// would repaint every voxel that shared the index.
+    /// </summary>
+    public byte PickColor(Color32 colour)
+    {
+        byte index;
+
+        lock (_sceneGate)
+        {
+            index = _session.SelectColor(colour);
+        }
+
+        Changed();
+        return index;
+    }
+
+    /// <summary>Keeps the working colour as a swatch, so it survives the next pick.</summary>
+    public bool SaveSwatch()
+    {
+        bool saved;
+
+        lock (_sceneGate)
+        {
+            saved = _session.SaveActiveColor();
+        }
+
+        Changed();
+        return saved;
+    }
+
+    /// <summary>
+    /// Changes what a slot holds, recolouring every voxel already using it. One undo step for the
+    /// whole change rather than one per drag of a slider.
+    /// </summary>
+    public bool RecolourSlot(int index, Color32 colour)
+    {
+        lock (_sceneGate)
+        {
+            Color32 before = _session.World.Palette[index];
+
+            if (before == colour)
+            {
+                return false;
+            }
+
+            _session.ApplyPaletteColor(index, colour);
+            _session.PushPaletteEdit(index, before, colour);
+        }
+
+        Changed();
+        return true;
+    }
+
+    /// <summary>Gives a saved custom slot back. Only a custom slot can be given back.</summary>
+    public bool ForgetSwatch()
+    {
+        bool cleared;
+
+        lock (_sceneGate)
+        {
+            cleared = _session.ClearCustomColor(_session.ActiveColorIndex);
+        }
+
+        Changed();
+        return cleared;
+    }
+
+    /// <summary>Everything the palette page shows, taken in one go while the lock is held.</summary>
+    public PaletteState PaletteState
+    {
+        get
+        {
+            lock (_sceneGate)
+            {
+                Palette palette = _session.World.Palette;
+                byte active = _session.ActiveColorIndex;
+
+                return new PaletteState(
+                    palette.Colors.ToArray(),
+                    active,
+                    [.. palette.SavedCustomSlots()],
+                    Palette.IsCustomIndex(active) && palette.IsCustomSaved(active),
+                    _session.WorkingSlot == active,
+                    palette.FreeCustomSlots);
+            }
+        }
     }
 
     /// <summary>Arms the colour sampler for exactly one tap.</summary>

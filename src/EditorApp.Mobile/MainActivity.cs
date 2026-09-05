@@ -98,11 +98,12 @@ public sealed class MainActivity : Activity
         };
 
         _palette = new PaletteSheet(this) { Visibility = ViewStates.Gone };
-        _palette.ColorChosen += index =>
-        {
-            _surface.SetColorIndex(index);
-            _palette.SetSelected(_surface.PaletteSnapshot(), index);
-        };
+        _palette.ColorChosen += index => { _surface.SetColorIndex(index); ShowPalette(); };
+        _palette.ColorPicked += colour => { _surface.PickColor(colour); RefreshPalette(); };
+        _palette.PickingFinished += ShowPalette;
+        _palette.SaveRequested += () => { _surface.SaveSwatch(); ShowPalette(); };
+        _palette.ForgetRequested += () => { _surface.ForgetSwatch(); ShowPalette(); };
+        _palette.RecolourRequested += (slot, colour) => { _surface.RecolourSlot(slot, colour); ShowPalette(); };
         _palette.Dismissed += () => ShowOnly(null);
 
         _scene = new SceneSheet(this) { Visibility = ViewStates.Gone };
@@ -255,14 +256,35 @@ public sealed class MainActivity : Activity
 
     private void ShowPalette()
     {
-        if (_surface is null || _palette is null)
+        if (_surface is not null && _palette is not null)
         {
-            return;
+            _palette.Populate(_surface.PaletteState);
+            ShowOnly(_palette);
+        }
+    }
+
+    /// <summary>
+    /// Repaints the page without rebuilding it. Dragging a slider changes the colour continuously,
+    /// and rebuilding the page under the finger would take the slider away mid-drag.
+    /// </summary>
+    private void RefreshPalette()
+    {
+        if (_surface is not null && _palette is not null)
+        {
+            _palette.Refresh(_surface.PaletteState);
         }
 
-        Color32[] colors = _surface.PaletteSnapshot();
-        _palette.Populate(colors, _surface.ActiveColorIndex);
-        ShowOnly(_palette);
+        if (_surface is not null && _chrome is not null)
+        {
+            _chrome.Refresh(
+                _surface.ActiveTool,
+                _surface.CanUndo,
+                _surface.CanRedo,
+                _surface.ActiveColor,
+                _optionsOpen,
+                _surface.ProjectName,
+                _surface.HasUnsavedChanges);
+        }
     }
 
     private void ShowScene()
