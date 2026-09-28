@@ -213,6 +213,8 @@ public sealed class EditorShell(LayoutSettings layout)
         Properties = tab => DrawTab(context, tab),
         Tab = tab => tab switch
         {
+            // The tool's own icon, so the strip says which tool the tab is about.
+            PropertiesTab.Tool => (ToolColumn.Describe(context.Session.ActiveTool).Icon, $"Tool  -  {ToolColumn.Describe(context.Session.ActiveTool).Name}"),
             // Picking a light turns the Object tab into the light's: the same place, for whatever is picked.
             PropertiesTab.Object => context.Session.SelectedLight is { } light
                 ? (Icons.For(light.Kind), $"Light  -  {light.Name}")
@@ -227,14 +229,25 @@ public sealed class EditorShell(LayoutSettings layout)
     {
         switch (tab)
         {
+            case PropertiesTab.Tool:
+                ToolPanel.DrawContent(context.Session);
+                break;
+
             case PropertiesTab.Object:
                 ObjectPropertiesPanel.DrawContent(context.Session);
                 break;
 
             case PropertiesTab.World:
-                LevelPanel.DrawContent(context.Session);
-                ImGui.Separator();
-                LightingPanel.DrawContent(context);
+                if (Props.Section("Level"))
+                {
+                    LevelPanel.DrawContent(context.Session);
+                }
+
+                if (Props.Section("Lighting"))
+                {
+                    LightingPanel.DrawContent(context.Session, context.View.Lighting, context.Renderer.DroppedLights);
+                }
+
                 break;
 
             case PropertiesTab.Palette:

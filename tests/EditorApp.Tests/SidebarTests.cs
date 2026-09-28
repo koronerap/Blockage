@@ -76,7 +76,7 @@ public sealed class SidebarTests : IDisposable
 
         _ui.Click(new Vector2(_left + Sidebar.EdgeGrip, TabButton(0).Y), Draw, inWindow: false);
 
-        Assert.Equal(PropertiesTab.Object, _layout.Tab);
+        Assert.Equal(PropertiesTab.Tool, _layout.Tab);
         Assert.Equal(LayoutSettings.DefaultSidebarWidth, _layout.SidebarWidth);
     }
 

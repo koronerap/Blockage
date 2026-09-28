@@ -257,19 +257,26 @@ public static class ToolOptions
 
     public static void DrawDialogs() => PatternBrowser.Draw();
 
+    /// <summary>Opens the browser for a pattern image. Shared by the header and the Tool tab.</summary>
+    public static void ShowPatternBrowser(EditorSession session) =>
+        PatternBrowser.Show(
+            FileBrowserMode.Open,
+            "Load a tiled pattern (.png)",
+            ".png",
+            PatternBrowser.CurrentDirectory,
+            suggestedName: null,
+            LoadPattern(session));
+
+    /// <summary>What went wrong loading the last pattern, or empty.</summary>
+    public static string PatternError => _patternStatus;
+
     private static void DrawPatternControls(EditorSession session)
     {
         ImGui.SameLine(0f, 18f);
 
         if (ImGui.Button("Load pattern..."))
         {
-            PatternBrowser.Show(
-                FileBrowserMode.Open,
-                "Load a tiled pattern (.png)",
-                ".png",
-                PatternBrowser.CurrentDirectory,
-                suggestedName: null,
-                LoadPattern(session));
+            ShowPatternBrowser(session);
         }
 
         ImGui.SameLine(0f, 12f);

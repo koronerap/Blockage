@@ -16,6 +16,9 @@ internal sealed class ImGuiHarness : IDisposable
     private readonly nint _context;
     private Vector2 _mouse = new(-1f, -1f);
 
+    /// <summary>The window <see cref="Frame"/> draws into. Tall enough for a whole panel when a test needs one.</summary>
+    public Vector2 WindowSize { get; set; } = new(600f, 200f);
+
     public ImGuiHarness()
     {
         _context = ImGui.CreateContext();
@@ -52,7 +55,7 @@ internal sealed class ImGuiHarness : IDisposable
         if (inWindow)
         {
             ImGui.SetNextWindowPos(new Vector2(20f, 20f));
-            ImGui.SetNextWindowSize(new Vector2(600f, 200f));
+            ImGui.SetNextWindowSize(WindowSize);
             ImGui.Begin("##harness", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove);
             draw();
             ImGui.End();

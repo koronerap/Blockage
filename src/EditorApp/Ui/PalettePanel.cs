@@ -36,14 +36,16 @@ public sealed class PalettePanel
         Palette palette = session.Scene.Palette;
 
         DrawActiveRow(session, palette);
-        ImGui.Spacing();
 
-        ImGui.SeparatorText("Custom");
-        DrawSavedSwatches(session, palette);
+        if (Props.Section("Custom"))
+        {
+            DrawSavedSwatches(session, palette);
+        }
 
-        ImGui.Spacing();
-        ImGui.SeparatorText("Library");
-        DrawSwatches(session, palette, 1, Palette.CustomStart, custom: false);
+        if (Props.Section("Library"))
+        {
+            DrawSwatches(session, palette, 1, Palette.CustomStart, custom: false);
+        }
 
         DrawLibraryEditPopup(session, palette);
     }
@@ -150,8 +152,12 @@ public sealed class PalettePanel
 
         if (saved.Length == 0)
         {
-            ImGui.TextDisabled("No saved colours yet.");
-            ImGui.TextDisabled("Pick a colour and press Save colour.");
+            ImGui.TextDisabled("None yet.");
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Pick a colour and press Save colour to keep it here.");
+            }
+
             return;
         }
 

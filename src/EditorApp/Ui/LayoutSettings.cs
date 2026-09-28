@@ -3,16 +3,22 @@ using System.Text.Json.Serialization;
 
 namespace EditorApp.Ui;
 
-/// <summary>The Properties editor's tabs, in the order the strip shows them.</summary>
+/// <summary>
+/// The Properties editor's tabs, in the order the strip shows them: by how often they are reached
+/// for, the tool in hand first, as in Blender.
+/// </summary>
 public enum PropertiesTab
 {
+    /// <summary>Every setting of the active tool.</summary>
+    Tool,
+
     /// <summary>The picked object's placement and voxels — or a light's settings, when one is picked.</summary>
     Object,
 
+    Palette,
+
     /// <summary>The level as a whole: its size, the grid, ambient light and the lights.</summary>
     World,
-
-    Palette,
 
     Reference,
 }

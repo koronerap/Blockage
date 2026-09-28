@@ -20,6 +20,20 @@ public static class ToolColumn
         (EditorTool.LoopCut, Icons.Cut, "Loop Cut", "R", "Split the model at a grid plane\ninto two independent objects."),
     ];
 
+    /// <summary>A tool's icon, name and key — the Tool tab and its tab button show the same.</summary>
+    public static (Icons.Painter Icon, string Name, string Shortcut) Describe(EditorTool tool)
+    {
+        foreach ((EditorTool candidate, Icons.Painter icon, string name, string shortcut, _) in Tools)
+        {
+            if (candidate == tool)
+            {
+                return (icon, name, shortcut);
+            }
+        }
+
+        return (Icons.Move, "View", "V");
+    }
+
     public static void Draw(EditorSession session)
     {
         // Translucent, since there is no panel behind them any more: the model shows through a

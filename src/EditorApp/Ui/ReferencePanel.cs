@@ -23,7 +23,8 @@ public sealed class ReferencePanel
 
     public void DrawContent(EditorSession session, ReferenceModelRenderer reference)
     {
-        if (ImGui.Button("Import..."))
+        int pressed = Props.Buttons("Model", "reference-file", "Import...", "Remove");
+        if (pressed == 0)
         {
             _browser.Show(
                 FileBrowserMode.Open,
@@ -33,104 +34,94 @@ public sealed class ReferencePanel
                 suggestedName: null,
                 path => Load(reference, path));
         }
-
-        ImGui.SameLine();
-        ImGui.BeginDisabled(reference.Mesh is null);
-        if (ImGui.Button("Remove"))
+        else if (pressed == 1 && reference.Mesh is not null)
         {
             reference.SetMesh(null);
             _status = string.Empty;
         }
 
-        ImGui.EndDisabled();
-
-        ImGui.SameLine();
-        ImGui.TextDisabled(string.Join(" ", ReferenceMeshLoader.SupportedExtensions));
-
         if (_status.Length > 0)
         {
-            ImGui.TextColored(
-                _statusIsError ? Theme.Danger : Theme.Success,
-                _status);
+            Props.Note(string.Empty, _status, _statusIsError ? Theme.Danger : Theme.Success);
         }
 
         if (reference.Mesh is not { } mesh)
         {
-            ImGui.TextDisabled("Nothing imported. A reference is a visual guide only -");
-            ImGui.TextDisabled("it is never voxelised, saved or exported.");
+            Props.Label(string.Empty);
+            ImGui.PushTextWrapPos(0f);
+            ImGui.TextDisabled(
+                $"A model to build against - {string.Join(" ", ReferenceMeshLoader.SupportedExtensions)}. "
+                + "A guide only: never voxelised, saved or exported.");
+            ImGui.PopTextWrapPos();
             return;
         }
 
-        ImGui.Separator();
-        ImGui.Text($"{mesh.Name} - {mesh.TriangleCount:N0} triangles");
-
         (Vector3 min, Vector3 max) = mesh.Bounds();
         Vector3 size = max - min;
-        ImGui.TextDisabled($"Source size {size.X:0.##} x {size.Y:0.##} x {size.Z:0.##}");
+        Props.Value("File", mesh.Name);
+        Props.Value("Triangles", $"{mesh.TriangleCount:N0}");
+        Props.Value("Size", $"{size.X:0.##} × {size.Y:0.##} × {size.Z:0.##}");
 
-        bool visible = reference.Visible;
-        if (ImGui.Checkbox("Visible", ref visible))
+        if (Props.Section("Display"))
         {
-            reference.Visible = visible;
+            bool visible = reference.Visible;
+            if (Props.Check(string.Empty, "reference-visible", "Show", ref visible))
+            {
+                reference.Visible = visible;
+            }
+
+            bool wireframe = reference.Wireframe;
+            if (Props.Check(string.Empty, "reference-wireframe", "Wireframe", ref wireframe))
+            {
+                reference.Wireframe = wireframe;
+            }
+
+            float opacity = reference.Opacity * 100f;
+            if (Props.Slider("Opacity", "reference-opacity", ref opacity, 5f, 100f, "%.0f%%"))
+            {
+                reference.Opacity = opacity / 100f;
+            }
         }
 
-        ImGui.SameLine();
-        bool wireframe = reference.Wireframe;
-        if (ImGui.Checkbox("Wireframe", ref wireframe))
+        if (Props.Section("Placement"))
         {
-            reference.Wireframe = wireframe;
-        }
+            float scale = reference.Scale;
+            if (Props.Float("Scale", "reference-scale", ref scale, 0.01f, 0.001f, 1000f, "%.3gx"))
+            {
+                reference.Scale = scale;
+            }
 
-        // Drag values with their units written in, so a number never has to be guessed at.
-        float opacity = reference.Opacity * 100f;
-        ImGui.SetNextItemWidth(200f);
-        if (ImGui.DragFloat("Opacity", ref opacity, 1f, 5f, 100f, "%.0f%%"))
-        {
-            reference.Opacity = opacity / 100f;
-        }
+            Vector3 offset = reference.Offset;
+            if (Props.Vector("Offset", "reference-offset", ref offset, 0.25f))
+            {
+                reference.Offset = offset;
+            }
 
-        float scale = reference.Scale;
-        ImGui.SetNextItemWidth(200f);
-        if (ImGui.DragFloat("Scale", ref scale, 0.01f, 0.001f, 1000f, "%.2fx"))
-        {
-            reference.Scale = scale;
-        }
-
-        Vector3 offset = reference.Offset;
-        ImGui.SetNextItemWidth(280f);
-        if (ImGui.DragFloat3("Offset", ref offset, 0.25f, 0f, 0f, "%.1f vx"))
-        {
-            reference.Offset = offset;
-        }
-
-        if (ImGui.Button("Fit to level"))
-        {
-            FitToLevel(session, reference);
-        }
-
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Scales and moves the guide so it sits inside the level's current bounds.");
-        }
-
-        ImGui.SameLine();
-        if (ImGui.Button("Reset transform"))
-        {
-            reference.Scale = 1f;
-            reference.Offset = Vector3.Zero;
+            int action = Props.Buttons(string.Empty, "reference-placement", "Fit to level", "Reset");
+            if (action == 0)
+            {
+                FitToLevel(session, reference);
+            }
+            else if (action == 1)
+            {
+                reference.Scale = 1f;
+                reference.Offset = Vector3.Zero;
+            }
         }
     }
 
     private void FitToLevel(EditorSession session, ReferenceModelRenderer reference)
     {
-        if (!session.World.TryGetBounds(out Int3 min, out Int3 max))
+        // The whole level as it stands in the world — every object, at its own place and voxel size —
+        // not the focused object's own grid.
+        if (!session.Scene.TryGetWorldBounds(out Vector3 min, out Vector3 max))
         {
             _status = "The level is empty, so there is nothing to fit to.";
             _statusIsError = true;
             return;
         }
 
-        reference.FitTo(min.ToVector3(), max.ToVector3() + Vector3.One);
+        reference.FitTo(min, max);
         _status = string.Empty;
     }
 

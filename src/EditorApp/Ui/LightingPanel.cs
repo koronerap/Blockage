@@ -1,4 +1,3 @@
-using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Scene;
 using EditorApp.Rendering;
@@ -7,39 +6,32 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// How the level is lit: the viewport's Lit / Unlit switch, the level's ambient floor, and adding
-/// lights. The lights themselves are in the outliner, each with its own settings.
-///
-/// Lights used to be one direction set here, and not part of the level. They are things in the level
-/// now — saved with it, several of them, sun and point and spot — and still never exported.
+/// How the level is lit, in the World tab: the viewport's Lit / Unlit switch, the level's ambient
+/// floor, and adding lights. The lights themselves are in the Outliner, each with its settings in the
+/// Object tab when picked.
 /// </summary>
 public static class LightingPanel
 {
-    public static void DrawContent(ShellContext context)
+    /// <param name="droppedLights">Lights switched on beyond what the shader can draw at once.</param>
+    public static void DrawContent(EditorSession session, SceneLighting lighting, int droppedLights)
     {
-        EditorSession session = context.Session;
-        SceneLighting lighting = context.View.Lighting;
+        int mode = Props.Choice(
+            "Shading",
+            "shading",
+            [(Icons.Lit, "Lit"), (Icons.Unlit, "Unlit")],
+            lighting.IsLit ? 0 : 1);
 
-        bool lit = lighting.IsLit;
-        int mode = lit ? 0 : 1;
+        lighting.Mode = mode == 0 ? ShadingMode.Lit : ShadingMode.Unlit;
 
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.Combo("##mode", ref mode, "Lit\0Unlit\0"))
+        if (ImGui.IsItemHovered())
         {
-            lighting.Mode = mode == 0 ? ShadingMode.Lit : ShadingMode.Unlit;
+            ImGui.SetTooltip("Unlit gives each face a fixed shade - how the exported mesh looks.");
         }
 
-        if (!lit)
-        {
-            ImGui.TextDisabled("Unlit: each face keeps a fixed shade.");
-            ImGui.TextDisabled("This is how the exported mesh looks.");
-        }
-
-        ImGui.BeginDisabled(!lit);
+        ImGui.BeginDisabled(!lighting.IsLit);
 
         float ambient = session.Scene.Ambient;
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.SliderFloat("##ambient", ref ambient, 0f, 1f, "Ambient  %.2f"))
+        if (Props.Slider("Ambient", "ambient", ref ambient, 0f, 1f, "%.2f"))
         {
             session.SetAmbient(ambient);
         }
@@ -51,37 +43,35 @@ public static class LightingPanel
 
         IReadOnlyList<SceneLight> lights = session.Scene.Lights;
         int off = lights.Count(l => !l.Visible);
-        ImGui.TextDisabled(lights.Count == 0
-            ? "No lights - only the ambient."
-            : $"{lights.Count} light(s){(off > 0 ? $", {off} off" : string.Empty)}");
+        Props.Value("Lights", lights.Count == 0
+            ? "none - only the ambient"
+            : $"{lights.Count}{(off > 0 ? $", {off} off" : string.Empty)}");
 
-        if (context.Renderer.DroppedLights > 0)
+        if (droppedLights > 0)
         {
-            ImGui.TextColored(
-                Theme.Highlight,
-                $"{context.Renderer.DroppedLights} not drawn - {LightUniforms.MaxLights} at most at once.");
+            Props.Note(string.Empty, $"{droppedLights} not drawn - {LightUniforms.MaxLights} at most at once.", Theme.Highlight);
         }
 
         ImGui.EndDisabled();
 
         DrawAddButtons(session);
-        ImGui.TextDisabled("Saved with the level, never exported.");
     }
 
     private static void DrawAddButtons(EditorSession session)
     {
         float button = ImGui.GetFrameHeight();
 
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled("Add");
-
+        Props.Label("Add");
         foreach ((LightKind kind, string label) in LightMenu.Kinds)
         {
-            ImGui.SameLine();
-            if (IconButton.Draw($"add-{kind}", Icons.For(kind), active: false, $"Add a {label.ToLowerInvariant()}", button))
+            if (IconButton.Draw($"add-{kind}", Icons.For(kind), active: false, $"Add a {label.ToLowerInvariant()}  -  lights are saved with the level, never exported", button))
             {
                 LightMenu.Add(session, kind);
             }
+
+            ImGui.SameLine(0f, 4f);
         }
+
+        ImGui.NewLine();
     }
 }

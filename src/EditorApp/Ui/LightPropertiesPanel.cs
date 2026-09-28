@@ -6,8 +6,11 @@ using ImGuiNET;
 
 namespace EditorApp.Ui;
 
+
 /// <summary>
-/// The picked light's settings, under the outliner where an object's voxel size would be.
+/// A picked light's settings, in the Object tab where an object's would be. Laid out like the rest of
+/// Properties: the kind of light as a row of buttons, what it gives off, the shape of a spot, where it
+/// points, and where it is.
 ///
 /// Each gesture is one undo step — a slider dragged, a colour picked, a value typed — however many
 /// frames it changed the light across. The light changes live, so its effect on the model is seen
@@ -15,6 +18,8 @@ namespace EditorApp.Ui;
 /// </summary>
 public static class LightPropertiesPanel
 {
+    private const string ColourPopup = "##light-colour";
+
     private static SceneLight? _editing;
     private static LightState _before;
 
@@ -36,71 +41,73 @@ public static class LightPropertiesPanel
             Flush(session);
         }
 
+        ObjectPropertiesPanel.DrawName(light.Id, light.Name, Icons.For(light.Kind), name => session.RenameLight(light.Id, name));
+
         LightState state = light.State;
         LightState edited = state;
 
-        int kind = (int)light.Kind;
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.Combo("##kind", ref kind, "Sun\0Point\0Spot\0"))
+        if (Props.Section("Light"))
         {
+            int kind = Props.Choice(
+                "Type",
+                "light-kind",
+                [(Icons.LightSun, "Sun"), (Icons.LightPoint, "Point"), (Icons.LightSpot, "Spot")],
+                (int)light.Kind);
             edited = edited with { Kind = (LightKind)kind };
-        }
 
-        Vector3 colour = light.Colour;
-        if (ImGui.ColorEdit3("##colour", ref colour, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel))
-        {
-            edited = edited with { Colour = colour };
-        }
+            edited = DrawColour(light, edited);
 
-        ImGui.SameLine();
-        float intensity = light.Intensity;
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.DragFloat("##intensity", ref intensity, 0.01f, 0f, SceneLight.MaxIntensity, "Intensity  %.2f"))
-        {
-            edited = edited with { Intensity = intensity };
-        }
-
-        if (light.Kind != LightKind.Directional)
-        {
-            float range = light.Range;
-            ImGui.SetNextItemWidth(-1f);
-            if (ImGui.DragFloat("##range", ref range, 0.1f, SceneLight.MinRange, SceneLight.MaxRange, "Reach  %.1f"))
+            float intensity = light.Intensity;
+            if (Props.Float("Intensity", "intensity", ref intensity, 0.01f, 0f, SceneLight.MaxIntensity, "%.2f"))
             {
-                edited = edited with { Range = range };
+                edited = edited with { Intensity = intensity };
             }
 
-            Tooltip("How far the light gets, in world units. It fades out smoothly to nothing there.");
+            if (light.Kind != LightKind.Directional)
+            {
+                float range = light.Range;
+                if (Props.Float("Reach", "range", ref range, 0.1f, SceneLight.MinRange, SceneLight.MaxRange, "%.1f"))
+                {
+                    edited = edited with { Range = range };
+                }
+
+                Tooltip("How far the light gets, in world units. It fades out smoothly to nothing there.");
+            }
+
+            bool on = light.Visible;
+            if (Props.Check(string.Empty, "light-on", "Shines", ref on))
+            {
+                session.SetLightVisible(light.Id, on);
+            }
+
+            Tooltip("Off lights stay in the level but light nothing.  (H)");
         }
 
-        if (light.Kind == LightKind.Spot)
+        if (light.Kind == LightKind.Spot && Props.Section("Spot"))
         {
             float angle = light.SpotAngle;
-            ImGui.SetNextItemWidth(-1f);
-            if (ImGui.SliderFloat("##angle", ref angle, SceneLight.MinSpotAngle, SceneLight.MaxSpotAngle, "Cone  %.0f deg"))
+            if (Props.Slider("Cone", "angle", ref angle, SceneLight.MinSpotAngle, SceneLight.MaxSpotAngle, "%.0f°"))
             {
                 edited = edited with { SpotAngle = angle };
             }
 
             float blend = light.SpotBlend;
-            ImGui.SetNextItemWidth(-1f);
-            if (ImGui.SliderFloat("##blend", ref blend, 0f, 1f, "Soft edge  %.2f"))
+            if (Props.Slider("Soft edge", "blend", ref blend, 0f, 1f, "%.2f"))
             {
                 edited = edited with { SpotBlend = blend };
             }
         }
 
         // A point light shines every way, so there is nothing to aim.
-        if (light.Kind != LightKind.Point)
+        if (light.Kind != LightKind.Point && Props.Section("Direction"))
         {
             (float azimuth, float elevation) = SceneLight.AnglesOf(light.Direction);
             bool aimed = false;
 
-            ImGui.SetNextItemWidth(-1f);
-            aimed |= ImGui.SliderFloat("##azimuth", ref azimuth, 0f, 360f, "From  %.0f deg");
+            aimed |= Props.Slider("From", "azimuth", ref azimuth, 0f, 360f, "%.0f°");
             Tooltip("The compass bearing the light comes from.");
 
-            ImGui.SetNextItemWidth(-1f);
-            aimed |= ImGui.SliderFloat("##elevation", ref elevation, -90f, 90f, "Height  %.0f deg");
+            aimed |= Props.Slider("Height", "elevation", ref elevation, -90f, 90f, "%.0f°");
             Tooltip("How high it comes from: 90 is straight overhead.");
 
             if (aimed)
@@ -109,19 +116,23 @@ public static class LightPropertiesPanel
                 edited = edited with { Transform = edited.Transform with { Rotation = rotation } };
             }
 
+            Props.Label(string.Empty);
             DrawCompass(-light.Direction, light.Visible);
         }
 
-        Vector3 position = light.Position;
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.DragFloat3("##position", ref position, 0.1f, 0f, 0f, "%.2f"))
+        if (Props.Section("Transform"))
         {
-            edited = edited with { Transform = edited.Transform with { Position = position } };
-        }
+            Vector3 position = light.Position;
+            if (Props.Vector("Location", "light-location", ref position, 0.05f))
+            {
+                edited = edited with { Transform = edited.Transform with { Position = position } };
+            }
 
-        Tooltip(light.Kind == LightKind.Directional
-            ? "Where its icon stands. A sun lights everything alike wherever it is."
-            : "Where the light is, in world units.");
+            if (light.Kind == LightKind.Directional)
+            {
+                Tooltip("Where its icon stands. A sun lights everything alike wherever it is.");
+            }
+        }
 
         if (edited != state)
         {
@@ -139,8 +150,35 @@ public static class LightPropertiesPanel
         {
             Flush(session);
         }
+    }
 
-        ImGui.TextDisabled("Lights the viewport only - never exported.");
+    /// <summary>A swatch as wide as the value column; a click opens the picker.</summary>
+    private static LightState DrawColour(SceneLight light, LightState edited)
+    {
+        Props.Label("Colour");
+
+        Vector3 colour = light.Colour;
+        if (ImGui.ColorButton(
+                "##light-colour-swatch",
+                new Vector4(colour, 1f),
+                ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip,
+                new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetFrameHeight())))
+        {
+            ImGui.OpenPopup(ColourPopup);
+        }
+
+        if (ImGui.BeginPopup(ColourPopup))
+        {
+            ImGui.SetNextItemWidth(220f);
+            if (ImGui.ColorPicker3("##light-colour-picker", ref colour, ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.DisplayRGB))
+            {
+                edited = edited with { Colour = colour };
+            }
+
+            ImGui.EndPopup();
+        }
+
+        return edited;
     }
 
     /// <summary>
