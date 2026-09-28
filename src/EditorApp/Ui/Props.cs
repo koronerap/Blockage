@@ -143,6 +143,15 @@ public static class Props
         float height = ImGui.GetFrameHeight();
         int chosen = selected;
 
+        // Names for all or for none: a row where the short one is spelled out and the long ones are
+        // icons reads as though the short one were different in kind.
+        bool names = true;
+        foreach ((Icons.Painter? icon, string name) in options)
+        {
+            float iconSize = icon is null ? 0f : (height * 0.62f) + 5f;
+            names &= ImGui.CalcTextSize(name).X + iconSize + 12f <= width;
+        }
+
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(Gap, ImGui.GetStyle().ItemSpacing.Y));
 
         for (int i = 0; i < options.Length; i++)
@@ -168,7 +177,7 @@ public static class Props
             }
 
             Remember($"{id}-{i}");
-            DrawButtonFace(icon, name, on);
+            DrawButtonFace(icon, name, on, names || icon is null);
 
             if (on)
             {
@@ -180,7 +189,7 @@ public static class Props
         return chosen;
     }
 
-    private static void DrawButtonFace(Icons.Painter? icon, string name, bool on)
+    private static void DrawButtonFace(Icons.Painter? icon, string name, bool on, bool showText)
     {
         Vector2 min = ImGui.GetItemRectMin();
         Vector2 max = ImGui.GetItemRectMax();
@@ -191,8 +200,7 @@ public static class Props
         float iconSize = icon is null ? 0f : height * 0.62f;
         float text = ImGui.CalcTextSize(name).X;
 
-        // Too narrow for both: the icon alone says it, and the name is in the tooltip.
-        bool showText = text + iconSize + 12f <= max.X - min.X;
+        // Too narrow for the names: the icons alone say it, and each name is in its tooltip.
         float content = (showText ? text : 0f) + iconSize + (icon is not null && showText ? 5f : 0f);
         float x = min.X + (((max.X - min.X) - content) * 0.5f);
 

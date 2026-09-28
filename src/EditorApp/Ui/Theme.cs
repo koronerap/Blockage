@@ -71,7 +71,8 @@ public static class Theme
 
     // ---- Metrics -----------------------------------------------------------------------------
 
-    public const int FontSizePixels = 16;
+    /// <summary>A size down from where it started: at 16 the panels spent their height on air.</summary>
+    public const int FontSizePixels = 15;
 
     /// <summary>Small but present — Blender's widgets are rounded just enough to read as soft.</summary>
     private const float Rounding = 4f;
@@ -122,20 +123,22 @@ public static class Theme
         style.PopupBorderSize = 1f;
         style.FrameBorderSize = 0f;
 
-        // Room to breathe: the default 8/4/4 is what makes everything feel equally urgent.
-        style.WindowPadding = new Vector2(12f, 12f);
-        style.FramePadding = new Vector2(10f, 6f);
-        style.ItemSpacing = new Vector2(9f, 8f);
-        style.ItemInnerSpacing = new Vector2(8f, 6f);
-        style.CellPadding = new Vector2(8f, 5f);
-        style.IndentSpacing = 18f;
-        style.ScrollbarSize = 12f;
-        style.GrabMinSize = 10f;
+        // One spacing scale, in fours and eights, near Blender's density: rows close enough that a
+        // panel reads as one list, frames just tall enough for the text and a margin. The first pass
+        // was roomier, and a panel of ten settings scrolled where Blender's would not.
+        style.WindowPadding = new Vector2(10f, 8f);
+        style.FramePadding = new Vector2(8f, 4f);
+        style.ItemSpacing = new Vector2(8f, 4f);
+        style.ItemInnerSpacing = new Vector2(6f, 4f);
+        style.CellPadding = new Vector2(6f, 4f);
+        style.IndentSpacing = 16f;
+        style.ScrollbarSize = 10f;
+        style.GrabMinSize = 8f;
 
         style.WindowTitleAlign = new Vector2(0.0f, 0.5f);
         style.ButtonTextAlign = new Vector2(0.5f, 0.5f);
         style.SeparatorTextBorderSize = 1f;
-        style.SeparatorTextPadding = new Vector2(0f, 8f);
+        style.SeparatorTextPadding = new Vector2(0f, 4f);
 
         SetColors(style);
     }

@@ -11,7 +11,7 @@ namespace EditorApp.Ui;
 /// </summary>
 public static class ToolColumn
 {
-    private const float ButtonSize = 38f;
+    private const float ButtonSize = 34f;
 
     private static readonly (EditorTool Tool, Icons.Painter Icon, string Name, string Shortcut, string Help)[] Tools =
     [

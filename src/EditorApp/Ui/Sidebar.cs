@@ -27,7 +27,7 @@ public sealed class SidebarContent
 /// </summary>
 public sealed class Sidebar(LayoutSettings layout)
 {
-    public const float TabButtonSize = 28f;
+    public const float TabButtonSize = 26f;
 
     /// <summary>The tab strip: a button and a margin either side.</summary>
     public const float TabStripWidth = TabButtonSize + 8f;
