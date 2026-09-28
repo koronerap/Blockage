@@ -102,6 +102,15 @@ public class IconTests
         { nameof(Icons.Plus), Icons.Plus },
         { nameof(Icons.Minus), Icons.Minus },
         { nameof(Icons.Close), Icons.Close },
+        { nameof(Icons.Perspective), Icons.Perspective },
+        { nameof(Icons.Orthographic), Icons.Orthographic },
+        { nameof(Icons.FrameAll), Icons.FrameAll },
+        { nameof(Icons.Pan), Icons.Pan },
+        { nameof(Icons.Zoom), Icons.Zoom },
+        { nameof(Icons.MouseLeft), Icons.MouseLeft },
+        { nameof(Icons.MouseMiddle), Icons.MouseMiddle },
+        { nameof(Icons.MouseRight), Icons.MouseRight },
+        { nameof(Icons.MouseWheel), Icons.MouseWheel },
     };
 
     [Theory]

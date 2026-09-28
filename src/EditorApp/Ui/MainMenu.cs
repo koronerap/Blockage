@@ -114,7 +114,7 @@ public static class MainMenu
             view.FrameLevel();
         }
 
-        if (ImGui.MenuItem("Frame Focused Object", "F"))
+        if (ImGui.MenuItem("Frame Focused Object", "Numpad ."))
         {
             view.FrameFocused();
         }
@@ -127,6 +127,15 @@ public static class MainMenu
         if (ImGui.MenuItem("Reset Camera"))
         {
             view.ResetCamera();
+        }
+
+        ImGui.Separator();
+
+        DrawAlignMenu(view.Camera);
+
+        if (ImGui.MenuItem("Orthographic", "Numpad 5", view.Camera.Orthographic))
+        {
+            view.Camera.Orthographic = !view.Camera.Orthographic;
         }
 
         ImGui.Separator();
@@ -147,6 +156,37 @@ public static class MainMenu
         if (ImGui.MenuItem("Lit Shading", null, view.Lighting.IsLit))
         {
             view.Lighting.Mode = view.Lighting.IsLit ? ShadingMode.Unlit : ShadingMode.Lit;
+        }
+
+        ImGui.EndMenu();
+    }
+
+    /// <summary>The six views along the axes, with Blender's numpad keys beside them.</summary>
+    private static void DrawAlignMenu(FlyCamera camera)
+    {
+        if (!ImGui.BeginMenu("Align View"))
+        {
+            return;
+        }
+
+        AlignedView? current = camera.CurrentAlignedView();
+
+        (AlignedView View, string Keys)[] views =
+        [
+            (AlignedView.Front, "Numpad 1"),
+            (AlignedView.Back, "Ctrl+Numpad 1"),
+            (AlignedView.Right, "Numpad 3"),
+            (AlignedView.Left, "Ctrl+Numpad 3"),
+            (AlignedView.Top, "Numpad 7"),
+            (AlignedView.Bottom, "Ctrl+Numpad 7"),
+        ];
+
+        foreach ((AlignedView view, string keys) in views)
+        {
+            if (ImGui.MenuItem(view.ToString(), keys, current == view))
+            {
+                camera.Align(view);
+            }
         }
 
         ImGui.EndMenu();

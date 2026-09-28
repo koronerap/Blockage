@@ -46,7 +46,8 @@ public sealed class EditorApplication : IDisposable
 
     private Vector2 _previousMousePosition;
     private bool _looking;
-    private bool _panning;
+    private MiddleDrag _middleDrag;
+    private bool _middleWasDown;
     private bool _confirmedClose;
 
     /// <summary>
@@ -75,14 +76,20 @@ public sealed class EditorApplication : IDisposable
 
     private readonly string? _screenshotPath;
     private readonly bool _startUnlit;
+    private readonly AlignedView? _startView;
 
     /// <param name="smokeFrames">When positive, the window closes after this many frames (used for automated smoke runs).</param>
     /// <param name="screenshotPath">When set, the last frame is written here as a PNG before closing.</param>
     /// <param name="startUnlit">Opens in unlit shading rather than lit.</param>
-    public EditorApplication(int smokeFrames = 0, string? screenshotPath = null, bool startUnlit = false)
+    public EditorApplication(
+        int smokeFrames = 0,
+        string? screenshotPath = null,
+        bool startUnlit = false,
+        AlignedView? startView = null)
     {
         _screenshotPath = screenshotPath;
         _startUnlit = startUnlit;
+        _startView = startView;
         _smokeFrames = screenshotPath is not null && smokeFrames <= 0 ? 10 : smokeFrames;
 
         WindowOptions options = WindowOptions.Default with
@@ -150,6 +157,11 @@ public sealed class EditorApplication : IDisposable
             _camera.FrameBox(min.ToVector3(), max.ToVector3() + Vector3.One);
         }
 
+        if (_startView is { } view)
+        {
+            _camera.Align(view);
+        }
+
         if (_input.Mice.Count > 0)
         {
             _previousMousePosition = _input.Mice[0].Position;
@@ -202,15 +214,27 @@ public sealed class EditorApplication : IDisposable
         return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels));
     }
 
-    /// <summary>Ctrl+Scroll resizes the paint brush live while hovering (EditorApp.md, "Paint").</summary>
+    /// <summary>
+    /// The wheel zooms towards the pivot. Ctrl+Scroll in Paint resizes the brush instead, live while
+    /// hovering (EditorApp.md, "Paint").
+    /// </summary>
     private void OnScroll(IMouse mouse, ScrollWheel wheel)
     {
-        if (_session.ActiveTool != EditorTool.Paint || !IsControlHeld() || ImGui.GetIO().WantCaptureMouse)
+        if (ImGui.GetIO().WantCaptureMouse)
         {
             return;
         }
 
-        _session.BrushRadius = Math.Clamp(_session.BrushRadius + wheel.Y * 0.5f, 0f, 12f);
+        if (_session.ActiveTool == EditorTool.Paint && IsControlHeld())
+        {
+            _session.BrushRadius = Math.Clamp(_session.BrushRadius + wheel.Y * 0.5f, 0f, 12f);
+            return;
+        }
+
+        if (_viewport.Contains(mouse.Position))
+        {
+            _camera.Zoom(wheel.Y);
+        }
     }
 
     private void OnUpdate(double deltaSeconds)
@@ -253,7 +277,7 @@ public sealed class EditorApplication : IDisposable
             _camera.Look(mouseDelta);
         }
 
-        UpdatePan(mouse, mouseDelta, io);
+        UpdateMiddleDrag(mouse, keyboard, mouseDelta, io);
 
         if (io.WantCaptureKeyboard)
         {
@@ -286,39 +310,54 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>
-    /// Middle-button drag slides the view. Panning is scaled by the distance to what is being
-    /// looked at, so it feels the same whether the camera is on top of a wall or across the level.
+    /// Middle-button drag, the way Blender has it: on its own it orbits the pivot, with Shift it
+    /// slides the view, with Ctrl it zooms. Which one is decided when the button goes down, so letting
+    /// go of Shift halfway through a pan does not suddenly start turning the model — and a press that
+    /// began over a panel does nothing when the drag wanders into the viewport.
+    ///
+    /// Panning is scaled at the pivot, so the point being orbited around stays under the cursor.
     /// </summary>
-    private void UpdatePan(IMouse mouse, Vector2 mouseDelta, ImGuiIOPtr io)
+    private void UpdateMiddleDrag(IMouse mouse, IKeyboard keyboard, Vector2 mouseDelta, ImGuiIOPtr io)
     {
         bool middleDown = mouse.IsButtonPressed(MouseButton.Middle);
+        bool pressedNow = middleDown && !_middleWasDown;
+        _middleWasDown = middleDown;
 
-        if (middleDown && !_panning && !io.WantCaptureMouse && _viewport.Contains(mouse.Position))
+        if (!middleDown)
         {
-            _panning = true;
-        }
-        else if (!middleDown)
-        {
-            _panning = false;
+            _middleDrag = MiddleDrag.None;
+            return;
         }
 
-        if (_panning)
+        if (pressedNow && !io.WantCaptureMouse && _viewport.Contains(mouse.Position))
         {
-            _camera.Pan(mouseDelta, DistanceToSubject(), _viewport.Size);
+            bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
+            bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
+            _middleDrag = shift ? MiddleDrag.Pan : control ? MiddleDrag.Zoom : MiddleDrag.Orbit;
+        }
+
+        switch (_middleDrag)
+        {
+            case MiddleDrag.Orbit:
+                _camera.Orbit(mouseDelta);
+                break;
+
+            case MiddleDrag.Pan:
+                _camera.Pan(mouseDelta, _camera.PivotDistance, _viewport.Size);
+                break;
+
+            case MiddleDrag.Zoom:
+                _camera.Zoom(-mouseDelta.Y / NavigationGizmo.ZoomDragPixelsPerStep);
+                break;
         }
     }
 
-    /// <summary>How far away the thing being worked on is — the focused object, or the whole scene.</summary>
-    private float DistanceToSubject()
+    private enum MiddleDrag
     {
-        if (_session.Scene.Focus is { } focus && !focus.IsEmpty)
-        {
-            return Vector3.Distance(_camera.Position, focus.WorldCentre());
-        }
-
-        return _session.Scene.TryGetWorldBounds(out Vector3 min, out Vector3 max)
-            ? Vector3.Distance(_camera.Position, (min + max) * 0.5f)
-            : 20f;
+        None,
+        Orbit,
+        Pan,
+        Zoom,
     }
 
     private void UpdateHover()
@@ -606,14 +645,36 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case Key.Home:
-                if (_session.World.TryGetBounds(out Int3 min, out Int3 max))
+                FrameLevel();
+                break;
+
+            // Blender's numpad: 1 front, 3 right, 7 top, with Ctrl for the side opposite; 9 turns
+            // an aligned view round; 5 swaps the projection; 2 4 6 8 step the view round the pivot
+            // the way the scene would move under a drag that way; the decimal point frames the
+            // focused object.
+            case Key.Keypad1: _camera.Align(control ? AlignedView.Back : AlignedView.Front); break;
+            case Key.Keypad3: _camera.Align(control ? AlignedView.Left : AlignedView.Right); break;
+            case Key.Keypad7: _camera.Align(control ? AlignedView.Bottom : AlignedView.Top); break;
+
+            case Key.Keypad9:
+                if (_camera.CurrentAlignedView() is { } aligned)
                 {
-                    _camera.FrameBox(min.ToVector3(), max.ToVector3() + Vector3.One);
+                    _camera.Align(FlyCamera.Opposite(aligned));
                 }
 
                 break;
+
+            case Key.Keypad5: _camera.Orthographic = !_camera.Orthographic; break;
+            case Key.Keypad4: _camera.OrbitBy(OrbitStep, 0f); break;
+            case Key.Keypad6: _camera.OrbitBy(-OrbitStep, 0f); break;
+            case Key.Keypad8: _camera.OrbitBy(0f, OrbitStep); break;
+            case Key.Keypad2: _camera.OrbitBy(0f, -OrbitStep); break;
+            case Key.KeypadDecimal: FrameFocused(); break;
         }
     }
+
+    /// <summary>How far one press of a numpad arrow turns the view: Blender's fifteen degrees.</summary>
+    private const float OrbitStep = 15f * (MathF.PI / 180f);
 
     private void SwitchTool(EditorTool tool)
     {
@@ -898,6 +959,7 @@ public sealed class EditorApplication : IDisposable
             View = _viewActions ??= CreateViewActions(),
             OnExit = () => _closeRequested = true,
             Hover = _hover,
+            Looking = _looking,
             DragReadout = CurrentDragReadout(),
             FrameSeconds = _lastDelta,
         };
@@ -934,7 +996,10 @@ public sealed class EditorApplication : IDisposable
             _camera.Position = new Vector3(-24f, 24f, -24f);
             _camera.Yaw = 45f * (MathF.PI / 180f);
             _camera.Pitch = -30f * (MathF.PI / 180f);
+            _camera.PivotDistance = 40f;
+            _camera.Orthographic = false;
         },
+        Camera = _camera,
         GridVisible = () => _showGrid,
         ToggleGrid = () => _showGrid = !_showGrid,
         MeasurementsVisible = () => _showMeasurements,

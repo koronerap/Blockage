@@ -317,6 +317,147 @@ public static class Icons
     public static void Unlit(IIconCanvas canvas, Vector2 centre, float r) =>
         canvas.FilledCircle(centre, r * 0.46f);
 
+    // ---- Navigation ----------------------------------------------------------------------------
+
+    /// <summary>Perspective: a floor whose lines run together into the distance.</summary>
+    public static void Perspective(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 farLeft = centre + new Vector2(-r * 0.42f, -r * 0.62f);
+        Vector2 farRight = centre + new Vector2(r * 0.42f, -r * 0.62f);
+        Vector2 nearRight = centre + new Vector2(r * 0.95f, r * 0.62f);
+        Vector2 nearLeft = centre + new Vector2(-r * 0.95f, r * 0.62f);
+
+        canvas.Polyline([farLeft, farRight, nearRight, nearLeft, farLeft]);
+        canvas.Line(centre + new Vector2(0f, -r * 0.62f), centre + new Vector2(0f, r * 0.62f), 0.8f);
+
+        // Above the middle rather than on it: rows further off sit closer together, which is most of
+        // what reads as depth at this size.
+        canvas.Line(centre + new Vector2(-r * 0.64f, -r * 0.1f), centre + new Vector2(r * 0.64f, -r * 0.1f), 0.8f);
+    }
+
+    /// <summary>Orthographic: the same floor with its lines kept parallel.</summary>
+    public static void Orthographic(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.8f, -r * 0.62f), centre + new Vector2(r * 0.8f, r * 0.62f));
+        canvas.Line(centre + new Vector2(0f, -r * 0.62f), centre + new Vector2(0f, r * 0.62f), 0.8f);
+        canvas.Line(centre + new Vector2(-r * 0.8f, 0f), centre + new Vector2(r * 0.8f, 0f), 0.8f);
+    }
+
+    /// <summary>Frame all: corners closing in round something — "fit it to the view".</summary>
+    public static void FrameAll(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        float reach = r * 0.9f;
+        float leg = r * 0.38f;
+
+        Span<Vector2> corners = [new(-1f, -1f), new(1f, -1f), new(-1f, 1f), new(1f, 1f)];
+
+        foreach (Vector2 corner in corners)
+        {
+            Vector2 at = centre + (corner * reach);
+            canvas.Line(at, at - new Vector2(corner.X * leg, 0f));
+            canvas.Line(at, at - new Vector2(0f, corner.Y * leg));
+        }
+
+        canvas.Rect(centre - new Vector2(r * 0.34f), centre + new Vector2(r * 0.34f));
+    }
+
+    /// <summary>
+    /// Pan: four ways to slide. Heads only, no shafts — with shafts it would be the Transform tool's
+    /// icon, and this moves the view, not the model.
+    /// </summary>
+    public static void Pan(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Span<Vector2> directions = [new(0f, -1f), new(0f, 1f), new(-1f, 0f), new(1f, 0f)];
+
+        foreach (Vector2 direction in directions)
+        {
+            Arrowhead(canvas, centre + (direction * r * 0.95f), direction, r * 0.42f);
+        }
+
+        canvas.FilledCircle(centre, r * 0.2f);
+    }
+
+    /// <summary>Zoom: a magnifying glass with a plus in it.</summary>
+    public static void Zoom(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 lens = centre - new Vector2(r * 0.18f);
+
+        canvas.Circle(lens, r * 0.56f);
+        canvas.Line(lens + new Vector2(r * 0.4f), centre + new Vector2(r * 0.9f), 1.3f);
+        canvas.Line(lens - new Vector2(r * 0.26f, 0f), lens + new Vector2(r * 0.26f, 0f), 0.8f);
+        canvas.Line(lens - new Vector2(0f, r * 0.26f), lens + new Vector2(0f, r * 0.26f), 0.8f);
+    }
+
+    // ---- Mouse, for the hints along the bottom -------------------------------------------------
+
+    public static void MouseLeft(IIconCanvas canvas, Vector2 centre, float r) =>
+        Mouse(canvas, centre, r, MouseMark.Left);
+
+    public static void MouseMiddle(IIconCanvas canvas, Vector2 centre, float r) =>
+        Mouse(canvas, centre, r, MouseMark.Middle);
+
+    public static void MouseRight(IIconCanvas canvas, Vector2 centre, float r) =>
+        Mouse(canvas, centre, r, MouseMark.Right);
+
+    /// <summary>The wheel turned rather than pressed: the middle button, with which way it rolls.</summary>
+    public static void MouseWheel(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        // Moved over to make room for the arrows, so the pair stays centred on the button.
+        Vector2 body = centre - new Vector2(r * 0.3f, 0f);
+        Mouse(canvas, body, r, MouseMark.Middle);
+
+        float x = body.X + (r * 1.02f);
+        Arrowhead(canvas, new Vector2(x, centre.Y - (r * 0.75f)), new Vector2(0f, -1f), r * 0.4f);
+        Arrowhead(canvas, new Vector2(x, centre.Y + (r * 0.75f)), new Vector2(0f, 1f), r * 0.4f);
+    }
+
+    private enum MouseMark
+    {
+        Left,
+        Middle,
+        Right,
+    }
+
+    /// <summary>A mouse seen from above, with the button that matters filled in.</summary>
+    private static void Mouse(IIconCanvas canvas, Vector2 centre, float r, MouseMark mark)
+    {
+        Vector2 min = centre - new Vector2(r * 0.62f, r * 0.95f);
+        Vector2 max = centre + new Vector2(r * 0.62f, r * 0.95f);
+        float split = centre.Y - (r * 0.12f);
+
+        // Where the wheel sits between the two buttons.
+        Vector2 wheelMin = new(centre.X - (r * 0.14f), min.Y + (r * 0.24f));
+        Vector2 wheelMax = new(centre.X + (r * 0.14f), split - (r * 0.18f));
+
+        // Filled first, so the outline lands on top of it. Inset and less rounded than the body, which
+        // keeps its outer corner inside the body's curve instead of poking through it.
+        Vector2 inset = new(r * 0.12f);
+        switch (mark)
+        {
+            case MouseMark.Left:
+                canvas.FilledRect(min + inset, new Vector2(centre.X, split), r * 0.3f);
+                break;
+
+            case MouseMark.Right:
+                canvas.FilledRect(new Vector2(centre.X, min.Y + inset.Y), new Vector2(max.X - inset.X, split), r * 0.3f);
+                break;
+
+            default:
+                canvas.FilledRect(wheelMin, wheelMax, r * 0.14f);
+                break;
+        }
+
+        canvas.Rect(min, max, r * 0.6f);
+        canvas.Line(new Vector2(min.X, split), new Vector2(max.X, split), 0.8f);
+        canvas.Line(new Vector2(centre.X, min.Y), new Vector2(centre.X, wheelMin.Y), 0.8f);
+        canvas.Line(new Vector2(centre.X, wheelMax.Y), new Vector2(centre.X, split), 0.8f);
+
+        if (mark != MouseMark.Middle)
+        {
+            canvas.Rect(wheelMin, wheelMax, r * 0.14f, 0.8f);
+        }
+    }
+
     // ---- Shell ---------------------------------------------------------------------------------
 
     /// <summary>Undo: an arrow curving back on itself.</summary>

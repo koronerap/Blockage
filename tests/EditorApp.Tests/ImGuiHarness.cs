@@ -32,9 +32,10 @@ internal sealed class ImGuiHarness : IDisposable
 
     /// <summary>
     /// Runs one frame: moves the mouse, sets the button, and calls <paramref name="draw"/> inside a
-    /// window at a fixed place, the way the shell's panels are drawn.
+    /// window at a fixed place, the way the shell's panels are drawn — or, with
+    /// <paramref name="inWindow"/> off, bare, for something that opens windows of its own.
     /// </summary>
-    public void Frame(Action draw, Vector2? mouse = null, bool pressed = false)
+    public void Frame(Action draw, Vector2? mouse = null, bool pressed = false, bool inWindow = true)
     {
         ImGuiIOPtr io = ImGui.GetIO();
 
@@ -48,21 +49,37 @@ internal sealed class ImGuiHarness : IDisposable
 
         ImGui.NewFrame();
 
-        ImGui.SetNextWindowPos(new Vector2(20f, 20f));
-        ImGui.SetNextWindowSize(new Vector2(600f, 200f));
-        ImGui.Begin("##harness", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove);
-        draw();
-        ImGui.End();
+        if (inWindow)
+        {
+            ImGui.SetNextWindowPos(new Vector2(20f, 20f));
+            ImGui.SetNextWindowSize(new Vector2(600f, 200f));
+            ImGui.Begin("##harness", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove);
+            draw();
+            ImGui.End();
+        }
+        else
+        {
+            draw();
+        }
 
         ImGui.Render();
     }
 
     /// <summary>A full click at a point: press on one frame, release on the next, as a hand would.</summary>
-    public void Click(Vector2 at, Action draw)
+    public void Click(Vector2 at, Action draw, bool inWindow = true)
     {
-        Frame(draw, at, pressed: false);
-        Frame(draw, at, pressed: true);
-        Frame(draw, at, pressed: false);
+        Frame(draw, at, pressed: false, inWindow);
+        Frame(draw, at, pressed: true, inWindow);
+        Frame(draw, at, pressed: false, inWindow);
+    }
+
+    /// <summary>Press at one point, move to another with the button held, let go there.</summary>
+    public void Drag(Vector2 from, Vector2 to, Action draw, bool inWindow = true)
+    {
+        Frame(draw, from, pressed: false, inWindow);
+        Frame(draw, from, pressed: true, inWindow);
+        Frame(draw, to, pressed: true, inWindow);
+        Frame(draw, to, pressed: false, inWindow);
     }
 
     public void Dispose() => ImGui.DestroyContext(_context);

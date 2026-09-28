@@ -1,3 +1,4 @@
+using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Voxels;
 using ImGuiNET;
@@ -5,16 +6,22 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// The bottom strip: what the cursor is over, what is focused, and what a running drag is doing.
-/// Live readouts belong here rather than in a panel, because the eye is already near the model.
+/// The bottom strip: what the mouse does right now, what the cursor is over, what is focused, and
+/// what a running drag is doing. Live readouts belong here rather than in a panel, because the eye
+/// is already near the model.
 /// </summary>
 public static class StatusBar
 {
+    private const float HintGap = 14f;
+
     public static void Draw(ShellContext context)
     {
         EditorSession session = context.Session;
 
         ImGui.AlignTextToFramePadding();
+
+        DrawHints(context);
+        ImGui.SameLine(0f, 28f);
 
         if (context.Hover is { } hit)
         {
@@ -69,13 +76,64 @@ public static class StatusBar
         DrawRightAligned(context);
     }
 
+    /// <summary>
+    /// Blender's hint strip: a small mouse with the button that matters filled in, and what it does.
+    /// It changes with the tool and with the modifier keys held, so what Shift would do is on screen
+    /// the moment Shift is pressed.
+    /// </summary>
+    private static void DrawHints(ShellContext context)
+    {
+        ImGuiIOPtr io = ImGui.GetIO();
+        IReadOnlyList<MouseHint> hints = MouseHints.For(context.Session, context.Looking, io.KeyShift, io.KeyCtrl, io.KeyAlt);
+
+        float height = ImGui.GetFrameHeight();
+        uint colour = ImGui.GetColorU32(ImGuiCol.TextDisabled);
+
+        for (int i = 0; i < hints.Count; i++)
+        {
+            MouseHint hint = hints[i];
+
+            if (i > 0)
+            {
+                ImGui.SameLine(0f, HintGap);
+            }
+
+            if (hint.Keys.Length > 0)
+            {
+                ImGui.TextDisabled(hint.Keys);
+                ImGui.SameLine(0f, hint.Icon is null ? 6f : 2f);
+            }
+
+            if (hint.Icon is { } icon)
+            {
+                // Room for the icon, then the icon painted into it: a text line has no slot for a picture.
+                ImGui.Dummy(new Vector2(height * 0.72f, height));
+                Vector2 centre = (ImGui.GetItemRectMin() + ImGui.GetItemRectMax()) * 0.5f;
+                icon(new ImGuiIconCanvas(ImGui.GetWindowDrawList(), colour, 1.2f), centre, height * 0.3f);
+                ImGui.SameLine(0f, 3f);
+            }
+
+            ImGui.TextDisabled(hint.Action);
+        }
+    }
+
     private static void DrawRightAligned(ShellContext context)
     {
         float fps = context.FrameSeconds > 0f ? 1f / context.FrameSeconds : 0f;
         string text = $"{context.Renderer.VisibleChunks} chunks · {context.Renderer.DrawnTriangles:N0} tris · {fps:0} fps";
 
         float width = ImGui.CalcTextSize(text).X;
-        ImGui.SameLine(ImGui.GetWindowWidth() - width - ImGui.GetStyle().WindowPadding.X);
+        float x = ImGui.GetWindowWidth() - width - ImGui.GetStyle().WindowPadding.X;
+
+        // On a narrow window the readouts are worth more than the counters: drop the counters rather
+        // than print them over the top.
+        float used = ImGui.GetItemRectMax().X - ImGui.GetWindowPos().X;
+        if (x < used + 20f)
+        {
+            return;
+        }
+
+        ImGui.SameLine(x);
         ImGui.TextDisabled(text);
     }
 }

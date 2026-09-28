@@ -36,6 +36,8 @@ public sealed class EditorShell
     /// <summary>How far the floating tool column sits in from the viewport's corner.</summary>
     private const float ToolInset = 8f;
 
+    private readonly NavigationGizmo _navigation = new();
+
     private const ImGuiWindowFlags PanelFlags =
         ImGuiWindowFlags.NoTitleBar
         | ImGuiWindowFlags.NoResize
@@ -72,11 +74,15 @@ public sealed class EditorShell
         // taking a strip of their own.
         DrawToolColumn(context, new Vector2(ToolInset, top + ToolInset));
 
-        return new ViewportRect(
+        var viewport = new ViewportRect(
             new Vector2(0f, top),
             new Vector2(
                 MathF.Max(screen.X - PropertiesColumnWidth, 1f),
                 MathF.Max(bottom - top, 1f)));
+
+        _navigation.Draw(context.Camera, viewport, context.View.FrameLevel);
+
+        return viewport;
     }
 
     private static void BeginPanel(string id, Vector2 position, Vector2 size, ImGuiWindowFlags extra = ImGuiWindowFlags.None)
@@ -279,6 +285,9 @@ public sealed class ShellContext
     public required Action OnExit { get; init; }
 
     public RaycastHit? Hover { get; set; }
+
+    /// <summary>Whether the right button is held and the mouse is turning the view.</summary>
+    public bool Looking { get; set; }
 
     public string DragReadout { get; set; } = string.Empty;
 

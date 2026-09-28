@@ -18,6 +18,12 @@ public sealed class ViewActions
     /// <summary>Back to the opening view.</summary>
     public required Action ResetCamera { get; init; }
 
+    /// <summary>
+    /// The camera itself, for the aligned views and the projection — handed over for the same reason
+    /// as <see cref="Lighting"/>: a delegate per switch would only be a layer to step through.
+    /// </summary>
+    public required Rendering.FlyCamera Camera { get; init; }
+
     public required Func<bool> GridVisible { get; init; }
 
     public required Action ToggleGrid { get; init; }

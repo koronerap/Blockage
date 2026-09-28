@@ -8,8 +8,9 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// Text and 2D marks drawn over the 3D view: dimensions, the drag readout under the cursor, and a
-/// corner axis indicator.
+/// Text and 2D marks drawn over the 3D view: dimensions and the drag readout under the cursor. Which
+/// way the axes lie is the navigation gizmo's job now, in the opposite corner, where it can also be
+/// clicked.
 ///
 /// These are ImGui draw-list calls rather than 3D geometry because they must stay upright and
 /// legible at any camera angle — a label billboarded in the scene shrinks with distance and rotates
@@ -17,8 +18,10 @@ namespace EditorApp.Ui;
 /// </summary>
 public static class ViewportOverlay
 {
-    private const float AxisIndicatorRadius = 34f;
     private const float LabelPadding = 5f;
+
+    /// <summary>Screen length below which an edge counts as seen end-on and loses its label.</summary>
+    private const float MinimumEdgeOnScreen = 6f;
 
     public static void Draw(
         EditorSession session,
@@ -33,8 +36,6 @@ public static class ViewportOverlay
         // submitted first, which puts these marks over the model and under the interface.
         ImDrawListPtr drawList = ImGui.GetBackgroundDrawList();
 
-        DrawAxisIndicator(drawList, camera, viewport);
-
         if (showMeasurements)
         {
             DrawObjectDimensions(drawList, session, camera, viewport);
@@ -43,39 +44,6 @@ public static class ViewportOverlay
         if (dragReadout.Length > 0)
         {
             DrawCursorReadout(drawList, dragReadout);
-        }
-    }
-
-    /// <summary>
-    /// Which way the world axes point from here. Cheap orientation feedback that a grid alone does
-    /// not give once the camera is turned away from the origin.
-    /// </summary>
-    private static void DrawAxisIndicator(ImDrawListPtr drawList, FlyCamera camera, ViewportRect viewport)
-    {
-        Vector2 centre = viewport.Position + new Vector2(
-            AxisIndicatorRadius + 24f,
-            viewport.Size.Y - AxisIndicatorRadius - 24f);
-
-        // Screen direction of each world axis: project the axis into view space and drop the depth.
-        Vector3 right = camera.Right;
-        Vector3 up = camera.Up;
-
-        (Vector3 Axis, string Label, uint Colour)[] axes =
-        [
-            (Vector3.UnitX, "X", Colour(Theme.AxisX)),
-            (Vector3.UnitY, "Y", Colour(Theme.AxisY)),
-            (Vector3.UnitZ, "Z", Colour(Theme.AxisZ)),
-        ];
-
-        foreach ((Vector3 axis, string label, uint colour) in axes)
-        {
-            var direction = new Vector2(Vector3.Dot(axis, right), -Vector3.Dot(axis, up));
-            Vector2 tip = centre + direction * AxisIndicatorRadius;
-
-            drawList.AddLine(centre, tip, colour, 2f);
-
-            Vector2 textSize = ImGui.CalcTextSize(label);
-            drawList.AddText(tip - textSize * 0.5f, colour, label);
         }
     }
 
@@ -133,6 +101,15 @@ public static class ViewportOverlay
         Vector3 midpoint = focus.Transform.TransformPoint((localFrom + localTo) * 0.5f);
 
         if (!camera.TryProjectToScreen(midpoint, viewport.Size, out Vector2 local))
+        {
+            return;
+        }
+
+        // An edge seen end-on — the depth edge in a front or top view — has no length on screen, and
+        // its label would only pile up on the corner it collapses into.
+        if (camera.TryProjectToScreen(focus.Transform.TransformPoint(localFrom), viewport.Size, out Vector2 from)
+            && camera.TryProjectToScreen(focus.Transform.TransformPoint(localTo), viewport.Size, out Vector2 to)
+            && Vector2.Distance(from, to) < MinimumEdgeOnScreen)
         {
             return;
         }

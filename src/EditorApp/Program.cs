@@ -16,6 +16,8 @@ CrashLog.Install();
 // --stress[=halfExtent]   measures build, mesh, greedy and file times on a large level and exits.
 // --shading=lit|unlit     which shading mode to start in. Mainly so a screenshot run can capture
 //                         either one, since a shading change is only ever visible in a picture.
+// --view=front|back|right|left|top|bottom
+//                         start looking along an axis, in orthographic — for the same reason.
 int smokeFrames = 0;
 int stressHalfExtent = 0;
 string? exportDirectory = null;
@@ -23,6 +25,7 @@ string? levelPath = null;
 string? screenshotPath = null;
 string? iconPath = null;
 bool startUnlit = false;
+EditorApp.Rendering.AlignedView? startView = null;
 
 foreach (string argument in args)
 {
@@ -60,6 +63,11 @@ foreach (string argument in args)
     {
         startUnlit = argument["--shading=".Length..].Equals("unlit", StringComparison.OrdinalIgnoreCase);
     }
+    else if (argument.StartsWith("--view=", StringComparison.Ordinal)
+        && Enum.TryParse(argument["--view=".Length..], ignoreCase: true, out EditorApp.Rendering.AlignedView view))
+    {
+        startView = view;
+    }
     else if (argument.StartsWith("--write-icon=", StringComparison.Ordinal))
     {
         iconPath = argument["--write-icon=".Length..];
@@ -85,6 +93,6 @@ if (exportDirectory is not null)
     return HeadlessExport.Run(exportDirectory, levelPath);
 }
 
-using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit);
+using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit, startView);
 application.Run();
 return 0;
