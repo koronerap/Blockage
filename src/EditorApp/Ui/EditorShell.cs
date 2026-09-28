@@ -31,8 +31,10 @@ public readonly record struct ViewportRect(Vector2 Position, Vector2 Size)
 /// </summary>
 public sealed class EditorShell
 {
-    private static readonly float ToolColumnWidth = ToolColumn.Width;
     private const float PropertiesColumnWidth = 340f;
+
+    /// <summary>How far the floating tool column sits in from the viewport's corner.</summary>
+    private const float ToolInset = 8f;
 
     private const ImGuiWindowFlags PanelFlags =
         ImGuiWindowFlags.NoTitleBar
@@ -59,8 +61,6 @@ public sealed class EditorShell
         DrawToolOptions(context, new Vector2(0f, top), new Vector2(screen.X, optionsHeight));
         top += optionsHeight;
 
-        DrawToolColumn(context, new Vector2(0f, top), new Vector2(ToolColumnWidth, bottom - top));
-
         DrawProperties(
             context,
             new Vector2(screen.X - PropertiesColumnWidth, top),
@@ -68,10 +68,14 @@ public sealed class EditorShell
 
         DrawStatusBar(context, new Vector2(0f, bottom), new Vector2(screen.X, statusHeight));
 
+        // The viewport runs all the way to the left edge now; the tools float over it rather than
+        // taking a strip of their own.
+        DrawToolColumn(context, new Vector2(ToolInset, top + ToolInset));
+
         return new ViewportRect(
-            new Vector2(ToolColumnWidth, top),
+            new Vector2(0f, top),
             new Vector2(
-                MathF.Max(screen.X - ToolColumnWidth - PropertiesColumnWidth, 1f),
+                MathF.Max(screen.X - PropertiesColumnWidth, 1f),
                 MathF.Max(bottom - top, 1f)));
     }
 
@@ -102,23 +106,23 @@ public sealed class EditorShell
     }
 
     /// <summary>
-    /// Overlay switches, parked on the right of the header. They belong to the viewport rather than
-    /// to any tool, so they keep the same place whichever tool is active.
+    /// The right-hand end of the header: what can be done to the object as a whole, what is drawn
+    /// over the scene, and how the scene is shaded. They belong to the viewport rather than to any
+    /// tool, so they keep the same place whichever tool is active.
     /// </summary>
     private static void DrawOverlayToggles(ShellContext context, Vector2 size)
     {
         float button = ImGui.GetFrameHeight();
         float spacing = ImGui.GetStyle().ItemSpacing.X;
 
-        // Three groups: turning the model, what is drawn over the scene, and how the scene is
-        // shaded. The wider gaps between them are what say they are different kinds of thing — the
-        // first group edits the level, the other two only change how it is looked at.
+        // Three groups, and the wider gaps between them are what say they are different kinds of
+        // thing: the first edits the level, the other two only change how it is looked at.
         const float GroupGap = 14f;
-        float width = (button * 8f) + (spacing * 5f) + (GroupGap * 2f);
+        float width = (button * 4f) + spacing + (GroupGap * 2f);
 
         ImGui.SameLine(size.X - width - ImGui.GetStyle().WindowPadding.X);
 
-        DrawRotateButtons(context, button);
+        DrawObjectMenuButton(context, button);
 
         ImGui.SameLine(0f, GroupGap);
 
@@ -134,67 +138,70 @@ public sealed class EditorShell
             context.View.ToggleMeasurements();
         }
 
-        SceneLighting lighting = context.View.Lighting;
-
         ImGui.SameLine(0f, GroupGap);
 
-        if (IconButton.Draw("lit", Icons.Lit, lighting.IsLit, "Lit  -  one directional light", button))
+        SceneLighting lighting = context.View.Lighting;
+        if (IconButton.Toggle(
+                "shading",
+                (Icons.Lit, "Lit  -  one directional light"),
+                (Icons.Unlit, "Unlit  -  flat per-face shade, as exported"),
+                !lighting.IsLit,
+                string.Empty,
+                button))
         {
-            lighting.Mode = ShadingMode.Lit;
-        }
-
-        ImGui.SameLine();
-
-        if (IconButton.Draw("unlit", Icons.Unlit, !lighting.IsLit, "Unlit  -  flat per-face shade", button))
-        {
-            lighting.Mode = ShadingMode.Unlit;
+            lighting.Mode = lighting.IsLit ? ShadingMode.Unlit : ShadingMode.Lit;
         }
     }
 
     /// <summary>
-    /// Turning the focused object a quarter at a time, in its voxels rather than in its transform.
-    ///
-    /// An edit rather than a view control, which is why it is a separate group up here: a transform
-    /// rotation only changes how the object is drawn, and everything that reads the voxels — the
-    /// exporters, and any format with no field for rotation — would still see the model built the
-    /// way it was. This turns the lattice, and a quarter turn of a cubic grid loses nothing.
+    /// Turning and mirroring the focused object, behind one button. Four of these used to sit in the
+    /// header permanently; three more would have made seven, for something done a few times a session.
     /// </summary>
-    private static void DrawRotateButtons(ShellContext context, float button)
+    private static void DrawObjectMenuButton(ShellContext context, float button)
     {
-        EditorSession session = context.Session;
-        ImGui.BeginDisabled(session.Scene.Focus is not { IsEmpty: false });
-
-        (string Id, Icons.Painter Icon, string Tip, RotateDirection Direction)[] turns =
-        [
-            ("rot-left", Icons.RotateLeft, "Turn left", RotateDirection.Left),
-            ("rot-right", Icons.RotateRight, "Turn right", RotateDirection.Right),
-            ("rot-up", Icons.RotateUp, "Tip up", RotateDirection.Up),
-            ("rot-down", Icons.RotateDown, "Tip down", RotateDirection.Down),
-        ];
-
-        for (int i = 0; i < turns.Length; i++)
+        if (IconButton.Draw(
+                "object-menu",
+                Icons.Rotate,
+                active: false,
+                "Object  -  turn or flip the focused object's voxels",
+                button,
+                hasAlternatives: true))
         {
-            if (i > 0)
-            {
-                ImGui.SameLine();
-            }
-
-            (string id, Icons.Painter icon, string tip, RotateDirection direction) = turns[i];
-
-            if (IconButton.Draw(id, icon, active: false, $"{tip}  -  turns the object's voxels", button))
-            {
-                session.RotateFocus(direction);
-            }
+            ImGui.OpenPopup("##object-menu");
         }
 
-        ImGui.EndDisabled();
+        if (ImGui.BeginPopup("##object-menu"))
+        {
+            ObjectMenu.DrawItems(context.Session);
+            ImGui.EndPopup();
+        }
     }
 
-    private static void DrawToolColumn(ShellContext context, Vector2 position, Vector2 size)
+    /// <summary>
+    /// The tools, floating over the top-left of the viewport with no panel behind them — the way
+    /// Blender's toolbar sits. A column of its own spent the full height of the window on four buttons.
+    ///
+    /// Sized to its buttons and no larger, because an ImGui window takes the mouse wherever its
+    /// rectangle is, background or not: any slack around the buttons would be a patch of viewport
+    /// that stops answering clicks.
+    /// </summary>
+    private static void DrawToolColumn(ShellContext context, Vector2 position)
     {
-        BeginPanel("##tools", position, size, ImGuiWindowFlags.NoScrollbar);
+        ImGui.SetNextWindowPos(position);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(0f, 4f));
+
+        ImGui.Begin(
+            "##tools",
+            PanelFlags
+                | ImGuiWindowFlags.NoBackground
+                | ImGuiWindowFlags.AlwaysAutoResize
+                | ImGuiWindowFlags.NoScrollbar);
+
         ToolColumn.Draw(context.Session);
+
         ImGui.End();
+        ImGui.PopStyleVar(2);
     }
 
     private void DrawProperties(ShellContext context, Vector2 position, Vector2 size)

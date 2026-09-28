@@ -89,6 +89,12 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
+        if (ImGui.BeginMenu("Object"))
+        {
+            ObjectMenu.DrawItems(session);
+            ImGui.EndMenu();
+        }
+
         DrawStatus(project);
 
         float height = ImGui.GetWindowSize().Y;
@@ -137,19 +143,10 @@ public static class MainMenu
 
         ImGui.Separator();
 
-        if (ImGui.BeginMenu("Shading"))
+        // One checkable item, the same single switch the header carries.
+        if (ImGui.MenuItem("Lit Shading", null, view.Lighting.IsLit))
         {
-            if (ImGui.MenuItem("Lit", null, view.Lighting.IsLit))
-            {
-                view.Lighting.Mode = ShadingMode.Lit;
-            }
-
-            if (ImGui.MenuItem("Unlit", null, !view.Lighting.IsLit))
-            {
-                view.Lighting.Mode = ShadingMode.Unlit;
-            }
-
-            ImGui.EndMenu();
+            view.Lighting.Mode = view.Lighting.IsLit ? ShadingMode.Unlit : ShadingMode.Lit;
         }
 
         ImGui.EndMenu();

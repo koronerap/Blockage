@@ -18,7 +18,7 @@ public enum RotateDirection
 }
 
 /// <summary>
-/// Turning an object a quarter at a time, in the voxel data itself.
+/// Turning and mirroring an object, in the voxel data itself.
 ///
 /// Not the same thing as rotating its transform, and the difference is worth being clear about. A
 /// transform rotation is a placement: the grid underneath is untouched, the object is simply drawn
@@ -74,10 +74,6 @@ public static class RotateOperations
     /// <summary>
     /// Turns a grid in place and reports the shift it applied to keep the object where it was.
     ///
-    /// In place rather than into a replacement grid, because the undo stack holds references to the
-    /// grids it edited: swapping an object's grid for a new one would leave every earlier command
-    /// writing into a world nothing draws any more.
-    ///
     /// The shift is returned so the turn can be undone exactly. Turning back and re-centring
     /// independently would land in the same place almost always — and a box whose sides differ in
     /// parity cannot keep its centre on the lattice, so "almost" is where an object would creep half
@@ -90,8 +86,60 @@ public static class RotateOperations
             return Int3.Zero;
         }
 
-        // Read everything out before writing any of it: the turn moves cells onto each other's
-        // places, so writing as it goes would overwrite cells that have not been read yet.
+        Int3 applied = shift ?? Centring(min, max, direction);
+        Remap(grid, min, max, cell => Turn(cell, direction) + applied, face => Turn(face, direction));
+        return applied;
+    }
+
+    /// <summary>
+    /// Mirrors a grid in place across the middle of its own bounds.
+    ///
+    /// Simpler than a turn in the one way that matters: the mirrored box has exactly the bounds it
+    /// started with, whatever the parity of its sides, so there is no half voxel to place and no
+    /// shift to remember. A mirror is its own inverse — doing it twice is the undo.
+    ///
+    /// Faces go with the cells, and the ones facing along the axis swap sides: paint on the right-hand
+    /// face of a block has to end up on the left-hand face of the block it becomes, or a flipped model
+    /// comes out with its detail on the inside.
+    /// </summary>
+    public static void Flip(VoxelWorld grid, Axis axis)
+    {
+        if (!grid.TryGetBounds(out Int3 min, out Int3 max))
+        {
+            return;
+        }
+
+        Remap(grid, min, max, cell => Flip(cell, axis, min, max), face => Flip(face, axis));
+    }
+
+    /// <summary>Where a cell lands when the box from <paramref name="min"/> to <paramref name="max"/> is mirrored.</summary>
+    public static Int3 Flip(Int3 cell, Axis axis, Int3 min, Int3 max) => axis switch
+    {
+        Axis.X => new Int3(min.X + max.X - cell.X, cell.Y, cell.Z),
+        Axis.Y => new Int3(cell.X, min.Y + max.Y - cell.Y, cell.Z),
+        _ => new Int3(cell.X, cell.Y, min.Z + max.Z - cell.Z),
+    };
+
+    /// <summary>A face along the mirrored axis turns round; the other four are only carried along.</summary>
+    public static Face Flip(Face face, Axis axis) =>
+        FaceInfo.Axis(face) == (int)axis ? FaceInfo.Opposite(face) : face;
+
+    /// <summary>
+    /// Moves every solid cell of a grid, and every face painted differently from its block, to where
+    /// the given maps send them.
+    ///
+    /// In place rather than into a replacement grid, because the undo stack holds references to the
+    /// grids it edited: swapping an object's grid for a new one would leave every earlier command
+    /// writing into a world nothing draws any more. Everything is read out before anything is
+    /// written, since both a turn and a mirror move cells onto each other's places.
+    /// </summary>
+    private static void Remap(
+        VoxelWorld grid,
+        Int3 min,
+        Int3 max,
+        Func<Int3, Int3> moveCell,
+        Func<Face, Face> moveFace)
+    {
         var cells = new List<(Int3 To, byte Color, (Face Face, byte Color)[] Faces)>();
 
         for (int x = min.X; x <= max.X; x++)
@@ -114,31 +162,26 @@ public static class RotateOperations
                         byte painted = grid.GetFaceColor(from, (Face)f);
                         if (painted != color)
                         {
-                            (faces ??= []).Add((Turn((Face)f, direction), painted));
+                            (faces ??= []).Add((moveFace((Face)f), painted));
                         }
                     }
 
-                    cells.Add((Turn(from, direction), color, faces?.ToArray() ?? []));
+                    cells.Add((moveCell(from), color, faces?.ToArray() ?? []));
                 }
             }
         }
-
-        Int3 applied = shift ?? Centring(min, max, direction);
 
         grid.Clear();
 
         foreach ((Int3 to, byte color, (Face Face, byte Color)[] faces) in cells)
         {
-            Int3 placed = to + applied;
-            grid.SetVoxel(placed, color);
+            grid.SetVoxel(to, color);
 
             foreach ((Face face, byte painted) in faces)
             {
-                grid.SetFaceColor(placed, face, painted);
+                grid.SetFaceColor(to, face, painted);
             }
         }
-
-        return applied;
     }
 
     /// <summary>

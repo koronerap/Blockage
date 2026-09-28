@@ -40,22 +40,39 @@ public static class ToolOptions
 
     private static void DrawTransform(EditorSession session)
     {
-        Segmented(
-            "transform-mode",
-            [(Icons.Move, "Move"), (Icons.Rotate, "Rotate")],
-            (int)session.TransformMode,
-            "F",
-            value => session.TransformMode = (TransformMode)value);
+        float size = ImGui.GetFrameHeight();
 
-        ImGui.SameLine(0f, 18f);
+        if (IconButton.Toggle(
+                "transform-mode",
+                (Icons.Move, "Move"),
+                (Icons.Rotate, "Rotate"),
+                session.TransformMode == TransformMode.Rotate,
+                "F",
+                size))
+        {
+            session.TransformMode = session.TransformMode == TransformMode.Move
+                ? TransformMode.Rotate
+                : TransformMode.Move;
+        }
 
+        ImGui.SameLine(0f, 8f);
+
+        // The edge hinge a rotation turns about is always the object's own, so the choice has
+        // nothing to say while rotating.
         ImGui.BeginDisabled(session.TransformMode != TransformMode.Move);
-        Segmented(
-            "transform-space",
-            [(Icons.Global, "Global"), (Icons.Local, "Local")],
-            (int)session.TransformSpace,
-            "X",
-            value => session.TransformSpace = (TransformSpace)value);
+        if (IconButton.Toggle(
+                "transform-space",
+                (Icons.Global, "Global space"),
+                (Icons.Local, "Local space"),
+                session.TransformSpace == TransformSpace.Local,
+                "X",
+                size))
+        {
+            session.TransformSpace = session.TransformSpace == TransformSpace.Global
+                ? TransformSpace.Local
+                : TransformSpace.Global;
+        }
+
         ImGui.EndDisabled();
 
         ImGui.SameLine(0f, 18f);
@@ -65,12 +82,18 @@ public static class ToolOptions
 
     private static void DrawExtrude(EditorSession session)
     {
-        Segmented(
-            "extrude-select",
-            [(Icons.BoxSelect, "Box select"), (Icons.FaceSelect, "Whole face")],
-            (int)session.ExtrudeSelectionMode,
-            "F",
-            value => session.ExtrudeSelectionMode = (ExtrudeSelectionMode)value);
+        if (IconButton.Toggle(
+                "extrude-select",
+                (Icons.BoxSelect, "Box select"),
+                (Icons.FaceSelect, "Whole face"),
+                session.ExtrudeSelectionMode == ExtrudeSelectionMode.Face,
+                "F",
+                ImGui.GetFrameHeight()))
+        {
+            session.ExtrudeSelectionMode = session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box
+                ? ExtrudeSelectionMode.Face
+                : ExtrudeSelectionMode.Box;
+        }
 
         ImGui.SameLine(0f, 18f);
 
@@ -104,11 +127,12 @@ public static class ToolOptions
 
     private static void DrawPaint(EditorSession session)
     {
-        Segmented(
+        IconButton.Choice(
             "paint-mode",
             [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill")],
             (int)session.PaintMode,
             "X",
+            ImGui.GetFrameHeight(),
             value => session.PaintMode = (PaintMode)value);
 
         ImGui.SameLine(0f, 18f);
@@ -214,36 +238,4 @@ public static class ToolOptions
             _patternStatus = exception.Message;
         }
     };
-
-    /// <summary>
-    /// A joined run of icon buttons rather than a row of radio circles — the same choice, but it
-    /// reads as a mode switch instead of a questionnaire. The name lives in each button's tooltip.
-    /// </summary>
-    private static void Segmented(
-        string id,
-        (Icons.Painter Icon, string Name)[] options,
-        int selected,
-        string shortcut,
-        Action<int> onChange)
-    {
-        float size = ImGui.GetFrameHeight();
-        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new System.Numerics.Vector2(2f, 0f));
-
-        for (int i = 0; i < options.Length; i++)
-        {
-            if (i > 0)
-            {
-                ImGui.SameLine();
-            }
-
-            (Icons.Painter icon, string name) = options[i];
-
-            if (IconButton.Draw($"{id}{i}", icon, i == selected, $"{name}  ({shortcut} cycles)", size) && i != selected)
-            {
-                onChange(i);
-            }
-        }
-
-        ImGui.PopStyleVar();
-    }
 }

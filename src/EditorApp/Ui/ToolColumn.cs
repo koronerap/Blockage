@@ -1,18 +1,16 @@
 using EditorApp.Core.Editing;
+using ImGuiNET;
 
 namespace EditorApp.Ui;
 
 /// <summary>
-/// The vertical tool strip down the left edge. The spec fixes the tool set at exactly four
-/// (EditorApp.md, "Araçlar"); View is reachable by its shortcut but has no button, because the
-/// camera already works from inside every other tool.
+/// The four tools, floating over the top-left of the viewport. The spec fixes the tool set at
+/// exactly four (EditorApp.md, "Araçlar"); View is reachable by its shortcut but has no button,
+/// because the camera already works from inside every other tool.
 /// </summary>
 public static class ToolColumn
 {
     private const float ButtonSize = 38f;
-
-    /// <summary>Just the button plus the panel's own padding.</summary>
-    public static float Width => ButtonSize + 24f;
 
     private static readonly (EditorTool Tool, Icons.Painter Icon, string Name, string Shortcut, string Help)[] Tools =
     [
@@ -24,6 +22,11 @@ public static class ToolColumn
 
     public static void Draw(EditorSession session)
     {
+        // Translucent, since there is no panel behind them any more: the model shows through a
+        // little, so the buttons read as floating over the scene rather than as holes cut in it.
+        ImGui.PushStyleColor(ImGuiCol.Button, Theme.SurfaceRaised with { W = 0.82f });
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.ControlHovered with { W = 0.92f });
+
         foreach ((EditorTool tool, Icons.Painter icon, string name, string shortcut, string help) in Tools)
         {
             if (IconButton.Draw(
@@ -36,5 +39,7 @@ public static class ToolColumn
                 session.ActiveTool = tool;
             }
         }
+
+        ImGui.PopStyleColor(2);
     }
 }

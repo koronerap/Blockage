@@ -267,4 +267,141 @@ public class RotateObjectTests
 
         Assert.Equal(0, new RotateObjectCommand(grid, RotateDirection.Right).RetainedCells);
     }
+
+    // ---- Flip ----------------------------------------------------------------------------------
+
+    public static TheoryData<Axis> Axes() => new(Enum.GetValues<Axis>());
+
+    private static void AssertSame(
+        Dictionary<Int3, (byte Color, byte[] Faces)> expected,
+        Dictionary<Int3, (byte Color, byte[] Faces)> actual)
+    {
+        // Key by key: the face colours are arrays, and a dictionary comparison would ask whether
+        // they are the same array rather than whether they say the same thing.
+        Assert.Equal(expected.Count, actual.Count);
+        foreach ((Int3 at, (byte color, byte[] faces)) in expected)
+        {
+            Assert.True(actual.ContainsKey(at), $"{at} came back empty.");
+            Assert.Equal(color, actual[at].Color);
+            Assert.Equal(faces, actual[at].Faces);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Axes))]
+    public void FlippingTwiceIsNoChangeAtAll(Axis axis)
+    {
+        // A mirror is its own inverse, which is the whole of how its undo works. So this has to hold
+        // to the painted face, not just to the voxel count.
+        VoxelWorld grid = Lopsided();
+        Dictionary<Int3, (byte, byte[])> before = Snapshot(grid);
+
+        RotateOperations.Flip(grid, axis);
+        RotateOperations.Flip(grid, axis);
+
+        AssertSame(before, Snapshot(grid));
+    }
+
+    [Theory]
+    [MemberData(nameof(Axes))]
+    public void FlippingKeepsTheBoundsExactly(Axis axis)
+    {
+        // Unlike a quarter turn there is no half voxel to place: a lopsided box mirrored across its
+        // own middle covers exactly the same cells it did. Not "about the same place" - the same.
+        VoxelWorld grid = Lopsided();
+        grid.TryGetBounds(out Int3 min, out Int3 max);
+        int count = grid.SolidCount;
+
+        RotateOperations.Flip(grid, axis);
+
+        grid.TryGetBounds(out Int3 flippedMin, out Int3 flippedMax);
+        Assert.Equal(min, flippedMin);
+        Assert.Equal(max, flippedMax);
+        Assert.Equal(count, grid.SolidCount);
+    }
+
+    [Theory]
+    [MemberData(nameof(Axes))]
+    public void FlippingActuallyMirrors(Axis axis)
+    {
+        // The two tests above would both pass for a flip that did nothing. This one would not.
+        VoxelWorld grid = Lopsided();
+        grid.TryGetBounds(out Int3 min, out Int3 max);
+        Dictionary<Int3, (byte Color, byte[] Faces)> before = Snapshot(grid);
+
+        RotateOperations.Flip(grid, axis);
+
+        foreach ((Int3 at, (byte color, _)) in before)
+        {
+            Int3 mirrored = RotateOperations.Flip(at, axis, min, max);
+            Assert.True(grid.IsSolid(mirrored), $"{at} should have landed on {mirrored}.");
+            Assert.Equal(color, grid.GetVoxel(mirrored));
+        }
+    }
+
+    [Fact]
+    public void APaintedFaceAlongTheAxisSwapsSides()
+    {
+        // The case a plain copy of the voxels gets wrong. A block painted on its right-hand face,
+        // mirrored left to right, is the same block painted on its left-hand face - otherwise the
+        // detail on a flipped model ends up facing inwards.
+        var grid = new VoxelWorld();
+        grid.SetVoxel(0, 0, 0, 40);
+        grid.SetVoxel(3, 0, 0, 40);
+        grid.SetFaceColor(new Int3(0, 0, 0), Face.PosX, 90);
+        grid.SetFaceColor(new Int3(0, 0, 0), Face.PosY, 91);
+
+        RotateOperations.Flip(grid, Axis.X);
+
+        var landed = new Int3(3, 0, 0);
+        Assert.Equal(90, grid.GetFaceColor(landed, Face.NegX));
+        Assert.Equal(40, grid.GetFaceColor(landed, Face.PosX));
+
+        // A face across the axis is only carried along.
+        Assert.Equal(91, grid.GetFaceColor(landed, Face.PosY));
+    }
+
+    [Theory]
+    [MemberData(nameof(Axes))]
+    public void OnlyTheFacesAlongTheAxisTurnRound(Axis axis)
+    {
+        foreach (Face face in Enum.GetValues<Face>())
+        {
+            Face flipped = RotateOperations.Flip(face, axis);
+
+            if (FaceInfo.Axis(face) == (int)axis)
+            {
+                Assert.Equal(FaceInfo.Opposite(face), flipped);
+            }
+            else
+            {
+                Assert.Equal(face, flipped);
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Axes))]
+    public void FlipUndoPutsItBackExactly(Axis axis)
+    {
+        VoxelWorld grid = Lopsided();
+        Dictionary<Int3, (byte, byte[])> before = Snapshot(grid);
+
+        var command = new FlipObjectCommand(grid, axis);
+        command.Redo();
+        command.Undo();
+
+        AssertSame(before, Snapshot(grid));
+        Assert.Equal(0, command.RetainedCells);
+    }
+
+    [Fact]
+    public void FlippingAnEmptyObjectIsLeftAlone()
+    {
+        var grid = new VoxelWorld();
+
+        RotateOperations.Flip(grid, Axis.Z);
+
+        Assert.Equal(0, grid.SolidCount);
+    }
 }

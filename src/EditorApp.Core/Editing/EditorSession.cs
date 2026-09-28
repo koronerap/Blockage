@@ -576,6 +576,30 @@ public sealed class EditorSession
     }
 
     /// <summary>
+    /// Mirrors the focused object along one of its own axes, in its voxels rather than its transform,
+    /// for the same reasons a quarter turn works that way.
+    /// </summary>
+    public bool FlipFocus(Axis axis)
+    {
+        if (Scene.Focus is not { IsEmpty: false } focus)
+        {
+            return false;
+        }
+
+        // Any gesture in progress was aimed at the model as it was a moment ago.
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var command = new FlipObjectCommand(focus.Grid, axis);
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>
     /// Turns the focused object a quarter turn, in its voxels rather than in its transform.
     ///
     /// The distinction matters more than it looks. A transform rotation is a placement — the grid
