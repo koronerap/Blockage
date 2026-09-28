@@ -39,7 +39,7 @@ public static class MimicraftScene
 
         // One object, sitting where it was built: nothing to merge, and copying it would only be a
         // chance to get the copy wrong.
-        if (objects.Count == 1 && MimicraftValidation.Offset(objects[0].Transform.Position) == Int3.Zero)
+        if (objects.Count == 1 && MimicraftValidation.Offset(objects[0].Transform) == Int3.Zero)
         {
             return new MimicraftPiece(weaponId, objects[0].Grid);
         }
@@ -54,7 +54,7 @@ public static class MimicraftScene
                 continue;
             }
 
-            Int3 offset = MimicraftValidation.Offset(o.Transform.Position);
+            Int3 offset = MimicraftValidation.Offset(o.Transform);
 
             for (int y = min.Y; y <= max.Y; y++)
             {

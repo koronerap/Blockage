@@ -23,9 +23,12 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
 
     public bool Visible { get; set; } = true;
 
+    /// <summary>World units one of this object's voxels measures — its transform's scale.</summary>
+    public float VoxelSize => Transform.VoxelSize;
+
     public bool IsEmpty => Grid.SolidCount == 0;
 
-    /// <summary>Local-space bounds of the solid voxels, as world units (a cell spans one unit).</summary>
+    /// <summary>Local-space bounds of the solid voxels, in voxels (a cell spans one unit of its own space).</summary>
     public bool TryGetLocalBounds(out Vector3 min, out Vector3 max)
     {
         if (!Grid.TryGetBounds(out Int3 minCell, out Int3 maxCell))

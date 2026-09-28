@@ -3,12 +3,11 @@ namespace EditorApp.Rendering;
 /// <summary>
 /// How coarse the ground grid is drawn.
 ///
-/// The grid measures **world units**, not voxels. It is the only thing in the viewport standing in
-/// for the world the level will end up in, so it is what has to change when a voxel stops being one
-/// unit — otherwise setting a voxel size has no visible effect at all and the model floats at a
-/// scale nothing on screen agrees with.
-///
-/// Everything else stays at one unit per voxel. Only the spacing of these lines moves.
+/// The viewport is in **world units**, and so is the grid: a cell is always a whole power of ten of
+/// them. Which power follows the focused object's voxel size, so the cells stay a few voxels across
+/// — at one unit per voxel, one cell is one voxel, which is where the grid started. Objects each
+/// have their own voxel size, and the grid cannot be every one of them at once; the one being worked
+/// on is the one it measures for.
 /// </summary>
 public static class GroundGrid
 {

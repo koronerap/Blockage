@@ -167,13 +167,13 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
                 Vector3? extent = null;
                 if (_session.Scene.TryGetWorldBounds(out Vector3 min, out Vector3 max))
                 {
-                    extent = (max - min) / _session.Scene.VoxelSize;
+                    extent = max - min;
                 }
 
                 return new SceneState(
                     GridVisible,
                     LightingState.From(_lighting),
-                    _session.Scene.VoxelSize,
+                    _session.Scene.Focus?.VoxelSize ?? 1f,
                     extent,
                     _session.Scene.SolidCount,
                     objects);
@@ -651,7 +651,7 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         {
             lines.AddGroundGrid(
                 GroundGrid.HalfExtentCells,
-                GroundGrid.Spacing(_session.Scene.VoxelSize),
+                GroundGrid.WorldUnitsPerCell(_session.Scene.Focus?.VoxelSize ?? 1f),
                 EditorOverlays.GridMinor,
                 EditorOverlays.GridMajor);
         }

@@ -300,8 +300,7 @@ public class VxLevelStreamTests
 
         var scene = new VoxelScene();
         scene.ReplacePalette(world.Palette);
-        scene.Add(world, ObjectTransform.Identity, "Object 1");
-        scene.VoxelSize = 0.25f;
+        scene.Add(world, ObjectTransform.Identity with { VoxelSize = 0.25f }, "Object 1");
         return scene;
     }
 
@@ -317,7 +316,7 @@ public class VxLevelStreamTests
         VoxelScene loaded = VxLevelFile.LoadScene(buffer);
 
         Assert.Equal(original.Objects.Count, loaded.Objects.Count);
-        Assert.Equal(0.25f, loaded.VoxelSize, 5);
+        Assert.Equal(0.25f, loaded.Objects[0].VoxelSize, 5);
 
         VoxelWorld before = original.Objects[0].Grid;
         VoxelWorld after = loaded.Objects[0].Grid;

@@ -105,6 +105,17 @@ public static class MimicraftValidation
 
     private static void CheckWeapon(IReadOnlyList<VoxelObject> objects, List<MimicraftProblem> problems)
     {
+        // One grid has one voxel size. Pieces built at different sizes could only share it by being
+        // resampled into different models.
+        float first = objects[0].VoxelSize;
+        if (objects.Any(o => MathF.Abs(o.VoxelSize - first) > 1e-6f))
+        {
+            problems.Add(new MimicraftProblem(
+                "Weapon",
+                "Its pieces have different voxel sizes. A weapon is written as one grid - give every "
+                + "piece the same size first."));
+        }
+
         // Merged into one grid, so it is the merged extent that has to fit, not each piece's.
         if (!TryMergedBounds(objects, out Int3 min, out Int3 max))
         {
@@ -226,7 +237,7 @@ public static class MimicraftValidation
                 continue;
             }
 
-            Int3 offset = Offset(o.Transform.Position);
+            Int3 offset = Offset(o.Transform);
             objectMin += offset;
             objectMax += offset;
 
@@ -239,13 +250,17 @@ public static class MimicraftValidation
     }
 
     /// <summary>
-    /// An object's translation as whole voxels. Only ever used for the weapon path, where several
-    /// objects become one grid and their positions relative to each other are the model.
+    /// An object's translation as whole voxels of its own size. Only ever used for the weapon path,
+    /// where several objects become one grid and their positions relative to each other are the model.
     /// </summary>
-    public static Int3 Offset(Vector3 position) => new(
-        (int)MathF.Round(position.X),
-        (int)MathF.Round(position.Y),
-        (int)MathF.Round(position.Z));
+    public static Int3 Offset(ObjectTransform transform)
+    {
+        Vector3 cells = transform.Position / transform.VoxelSize;
+        return new Int3(
+            (int)MathF.Round(cells.X),
+            (int)MathF.Round(cells.Y),
+            (int)MathF.Round(cells.Z));
+    }
 
     private static bool IsIdentity(Quaternion rotation) =>
         MathF.Abs(MathF.Abs(rotation.W) - 1f) < 1e-4f;

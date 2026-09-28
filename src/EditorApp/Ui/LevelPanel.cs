@@ -6,53 +6,15 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// Properties of the level as a whole rather than of anything in it. Right now that is one number:
-/// how big a voxel is.
+/// The level as a whole: how big it is in the world, and what the ground grid is measuring. The
+/// voxel size used to live here, when a level had one; each object has its own now, so it moved to
+/// the focused object's properties under the outliner.
 /// </summary>
 public static class LevelPanel
 {
     public static void DrawContent(EditorSession session)
     {
         VoxelScene scene = session.Scene;
-        float size = scene.VoxelSize;
-
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.DragFloat(
-                "##voxel-size",
-                ref size,
-                0.005f,
-                VoxelScene.MinVoxelSize,
-                VoxelScene.MaxVoxelSize,
-                "Voxel size  %.4g"))
-        {
-            session.SetVoxelSize(size);
-        }
-
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip(
-                "World units one voxel measures in the exported mesh.\n"
-                + "Ctrl+click to type an exact value.\n\n"
-                + "Fixed for the whole level. Editing stays at one unit\n"
-                + "per voxel; the size is applied when exporting.");
-        }
-
-        if (scene.HasCustomVoxelSize && ImGui.SmallButton("Back to 1"))
-        {
-            session.SetVoxelSize(1f);
-        }
-
-        DrawDimensions(scene);
-    }
-
-    /// <summary>
-    /// What the level currently measures, in voxels and in world units. The point of setting a voxel
-    /// size is a model that comes out the right size, so the resulting number is worth showing next
-    /// to the control that decides it rather than only at export.
-    /// </summary>
-    private static void DrawDimensions(VoxelScene scene)
-    {
-        ImGui.Spacing();
 
         if (!scene.TryGetWorldBounds(out Vector3 min, out Vector3 max))
         {
@@ -61,22 +23,83 @@ public static class LevelPanel
         }
 
         Vector3 extent = max - min;
+        ImGui.TextDisabled($"Level  {extent.X:0.###} x {extent.Y:0.###} x {extent.Z:0.###} units");
 
-        ImGui.TextDisabled($"Level  {extent.X:0.##} x {extent.Y:0.##} x {extent.Z:0.##} vx");
+        // What the ground grid is measuring, so the cells the model sits on can be read as a number.
+        float cell = Rendering.GroundGrid.WorldUnitsPerCell(scene.Focus?.VoxelSize ?? 1f);
+        ImGui.TextDisabled($"Grid cell  {cell:0.###} {(MathF.Abs(cell - 1f) < 1e-6f ? "unit" : "units")}");
 
-        if (!scene.HasCustomVoxelSize)
+        if (scene.SharedVoxelSize is null && scene.Objects.Count(o => o.Visible && !o.IsEmpty) > 1)
+        {
+            ImGui.TextDisabled("Voxel sizes differ by object.");
+        }
+    }
+}
+
+/// <summary>
+/// The focused object's own settings, under the outliner: for now, how big its voxels are.
+///
+/// Dragging the value resizes the object live and lands as one undo step when let go; typing one in
+/// with Ctrl+click does the same. The object grows about its own origin.
+/// </summary>
+public static class ObjectPropertiesPanel
+{
+    private static ObjectTransform? _before;
+
+    public static void DrawContent(EditorSession session)
+    {
+        if (session.Scene.Focus is not { } focus)
         {
             return;
         }
 
-        Vector3 world = extent * scene.VoxelSize;
-        ImGui.TextColored(
-            Theme.Highlight,
-            $"Exports  {world.X:0.###} x {world.Y:0.###} x {world.Z:0.###}");
+        float size = focus.VoxelSize;
 
-        // What the ground grid is measuring, so the cells the model sits on can be read as a number.
-        float spacing = Rendering.GroundGrid.Spacing(scene.VoxelSize);
-        ImGui.TextDisabled(
-            $"Grid cell  {spacing:0.###} vx  =  {Rendering.GroundGrid.WorldUnitsPerCell(scene.VoxelSize):0.###}");
+        ImGui.SetNextItemWidth(-1f);
+        bool changed = ImGui.DragFloat(
+            "##voxel-size",
+            ref size,
+            0.005f,
+            ObjectTransform.MinVoxelSize,
+            ObjectTransform.MaxVoxelSize,
+            "Voxel size  %.4g");
+
+        if (ImGui.IsItemActivated())
+        {
+            _before = focus.Transform;
+        }
+
+        if (changed && ObjectTransform.ValidVoxelSize(size) is { } valid)
+        {
+            session.ApplyTransform(focus, focus.Transform with { VoxelSize = valid });
+        }
+
+        if (ImGui.IsItemDeactivated() && _before is { } before)
+        {
+            session.PushTransformEdit(focus, before, "Voxel size");
+            _before = null;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(
+                $"World units one voxel of {focus.Name} measures.\n"
+                + "Ctrl+click to type an exact value.\n\n"
+                + "Each object has its own. Copies, cuts and extruded\n"
+                + "pieces start at the size of the object they came from.");
+        }
+
+        if (MathF.Abs(focus.VoxelSize - 1f) > 1e-6f && ImGui.SmallButton("Back to 1"))
+        {
+            session.SetObjectVoxelSize(focus.Id, 1f);
+        }
+
+        if (focus.Grid.TryGetBounds(out Core.Voxels.Int3 min, out Core.Voxels.Int3 max))
+        {
+            Core.Voxels.Int3 cells = max - min + Core.Voxels.Int3.One;
+            Vector3 world = new Vector3(cells.X, cells.Y, cells.Z) * focus.VoxelSize;
+
+            ImGui.TextDisabled($"{cells.X} x {cells.Y} x {cells.Z} vx  =  {world.X:0.###} x {world.Y:0.###} x {world.Z:0.###} units");
+        }
     }
 }

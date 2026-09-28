@@ -25,7 +25,8 @@ public readonly record struct QuadColors(int Width, int Height, byte[] Cells)
 }
 
 /// <summary>A run of quads that came from one object, kept so the export can stay as many objects.</summary>
-public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount);
+/// <param name="VoxelSize">World size of this part's voxels, so its quads can be measured in voxels again.</param>
+public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount, float VoxelSize = 1f);
 
 public sealed class ExportMesh
 {
@@ -90,13 +91,13 @@ public sealed class ExportMesh
     }
 
     /// <summary>Records that everything added since the last part belongs to this one.</summary>
-    public void BeginPart(string name, int firstQuad) =>
-        Parts.Add(new MeshPart(name, firstQuad, QuadCount - firstQuad));
+    public void BeginPart(string name, int firstQuad, float voxelSize = 1f) =>
+        Parts.Add(new MeshPart(name, firstQuad, QuadCount - firstQuad, voxelSize));
 
     /// <summary>
-    /// Appends another mesh with a rigid transform applied. Used to bake each object's placement
-    /// into the exported geometry: a rotation without reflection preserves winding, so quads stay
-    /// facing outward without any correction.
+    /// Appends another mesh with an object's transform applied. Used to bake each object's placement
+    /// and voxel size into the exported geometry: a rotation and a positive uniform scale preserve
+    /// winding, so quads stay facing outward without any correction.
     /// </summary>
     public void Append(ExportMesh source, Scene.ObjectTransform transform)
     {

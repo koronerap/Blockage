@@ -78,14 +78,12 @@ public static class GreedyMesher
 
             // Where this object's quads start, so the export can put it back as its own object
             // rather than welding the whole level into one lump.
+            // Each object's own voxel size comes in with its transform: voxels become world units
+            // object by object, since two objects need not share a size.
             int first = combined.QuadCount;
             combined.Append(Build(o.Grid, uvSelector, mergeAcrossColors), o.Transform);
-            combined.BeginPart(o.Name, first);
+            combined.BeginPart(o.Name, first, o.VoxelSize);
         }
-
-        // Voxel units become world units here, at the very end. Object placements are in voxel units
-        // too, so they have to be baked in before the scale rather than after.
-        combined.Scale(scene.VoxelSize);
 
         return combined;
     }

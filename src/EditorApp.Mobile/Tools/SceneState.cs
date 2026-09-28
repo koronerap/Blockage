@@ -13,7 +13,8 @@ public readonly record struct ObjectState(int Id, string Name, bool Visible, boo
 /// built on the UI thread and the session belongs to whichever thread holds the lock.
 /// </summary>
 /// <param name="Lighting">A copy — the live one belongs to the renderer, on the GL thread.</param>
-/// <param name="Extent">The level's size in voxels, or null when there is nothing in it.</param>
+/// <param name="VoxelSize">The focused object's voxel size — each object has its own.</param>
+/// <param name="Extent">The level's size in world units, or null when there is nothing in it.</param>
 public readonly record struct SceneState(
     bool GridVisible,
     LightingState Lighting,

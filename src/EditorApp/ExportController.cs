@@ -113,7 +113,7 @@ public sealed class ExportController(EditorSession session)
         // Unwrapping rewrites the mesh's UVs, so it belongs here with the meshing rather than inside
         // an exporter — both formats have to be handed the same layout and the same sheet.
         _atlas = unwrapped
-            ? UvUnwrap.Apply(_analysis, session.Scene.VoxelSize, _texelsPerVoxel)
+            ? UvUnwrap.Apply(_analysis, _texelsPerVoxel)
             : null;
 
         // The naive reference covers the whole scene too, so the reduction figure is the one that
@@ -312,10 +312,18 @@ public sealed class ExportController(EditorSession session)
         Vector3 extent = max - min;
         ImGui.Text($"  Size         {extent.X:0.###} x {extent.Y:0.###} x {extent.Z:0.###}");
 
-        if (session.Scene.HasCustomVoxelSize)
+        if (session.Scene.SharedVoxelSize is { } shared)
+        {
+            if (MathF.Abs(shared - 1f) > 1e-6f)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(Theme.Highlight, $"   at {shared:0.####} per voxel");
+            }
+        }
+        else if (session.Scene.Objects.Count(o => o.Visible && !o.IsEmpty) > 1)
         {
             ImGui.SameLine();
-            ImGui.TextColored(Theme.Highlight, $"   at {session.Scene.VoxelSize:0.####} per voxel");
+            ImGui.TextColored(Theme.Highlight, "   voxel sizes differ by object");
         }
 
         ImGui.TextDisabled($"  Meshed in {_analysisMilliseconds:0} ms");

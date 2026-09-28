@@ -32,8 +32,8 @@ public class UvUnwrapTests
 
     private static VoxelScene SceneOf(VoxelWorld grid, float voxelSize = 1f)
     {
-        var scene = new VoxelScene { VoxelSize = voxelSize };
-        scene.Add(grid, ObjectTransform.Identity, "cube");
+        var scene = new VoxelScene();
+        scene.Add(grid, ObjectTransform.Identity with { VoxelSize = voxelSize }, "cube");
         return scene;
     }
 
@@ -307,13 +307,13 @@ public class UvUnwrapTests
     [Fact]
     public void TheLayoutDoesNotMoveWhenTheLevelIsRescaled()
     {
-        // Density is per voxel, not per world unit: changing a level's scale must not reshuffle a
+        // Density is per voxel, not per world unit: changing an object's scale must not reshuffle a
         // texture that has already been painted on.
         ExportMesh unit = GreedyMesher.BuildScene(SceneOf(MixedWorld()));
         UvAtlas atlasA = UvUnwrap.Apply(unit);
 
         ExportMesh quarter = GreedyMesher.BuildScene(SceneOf(MixedWorld(), voxelSize: 0.25f));
-        UvAtlas atlasB = UvUnwrap.Apply(quarter, voxelSize: 0.25f);
+        UvAtlas atlasB = UvUnwrap.Apply(quarter);
 
         Assert.Equal(atlasA.Width, atlasB.Width);
         Assert.Equal(atlasA.Height, atlasB.Height);

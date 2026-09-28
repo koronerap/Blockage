@@ -24,10 +24,12 @@ public sealed class LevelManifest
     public int ChunkSize { get; set; } = Chunk.Size;
 
     /// <summary>
-    /// World size of one voxel in the exported mesh. Absent in files written before it existed,
-    /// where one voxel was always one unit.
+    /// Versions 4 and 5 only: the world size of one voxel for the whole level, applied at export.
+    /// Version 6 moved it onto each object and stopped writing this; absent before version 4, where
+    /// one voxel was always one unit.
     /// </summary>
     [JsonPropertyName("voxelSize")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public float? VoxelSize { get; set; }
 
     /// <summary>256 entries as <c>#RRGGBBAA</c>.</summary>
@@ -82,6 +84,14 @@ public sealed class LevelManifest
         /// <summary>Absent before version 5, where every object was visible.</summary>
         [JsonPropertyName("visible")]
         public bool Visible { get; set; } = true;
+
+        /// <summary>
+        /// Version 6 and up: world units one of this object's voxels measures. The position is in
+        /// world units from version 6 on, where before it was in voxels of the level's one size.
+        /// </summary>
+        [JsonPropertyName("voxelSize")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public float? VoxelSize { get; set; }
     }
 
     [JsonPropertyName("savedUtc")]

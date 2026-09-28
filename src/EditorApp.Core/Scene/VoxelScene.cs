@@ -18,13 +18,12 @@ public readonly record struct ScenePick(VoxelObject Object, RaycastHit Hit, floa
 public sealed class VoxelScene
 {
     /// <summary>Smallest and largest world size a single voxel may be given.</summary>
-    public const float MinVoxelSize = 0.001f;
+    public const float MinVoxelSize = ObjectTransform.MinVoxelSize;
 
-    public const float MaxVoxelSize = 1000f;
+    public const float MaxVoxelSize = ObjectTransform.MaxVoxelSize;
 
     private readonly List<VoxelObject> _objects = [];
     private int _nextId = 1;
-    private float _voxelSize = 1f;
 
     public VoxelScene()
     {
@@ -34,24 +33,32 @@ public sealed class VoxelScene
     public Palette Palette { get; private set; }
 
     /// <summary>
-    /// How much world space one voxel occupies in the exported mesh. Fixed for the whole level: it
-    /// is the unit the level is drawn in, and a level whose unit changed partway through would not
-    /// mean anything.
-    ///
-    /// Nothing inside the editor is measured in these units. Editing, picking, transforms and the
-    /// grid all stay at one unit per voxel, because that is the space voxels are actually indexed
-    /// in and scaling it would put a conversion between every click and the cell it lands on for no
-    /// gain. The size is applied once, to the finished export, and shown wherever a real-world
-    /// dimension is worth reading.
+    /// The voxel size every visible object shares, or null when they differ (or there are none). A
+    /// single number is only worth showing when it describes the whole level.
     /// </summary>
-    public float VoxelSize
+    public float? SharedVoxelSize
     {
-        get => _voxelSize;
-        set => _voxelSize = float.IsFinite(value) ? Math.Clamp(value, MinVoxelSize, MaxVoxelSize) : _voxelSize;
-    }
+        get
+        {
+            float? shared = null;
+            foreach (VoxelObject o in _objects)
+            {
+                if (!o.Visible || o.IsEmpty)
+                {
+                    continue;
+                }
 
-    /// <summary>True when one voxel is not one world unit, so scaled figures are worth showing.</summary>
-    public bool HasCustomVoxelSize => MathF.Abs(_voxelSize - 1f) > 1e-6f;
+                if (shared is { } size && MathF.Abs(size - o.VoxelSize) > 1e-6f)
+                {
+                    return null;
+                }
+
+                shared = o.VoxelSize;
+            }
+
+            return shared;
+        }
+    }
 
     public IReadOnlyList<VoxelObject> Objects => _objects;
 
@@ -140,7 +147,6 @@ public sealed class VoxelScene
     {
         var copy = new VoxelScene
         {
-            _voxelSize = _voxelSize,
             _nextId = _nextId,
             FocusId = FocusId,
             Palette = Palette.Clone(),
@@ -257,19 +263,24 @@ public sealed class VoxelScene
                 continue;
             }
 
+            // The local ray walks voxels, so its distances are in this object's voxels. Objects of
+            // different sizes are compared in the world, or a small-voxel object behind a large one
+            // would win just for having more cells in the way.
+            float scale = o.VoxelSize;
             Ray localRay = o.Transform.InverseTransformRay(worldRay);
-            if (!VoxelRaycaster.TryCast(o.Grid, localRay, out RaycastHit hit, maxDistance))
+            if (!VoxelRaycaster.TryCast(o.Grid, localRay, out RaycastHit hit, maxDistance / scale))
             {
                 continue;
             }
 
-            if (hit.Distance >= nearest)
+            float distance = hit.Distance * scale;
+            if (distance >= nearest)
             {
                 continue;
             }
 
-            nearest = hit.Distance;
-            pick = new ScenePick(o, hit, hit.Distance);
+            nearest = distance;
+            pick = new ScenePick(o, hit, distance);
             found = true;
         }
 
@@ -318,6 +329,7 @@ public sealed class VoxelScene
             hash = Mix(hash, Quantise(o.Transform.Rotation.Y));
             hash = Mix(hash, Quantise(o.Transform.Rotation.Z));
             hash = Mix(hash, Quantise(o.Transform.Rotation.W));
+            hash = Mix(hash, Quantise(o.Transform.VoxelSize));
 
             total += hash;
         }

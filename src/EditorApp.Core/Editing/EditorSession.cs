@@ -605,17 +605,18 @@ public sealed class EditorSession
 
     /// <summary>
     /// Where a copy goes relative to its original: along X or Z, whichever the direction leans on
-    /// more, by the object's world width on that axis plus one voxel. Whole voxels, so a copy of an
-    /// object on the grid stays on it. Never up or down — the camera's right never points that way,
-    /// and a copy stacked on top is rarely where it is wanted.
+    /// more, by the object's world width on that axis plus one voxel. Whole voxels of the object's
+    /// own size, so a copy of an object on its lattice stays on it. Never up or down — the camera's
+    /// right never points that way, and a copy stacked on top is rarely where it is wanted.
     /// </summary>
     public static Vector3 DuplicateOffset(VoxelObject source, Vector3 towards)
     {
-        Vector3 size = source.TryGetWorldBounds(out Vector3 min, out Vector3 max) ? max - min : Vector3.One;
+        float voxel = source.VoxelSize;
+        Vector3 size = source.TryGetWorldBounds(out Vector3 min, out Vector3 max) ? (max - min) / voxel : Vector3.One;
 
         bool alongX = MathF.Abs(towards.X) >= MathF.Abs(towards.Z);
         float sign = (alongX ? towards.X : towards.Z) >= 0f ? 1f : -1f;
-        float step = MathF.Ceiling((alongX ? size.X : size.Z) - 1e-3f) + 1f;
+        float step = (MathF.Ceiling((alongX ? size.X : size.Z) - 1e-3f) + 1f) * voxel;
 
         return alongX ? new Vector3(sign * step, 0f, 0f) : new Vector3(0f, 0f, sign * step);
     }
@@ -844,21 +845,24 @@ public sealed class EditorSession
     }
 
     /// <summary>
-    /// Sets the world size of one voxel for the whole level.
+    /// Sets how big one of an object's voxels is in the world. The object grows or shrinks about its
+    /// own origin — for a model built from the corner up, that keeps it standing where it stood.
     ///
-    /// Not an undo step, unlike a palette edit. A palette edit repaints voxels — it changes the
-    /// model, invisibly and everywhere at once, so it needs a way back. This changes no voxel and
-    /// no placement; the number that was there is still on screen in the box you just typed into.
+    /// An undo step now, where the level-wide size was not: it moves the object in the world and
+    /// changes how it sits against its neighbours, which is an edit to the level.
     /// </summary>
-    public bool SetVoxelSize(float size)
+    public bool SetObjectVoxelSize(int objectId, float size)
     {
-        float clamped = Math.Clamp(size, VoxelScene.MinVoxelSize, VoxelScene.MaxVoxelSize);
-        if (!float.IsFinite(size) || clamped == Scene.VoxelSize)
+        if (Scene.Find(objectId) is not { } target
+            || ObjectTransform.ValidVoxelSize(size) is not { } valid
+            || valid == target.VoxelSize)
         {
             return false;
         }
 
-        Scene.VoxelSize = clamped;
+        ObjectTransform before = target.Transform;
+        target.Transform = before with { VoxelSize = valid };
+        History.Push(new TransformCommand(target, before, target.Transform, "Voxel size"));
         HasUnsavedChanges = true;
         return true;
     }

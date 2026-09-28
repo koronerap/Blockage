@@ -180,7 +180,7 @@ public sealed class ExportActions(Activity activity, EditorSurfaceView surface, 
             // mergeAcrossColors: colour rides in the texture, so a merged quad spanning two colours
             // is still one quad — which is the whole reason the unwrap exists.
             ExportMesh mesh = GreedyMesher.BuildScene(scene, uvSelector: null, mergeAcrossColors: true);
-            UvAtlas atlas = UvUnwrap.Apply(mesh, scene.VoxelSize, TexelsPerVoxel);
+            UvAtlas atlas = UvUnwrap.Apply(mesh, TexelsPerVoxel);
 
             string path = Path.Combine(workspace, name + exporter.Extension);
             exporter.Export(mesh, scene.Palette, path, new ExportOptions { Atlas = atlas });

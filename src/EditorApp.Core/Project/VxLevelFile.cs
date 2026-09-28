@@ -27,15 +27,19 @@ public static class VxLevelFile
 {
     /// <summary>
     /// 1: a single grid. 2: objects with transforms. 3: per-face colours. 4: voxel size.
-    /// 5: hidden objects.
+    /// 5: hidden objects. 6: voxel size per object, positions in world units.
     ///
     /// Version 4 is a bump for a field an older build would simply not see. That is exactly why it
     /// is one: it sets the scale of everything exported from the file, so a build that ignored it
     /// would write a correct-looking mesh at the wrong size rather than fail. Refusing to open the
     /// file says so out loud. Version 5 is the same case: hidden objects are left out of an export,
-    /// and a build that did not know about hiding would quietly put them back in.
+    /// and a build that did not know about hiding would quietly put them back in. Version 6 changes
+    /// what a position means, which an older build would read as a level flown apart.
     /// </summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
+
+    /// <summary>The first version with a voxel size on every object and positions in world units.</summary>
+    private const int PerObjectVoxelSizeVersion = 6;
 
     public const string Extension = ".vxlevel";
 
@@ -110,7 +114,6 @@ public static class VxLevelFile
             Version = CurrentVersion,
             Name = name,
             ChunkSize = Chunk.Size,
-            VoxelSize = scene.VoxelSize,
             Palette = LevelManifest.EncodePalette(scene.Palette),
             SavedCustomSlots = [.. scene.Palette.SavedCustomSlots()],
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
@@ -136,6 +139,7 @@ public static class VxLevelFile
                 ],
                 Chunks = [.. coordinates.Select(c => new[] { c.X, c.Y, c.Z })],
                 Visible = o.Visible,
+                VoxelSize = o.VoxelSize,
             });
 
             foreach (ChunkCoord coord in coordinates)
@@ -281,16 +285,24 @@ public static class VxLevelFile
         var scene = new VoxelScene();
         scene.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette, manifest.SavedCustomSlots));
 
-        // Absent before version 4, where one voxel was always one unit.
-        scene.VoxelSize = manifest.VoxelSize ?? 1f;
+        // Before version 6 the whole level had one voxel size — absent before version 4, where one
+        // voxel was always one unit — and positions were counted in those voxels. Both move onto
+        // each object: the size as its own, the position multiplied out into world units.
+        float levelVoxelSize = ObjectTransform.ValidVoxelSize(manifest.VoxelSize ?? 1f) ?? 1f;
+        bool perObject = manifest.Version >= PerObjectVoxelSizeVersion;
 
         if (manifest.Objects is { Length: > 0 } objects)
         {
             foreach (LevelManifest.ObjectEntry entry in objects)
             {
+                ObjectTransform placed = ReadTransform(entry);
+                placed = perObject
+                    ? placed with { VoxelSize = ObjectTransform.ValidVoxelSize(entry.VoxelSize ?? 1f) ?? 1f }
+                    : placed with { Position = placed.Position * levelVoxelSize, VoxelSize = levelVoxelSize };
+
                 VoxelObject added = scene.Add(
                     ReadGrid(archive, entry.Chunks, coord => ChunkEntryName(entry.Id, coord), entry.Id),
-                    ReadTransform(entry),
+                    placed,
                     entry.Name);
 
                 added.Visible = entry.Visible;
@@ -301,7 +313,7 @@ public static class VxLevelFile
             // Version 1: one grid at the root, sitting at the origin.
             scene.Add(
                 ReadGrid(archive, manifest.Chunks, coord => LegacyChunkPrefix + $"{coord.X}_{coord.Y}_{coord.Z}.bin"),
-                ObjectTransform.Identity,
+                ObjectTransform.Identity with { VoxelSize = levelVoxelSize },
                 "Object 1");
         }
 

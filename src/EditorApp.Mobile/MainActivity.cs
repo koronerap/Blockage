@@ -121,7 +121,7 @@ public sealed class MainActivity : Activity
             ShowScene();
         };
         _scene.LightReset += () => { _surface.ConfigureLighting(l => l.ResetAngles()); ShowScene(); };
-        _scene.VoxelSizeChanged += size => { _surface.Configure(s => s.SetVoxelSize(size)); ShowScene(); };
+        _scene.VoxelSizeChanged += size => { _surface.Configure(s => s.SetObjectVoxelSize(s.Scene.FocusId, size)); ShowScene(); };
         _scene.RotateRequested += direction => { _surface.Configure(s => s.RotateFocus(direction)); ShowScene(); };
         _scene.FrameRequested += () => { _surface.FrameLevel(); ShowOnly(null); };
         _scene.ObjectChosen += id => { _surface.Configure(s => s.TryFocus(id)); ShowScene(); };

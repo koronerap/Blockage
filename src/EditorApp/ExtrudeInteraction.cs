@@ -173,7 +173,8 @@ public sealed class ExtrudeInteraction(EditorSession session)
             return 0;
         }
 
-        Vector3 axis = focus.Transform.TransformDirection(FaceInfo.Normal(selection.Direction));
+        // One step is one of this object's voxels, however big those are in the world.
+        Vector3 axis = focus.Transform.TransformDirection(FaceInfo.Normal(selection.Direction)) * focus.VoxelSize;
         if (!camera.TryProjectToScreen(arrow.Start, viewport, out Vector2 origin)
             || !camera.TryProjectToScreen(arrow.Start + axis, viewport, out Vector2 oneUnit))
         {

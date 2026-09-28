@@ -79,19 +79,23 @@ public static class UvUnwrap
     private const float Quantum = 1f / 512f;
 
     /// <summary>Which plane a face lies in, and which way up it is within that plane.</summary>
-    private readonly record struct PlaneKey(long Nx, long Ny, long Nz, long Ux, long Uy, long Uz, long Depth);
+    private readonly record struct PlaneKey(long Nx, long Ny, long Nz, long Ux, long Uy, long Uz, long Depth, long Size);
 
-    /// <summary>A quad reduced to an integer rectangle in the coordinates of its own plane.</summary>
+    /// <summary>
+    /// A quad reduced to an integer rectangle in the coordinates of its own plane. The plane key
+    /// carries the voxel size as well, so two objects of different sizes that happen to be coplanar
+    /// never share a chart — their cells are not the same cells.
+    /// </summary>
     private readonly record struct PlanarQuad(PlaneKey Plane, int X, int Y, int Width, int Height);
 
-    /// <summary>Replaces the mesh's UVs with a packed layout and reports it.</summary>
-    /// <param name="voxelSize">
-    /// World size of a voxel, so charts can be measured in voxels rather than in world units.
-    /// Density is per voxel on purpose: changing a level's scale should not reshuffle its texture.
-    /// </param>
+    /// <summary>
+    /// Replaces the mesh's UVs with a packed layout and reports it.
+    ///
+    /// Charts are measured in voxels rather than in world units, each part at its own voxel size.
+    /// Density is per voxel on purpose: changing an object's scale should not reshuffle its texture.
+    /// </summary>
     public static UvAtlas Apply(
         ExportMesh mesh,
-        float voxelSize = 1f,
         int texelsPerVoxel = DefaultTexelsPerVoxel,
         int padding = DefaultPadding,
         int maxSize = DefaultMaxSize)
@@ -99,7 +103,7 @@ public static class UvUnwrap
         texelsPerVoxel = Math.Max(texelsPerVoxel, 1);
         padding = Math.Max(padding, 0);
 
-        PlanarQuad[] quads = Describe(mesh, voxelSize);
+        PlanarQuad[] quads = Describe(mesh);
         int[] chartOf = BuildCharts(quads, out (int X, int Y, int Width, int Height)[] charts);
 
         UvAtlas? packed;
@@ -129,13 +133,14 @@ public static class UvUnwrap
     /// plane key includes the in-plane axis, so two objects that happen to be coplanar but are turned
     /// differently never land in the same chart.
     /// </summary>
-    private static PlanarQuad[] Describe(ExportMesh mesh, float voxelSize)
+    private static PlanarQuad[] Describe(ExportMesh mesh)
     {
-        float scale = voxelSize > 0f ? voxelSize : 1f;
         var quads = new PlanarQuad[mesh.QuadCount];
+        float[] sizes = VoxelSizePerQuad(mesh);
 
         for (int quad = 0; quad < mesh.QuadCount; quad++)
         {
+            float scale = sizes[quad];
             int first = quad * 4;
             Vector3 origin = mesh.Positions[first] / scale;
             Vector3 edgeU = (mesh.Positions[first + 1] / scale) - origin;
@@ -148,7 +153,8 @@ public static class UvUnwrap
             var plane = new PlaneKey(
                 Round(n.X), Round(n.Y), Round(n.Z),
                 Round(u.X), Round(u.Y), Round(u.Z),
-                Round(Vector3.Dot(origin, n)));
+                Round(Vector3.Dot(origin, n)),
+                Round(scale));
 
             quads[quad] = new PlanarQuad(
                 plane,
@@ -161,6 +167,26 @@ public static class UvUnwrap
         return quads;
 
         static long Round(float value) => (long)MathF.Round(value / Quantum);
+    }
+
+    /// <summary>Each quad's voxel size, read from the part it belongs to — one, outside any part.</summary>
+    private static float[] VoxelSizePerQuad(ExportMesh mesh)
+    {
+        var sizes = new float[mesh.QuadCount];
+        Array.Fill(sizes, 1f);
+
+        foreach (MeshPart part in mesh.Parts)
+        {
+            float size = part.VoxelSize > 0f ? part.VoxelSize : 1f;
+            int end = Math.Min(part.FirstQuad + part.QuadCount, sizes.Length);
+
+            for (int quad = Math.Max(part.FirstQuad, 0); quad < end; quad++)
+            {
+                sizes[quad] = size;
+            }
+        }
+
+        return sizes;
     }
 
     /// <summary>

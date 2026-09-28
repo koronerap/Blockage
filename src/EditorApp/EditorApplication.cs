@@ -924,7 +924,7 @@ public sealed class EditorApplication : IDisposable
         {
             lines.AddGroundGrid(
                 GroundGrid.HalfExtentCells,
-                GroundGrid.Spacing(_session.Scene.VoxelSize),
+                GroundGrid.WorldUnitsPerCell(_session.Scene.Focus?.VoxelSize ?? 1f),
                 EditorOverlays.GridMinor,
                 EditorOverlays.GridMajor);
         }

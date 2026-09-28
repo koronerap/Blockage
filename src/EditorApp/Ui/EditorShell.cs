@@ -230,6 +230,8 @@ public sealed class EditorShell
         if (ImGui.CollapsingHeader("Objects", ImGuiTreeNodeFlags.DefaultOpen))
         {
             ObjectListPanel.Draw(context.Session, context.Camera);
+            ImGui.Separator();
+            ObjectPropertiesPanel.DrawContent(context.Session);
         }
 
         if (ImGui.CollapsingHeader("Palette", ImGuiTreeNodeFlags.DefaultOpen))

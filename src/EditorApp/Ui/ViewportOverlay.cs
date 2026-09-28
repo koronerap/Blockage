@@ -67,8 +67,8 @@ public static class ViewportOverlay
 
         // Voxels stay the headline number — that is what an edit adds one of. The world size only
         // appears once it is not the same number, so a level at one unit per voxel reads as before.
-        float scale = session.Scene.VoxelSize;
-        bool scaled = session.Scene.HasCustomVoxelSize;
+        float scale = focus.VoxelSize;
+        bool scaled = MathF.Abs(scale - 1f) > 1e-6f;
         string Label(int voxels) => scaled ? $"{voxels}  ({voxels * scale:0.###})" : $"{voxels}";
 
         // One edge per axis, all meeting at the same corner, so the three labels read as a set.

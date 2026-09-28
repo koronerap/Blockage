@@ -357,7 +357,7 @@ public sealed class TransformInteraction(EditorSession session)
 
         if (!freeform)
         {
-            moved = moved with { Position = ObjectTransform.SnapPosition(moved.Position) };
+            moved = moved with { Position = ObjectTransform.SnapPosition(moved.Position, _startTransform.VoxelSize) };
         }
 
         session.ApplyTransform(_target!, moved);

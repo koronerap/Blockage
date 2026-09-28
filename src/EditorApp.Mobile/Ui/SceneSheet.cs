@@ -139,7 +139,7 @@ public sealed class SceneSheet : FrameLayout, IPage
                 + "never reaches an export.");
         }
 
-        Heading("Voxel size");
+        Heading("Voxel size of the focused object");
         Row(Stepper(
             $"{state.VoxelSize:0.###} units",
             "Voxel size",
@@ -147,9 +147,7 @@ public sealed class SceneSheet : FrameLayout, IPage
             () => VoxelSizeChanged?.Invoke(state.VoxelSize * 2f)));
 
         Note(state.Extent is { } extent
-            ? $"Level is {extent.X:0.##} × {extent.Y:0.##} × {extent.Z:0.##} voxels, "
-                + $"{extent.X * state.VoxelSize:0.##} × {extent.Y * state.VoxelSize:0.##} × "
-                + $"{extent.Z * state.VoxelSize:0.##} units in the game."
+            ? $"The level is {extent.X:0.##} × {extent.Y:0.##} × {extent.Z:0.##} units in the game."
             : "The level is empty.");
 
         Heading("Turn the focused object");

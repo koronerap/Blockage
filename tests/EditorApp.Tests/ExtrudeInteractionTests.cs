@@ -35,11 +35,11 @@ public class ExtrudeInteractionTests
     }
 
     /// <summary>A 4³ cube with its top face selected, seen from a corner so the arrow is not edge on.</summary>
-    private static Fixture WithTopFaceSelected()
+    private static Fixture WithTopFaceSelected(float voxelSize = 1f)
     {
         var session = new EditorSession();
         var scene = new VoxelScene();
-        scene.Add(Cube(4), ObjectTransform.Identity, "cube");
+        scene.Add(Cube(4), ObjectTransform.Identity with { VoxelSize = voxelSize }, "cube");
         session.ReplaceScene(scene, projectPath: null);
         session.ActiveTool = EditorTool.Extrude;
 
@@ -83,6 +83,22 @@ public class ExtrudeInteractionTests
         Assert.True(session.History.CanUndo);
         Assert.Equal(before + (4 * 4 * 3), session.World.SolidCount);
         Assert.True(session.HasUnsavedChanges);
+    }
+
+    /// <summary>
+    /// One step is one of the object's own voxels. At half a unit per voxel, a drag of one and a half
+    /// units along the arrow is three steps, not one and a half.
+    /// </summary>
+    [Fact]
+    public void AStepIsOneOfTheObjectsOwnVoxels()
+    {
+        (EditorSession session, ExtrudeInteraction extrude, FlyCamera camera) = WithTopFaceSelected(voxelSize: 0.5f);
+        (Vector3 start, _) = extrude.Arrow()!.Value;
+
+        extrude.OnPress(null, ScreenOf(camera, start), Viewport, camera, shift: false, alt: false);
+        extrude.OnDrag(null, ScreenOf(camera, start + (Vector3.UnitY * 1.5f)), Viewport, camera);
+
+        Assert.Equal(3, session.ExtrudeSteps);
     }
 
     [Fact]
