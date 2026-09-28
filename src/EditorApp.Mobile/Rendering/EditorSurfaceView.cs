@@ -661,19 +661,9 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
         lines.Transform = focusMatrix;
         gizmos.Transform = focusMatrix;
 
-        if (_session.ActiveTool == EditorTool.Extrude)
-        {
-            EditorOverlays.AddSelectionOutline(lines, _session.Selection, EditorOverlays.Selection);
-
-            // The rectangle being dragged out right now, before it is committed. Without it a box
-            // selection is invisible until the finger leaves, which is too late to aim it.
-            EditorOverlays.AddSelectionOutline(
-                lines,
-                _tools.Extrude.PendingSelection,
-                _tools.Extrude.PendingOperation == SelectionOperation.Subtract
-                    ? EditorOverlays.SelectionSubtract
-                    : EditorOverlays.SelectionAdd);
-        }
+        // The selection, and the rectangle being dragged out right now, before it is committed.
+        // Without that a box selection is invisible until the finger leaves, too late to aim it.
+        EditorOverlays.AddExtrudeSelection(lines, _session, _tools.Extrude);
 
         // The cut plane runs through the middle of the model, so depth testing would hide it.
         EditorOverlays.AddCutPreview(gizmos, _session);

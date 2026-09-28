@@ -29,6 +29,7 @@ public abstract class LineGeometry
 {
     private readonly List<LineVertex> _lines = [];
     private readonly List<LineVertex> _quads = [];
+    private readonly List<LineVertex> _fills = [];
 
     /// <summary>The GL_LINES half — hairlines, where a single pixel is all the grid needs.</summary>
     protected ReadOnlySpan<LineVertex> LineVertices => CollectionsMarshal.AsSpan(_lines);
@@ -36,7 +37,13 @@ public abstract class LineGeometry
     /// <summary>The triangle half — everything built with width: thick strokes and cone heads.</summary>
     protected ReadOnlySpan<LineVertex> QuadVertices => CollectionsMarshal.AsSpan(_quads);
 
-    public bool IsEmpty => _lines.Count == 0 && _quads.Count == 0;
+    /// <summary>
+    /// Translucent surfaces — the tint over a selection, the face a cut will open. Drawn first, blended
+    /// and without writing depth, so a stroke drawn after is never hidden behind a tint in front of it.
+    /// </summary>
+    protected ReadOnlySpan<LineVertex> FillVertices => CollectionsMarshal.AsSpan(_fills);
+
+    public bool IsEmpty => _lines.Count == 0 && _quads.Count == 0 && _fills.Count == 0;
 
     /// <summary>
     /// Applied to every point added from now on. Selections and hover highlights are expressed in
@@ -58,6 +65,7 @@ public abstract class LineGeometry
     {
         _lines.Clear();
         _quads.Clear();
+        _fills.Clear();
         Transform = Matrix4x4.Identity;
     }
 
@@ -163,6 +171,23 @@ public abstract class LineGeometry
             // The base cap, a touch darker, so the cone still has an edge seen from behind.
             AddTriangle(worldBase, p1, p0, Shade(color, 0.55f));
         }
+    }
+
+    /// <summary>A flat four-cornered fill, blended by its colour's alpha. Corners go round the edge.</summary>
+    public void AddQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color32 color)
+    {
+        uint rgba = color.Rgba;
+        var va = new LineVertex(Vector3.Transform(a, Transform), rgba);
+        var vb = new LineVertex(Vector3.Transform(b, Transform), rgba);
+        var vc = new LineVertex(Vector3.Transform(c, Transform), rgba);
+        var vd = new LineVertex(Vector3.Transform(d, Transform), rgba);
+
+        _fills.Add(va);
+        _fills.Add(vb);
+        _fills.Add(vc);
+        _fills.Add(va);
+        _fills.Add(vc);
+        _fills.Add(vd);
     }
 
     private void AddTriangle(Vector3 a, Vector3 b, Vector3 c, uint rgba)

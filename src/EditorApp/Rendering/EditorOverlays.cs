@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Raycast;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
@@ -25,15 +26,29 @@ public static class EditorOverlays
 
     public static readonly Color32 BrushOutline = new(255, 160, 60);
 
-    public static readonly Color32 Selection = new(120, 230, 140);
+    /// <summary>The surface Extrude holds: warm, the colour of the arrow that grows out of it.</summary>
+    public static readonly Color32 Selection = new(255, 178, 64);
 
-    public static readonly Color32 SelectionAdd = new(120, 230, 140);
+    /// <summary>Shift: what a click or a drag would add to the selection.</summary>
+    public static readonly Color32 SelectionAdd = new(86, 156, 255);
 
     /// <summary>
-    /// Subtract has to look different from add: until the click lands, the two gestures are
-    /// otherwise indistinguishable (EditorApp.md, "Extrude").
+    /// Alt: what it would take away. Subtract has to look different from add: until the click
+    /// lands, the two gestures are otherwise indistinguishable (EditorApp.md, "Extrude").
     /// </summary>
-    public static readonly Color32 SelectionSubtract = new(255, 110, 110);
+    public static readonly Color32 SelectionSubtract = new(176, 112, 255);
+
+    /// <summary>
+    /// The colour of a surface about to be chosen, by what choosing it would do. The same yellow as
+    /// any hover when it would replace the selection; blue and purple under Shift and Alt, so which
+    /// of the three a click means is on screen before the click.
+    /// </summary>
+    public static Color32 SelectionColour(SelectionOperation operation) => operation switch
+    {
+        SelectionOperation.Add => SelectionAdd,
+        SelectionOperation.Subtract => SelectionSubtract,
+        _ => Highlight,
+    };
 
     public static readonly Color32 Arrow = new(255, 210, 90);
 
@@ -51,18 +66,25 @@ public static class EditorOverlays
 
     public static readonly Color32 GizmoActive = new(255, 240, 140);
 
-    /// <summary>Drawing every selected face costs four lines each; past this, outline the bounds instead.</summary>
-    public const int MaxOutlinedFaces = 3000;
+    /// <summary>Past this many faces a patch is drawn as its bounds: the tint alone would be a megabyte a frame.</summary>
+    public const int MaxOutlinedFaces = 10_000;
 
     // Overlay stroke widths, as multiples of the batch's screen-constant thickness. Heavy enough to
-    // grab, light enough not to become the thing you look at.
-    public const float SelectionWidth = 1.1f;
+    // grab, light enough not to become the thing you look at — three quarters of what they were,
+    // which had them reading as the subject rather than a mark on it.
+    public const float SelectionWidth = 0.825f;
 
-    public const float GizmoWidth = 1.8f;
+    public const float GizmoWidth = 1.35f;
 
-    public const float GizmoEdgeWidth = 1.5f;
+    public const float GizmoEdgeWidth = 1.125f;
 
-    public const float ArrowWidth = 1.8f;
+    public const float ArrowWidth = 1.35f;
+
+    /// <summary>How much of a patch's colour its tint lets through. Enough to see which faces, not so much as to hide theirs.</summary>
+    public const byte FillAlpha = 60;
+
+    /// <summary>How far a patch floats off the faces it marks, so it never fights them for depth.</summary>
+    public const float PatchOffset = 0.02f;
 
     /// <summary>
     /// A shaft that stops at the base of a solid cone. Running the shaft all the way to the tip
@@ -157,13 +179,21 @@ public static class EditorOverlays
             return;
         }
 
+        AddMirroredPatch(lines, session, selection.Voxels, selection.Direction);
+    }
+
+    /// <summary>A patch's mirror images, fainter than the patch.</summary>
+    private static void AddMirroredPatch(LineGeometry lines, EditorSession session, IEnumerable<Int3> cells, Face face)
+    {
         foreach (MirrorImage image in session.Symmetry.ImagesFor(session.Scene.Focus))
         {
-            Face face = image.Face(selection.Direction);
-            foreach (Int3 voxel in selection.Voxels)
+            var mirrored = new HashSet<Int3>();
+            foreach (Int3 cell in cells)
             {
-                lines.AddVoxelFace(image.Cell(voxel), face, MirrorEcho, offset: 0.02f, width: SelectionWidth);
+                mirrored.Add(image.Cell(cell));
             }
+
+            AddFacePatch(lines, mirrored, mirrored.Contains, image.Face(face), MirrorEcho, SelectionWidth);
         }
     }
 
@@ -188,49 +218,222 @@ public static class EditorOverlays
             return;
         }
 
-        // Outlining thousands of individual faces costs more than it communicates; past the cap the
-        // bounding box says the same thing for four orders of magnitude fewer lines.
-        if (selection.Count > MaxOutlinedFaces)
+        AddFacePatch(lines, selection.Voxels, selection.Contains, selection.Direction, color, SelectionWidth);
+    }
+
+    /// <summary>
+    /// Faces all pointing one way, drawn as one surface: a faint tint over every face and a stroke
+    /// round the outside only. Outlining each face drew a grid over the selection, heavier the more
+    /// was chosen, and the shape of what was chosen got lost in it.
+    /// </summary>
+    /// <param name="contains">Whether a cell is in the patch — how an edge is known to be on the outside.</param>
+    public static void AddFacePatch(
+        LineGeometry lines,
+        IReadOnlyCollection<Int3> cells,
+        Func<Int3, bool> contains,
+        Face face,
+        Color32 colour,
+        float width,
+        float offset = PatchOffset)
+    {
+        if (cells.Count == 0)
         {
-            (Vector3 min, Vector3 max) = selection.Bounds().ToWorldBounds();
-            lines.AddBox(min, max, color, SelectionWidth);
             return;
         }
 
-        foreach (Int3 voxel in selection.Voxels)
+        // Past the cap the bounding box says the same thing for a fraction of the geometry.
+        if (cells.Count > MaxOutlinedFaces)
         {
-            lines.AddVoxelFace(voxel, selection.Direction, color, offset: 0.02f, width: SelectionWidth);
+            Int3 low = new(int.MaxValue, int.MaxValue, int.MaxValue);
+            Int3 high = new(int.MinValue, int.MinValue, int.MinValue);
+            foreach (Int3 cell in cells)
+            {
+                low = Int3.Min(low, cell);
+                high = Int3.Max(high, cell);
+            }
+
+            (Vector3 min, Vector3 max) = new VoxelBox(low, high).ToWorldBounds();
+            lines.AddBox(min, max, colour, width);
+            return;
         }
+
+        Vector3 push = FaceInfo.Normal(face) * offset;
+        Color32 tint = colour with { A = FillAlpha };
+
+        Span<Vector3> corners = stackalloc Vector3[4];
+        Span<Int3> across = stackalloc Int3[4];
+        EdgeNeighbours(face, across);
+
+        foreach (Int3 cell in cells)
+        {
+            Vector3 origin = cell.ToVector3() + push;
+            for (int i = 0; i < 4; i++)
+            {
+                corners[i] = origin + FaceInfo.Corner(face, i).ToVector3();
+            }
+
+            lines.AddQuad(corners[0], corners[1], corners[2], corners[3], tint);
+
+            // An edge shared with another face of the patch is inside it, and is not drawn.
+            for (int i = 0; i < 4; i++)
+            {
+                if (!contains(cell + across[i]))
+                {
+                    lines.AddThickLine(corners[i], corners[(i + 1) & 3], colour, width);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// For each edge of a face — corner i to corner i + 1 — the step to the cell on its far side, in
+    /// the face's own plane. Twice the edge's midpoint less the four corners' sum is twice the step.
+    /// </summary>
+    private static void EdgeNeighbours(Face face, Span<Int3> across)
+    {
+        Int3 sum = FaceInfo.Corner(face, 0) + FaceInfo.Corner(face, 1) + FaceInfo.Corner(face, 2) + FaceInfo.Corner(face, 3);
+
+        for (int i = 0; i < 4; i++)
+        {
+            Int3 twice = ((FaceInfo.Corner(face, i) + FaceInfo.Corner(face, (i + 1) & 3)) * 2) - sum;
+            across[i] = new Int3(twice.X / 2, twice.Y / 2, twice.Z / 2);
+        }
+    }
+
+    /// <summary>
+    /// Extrude's surfaces, as patches: the selection held, its mirror images, and the one being
+    /// dragged out. Nothing unless Extrude is in hand — a patch left glowing while painting reads as
+    /// something the brush is about to do.
+    /// </summary>
+    public static void AddExtrudeSelection(LineGeometry lines, EditorSession session, ExtrudeInteraction extrude)
+    {
+        if (session.ActiveTool != EditorTool.Extrude)
+        {
+            return;
+        }
+
+        // A drag with no modifier replaces the selection when it lands, so the old one is as good as
+        // gone. Showing both made the new rectangle look as though it would join the old.
+        if (!extrude.IsReplacing && session.Selection is { IsEmpty: false } selection)
+        {
+            // While the arrow is pulled, the surface rides out with it, onto the faces being made.
+            FaceSelection shown = selection.Translated(session.ExtrudeSteps);
+            AddSelectionOutline(lines, shown, Selection);
+            AddMirroredSelection(lines, session, shown);
+        }
+
+        AddSelectionOutline(lines, extrude.PendingSelection, SelectionColour(extrude.PendingOperation));
+    }
+
+    /// <summary>
+    /// The face under the pointer in Extrude, in the colour of what a click there would do — or
+    /// nothing, over the selection itself, where a press pulls the surface rather than choosing it.
+    /// </summary>
+    public static void AddExtrudeHover(
+        LineGeometry lines,
+        EditorSession session,
+        ExtrudeInteraction extrude,
+        RaycastHit hit,
+        SelectionOperation operation)
+    {
+        if (extrude.IsBusy || (operation == SelectionOperation.Replace && extrude.IsOnSelection(hit)))
+        {
+            return;
+        }
+
+        lines.AddVoxelFace(hit.Voxel, hit.Face, SelectionColour(operation), offset: PatchOffset, width: SelectionWidth);
+        AddMirroredHover(lines, session, hit.Voxel, hit.Face);
+    }
+
+    /// <summary>
+    /// What a brush stroke here would paint, face for face — round, because the brush is. A box the
+    /// size of the radius said how far it reached but drew a cube round a disc.
+    /// </summary>
+    public static void AddBrushPreview(LineGeometry lines, EditorSession session, RaycastHit hit)
+    {
+        List<Int3> cells = PaintOperations.BrushCells(session.World, hit.Voxel, hit.Face, session.BrushRadius);
+        if (cells.Count == 0)
+        {
+            return;
+        }
+
+        var set = new HashSet<Int3>(cells);
+        AddFacePatch(lines, set, set.Contains, hit.Face, BrushOutline, SelectionWidth);
+        AddMirroredPatch(lines, session, set, hit.Face);
     }
 
     /// <summary>
     /// The extrude arrow, in world space. Nothing is drawn unless Extrude is the tool in hand — a
     /// gizmo outliving its own tool is a standing invitation to grab the wrong thing.
     /// </summary>
-    public static void AddExtrudeArrow(LineGeometry lines, EditorSession session, ExtrudeInteraction extrude)
+    /// <param name="lit">Drawn lit when a press would pull it: over the arrow or the selection.</param>
+    public static void AddExtrudeArrow(LineGeometry lines, EditorSession session, ExtrudeInteraction extrude, bool lit = false)
     {
-        if (session.ActiveTool != EditorTool.Extrude || extrude.Arrow() is not { } arrow)
+        // Not while a new selection is dragged out to replace this one: the arrow belongs to the old.
+        if (session.ActiveTool != EditorTool.Extrude || extrude.IsReplacing || extrude.Arrow() is not { } arrow)
         {
             return;
         }
 
-        AddArrow(lines, arrow.Start, arrow.End, Arrow, ArrowWidth);
+        AddArrow(lines, arrow.Start, arrow.End, lit || extrude.IsDraggingArrow ? GizmoActive : Arrow, ArrowWidth);
     }
 
     /// <summary>A light that is switched off: still there to be picked, but grey.</summary>
     public static readonly Color32 LightOff = new(130, 130, 130);
 
-    private const float LightWidth = 1.2f;
+    private const float LightWidth = 0.9f;
+
+    /// <summary>The aim line: a thread, not a shaft, so it points without covering what it points at.</summary>
+    private const float AimWidth = 0.55f;
+
+    /// <summary>How far the sun's aim line reaches, in icon sizes.</summary>
+    private const float SunAimLength = 16f;
+
+    /// <summary>The ring at the end of an aim line, in icon sizes — the handle it is dragged by.</summary>
+    private const float AimHandleRadius = 0.32f;
 
     /// <summary>
-    /// Where a light is and which way it shines, in world space, sized by its distance from the
-    /// camera so its icon reads the same near and far. A bulb that faces the camera for every kind;
-    /// rays for the sun, with its direction; a cone for a spot, as wide as its beam.
+    /// A light icon's size at its distance from the camera, so it reads the same near and far. The
+    /// icon, its aim line and the handle on the end all scale by it.
     /// </summary>
-    public static void AddLight(LineGeometry lines, SceneLight light, FlyCamera camera, bool highlighted)
+    public static float LightIconSize(SceneLight light, FlyCamera camera) => IconSizeAt(light.Position, camera);
+
+    private static float IconSizeAt(Vector3 point, FlyCamera camera) =>
+        MathF.Max(Vector3.Distance(camera.Position, point) * 0.022f, 0.02f);
+
+    /// <summary>
+    /// The end of a light's aim line, in world space: the handle that is dragged onto the model to
+    /// point it there. Null for a bulb, which shines every way and has nothing to aim.
+    /// </summary>
+    public static Vector3? AimHandle(SceneLight light, FlyCamera camera)
+    {
+        float size = LightIconSize(light, camera);
+
+        return light.Kind switch
+        {
+            LightKind.Directional => light.Position + (light.Direction * size * SunAimLength),
+            LightKind.Spot => light.Position + (light.Direction * SpotLength(light, size)),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Where a light is and which way it shines, in world space. A bulb that faces the camera for
+    /// every kind; rays for the sun, and a long thread for its direction; a cone for a spot, as wide
+    /// as its beam. Sun and spot end in a small ring, the handle their aim is dragged by.
+    /// </summary>
+    /// <param name="aimedAt">Where the light is being pointed right now, while its line is dragged.</param>
+    /// <param name="aimLit">The aim line is under the pointer: a press would take hold of it.</param>
+    public static void AddLight(
+        LineGeometry lines,
+        SceneLight light,
+        FlyCamera camera,
+        bool highlighted,
+        Vector3? aimedAt = null,
+        bool aimLit = false)
     {
         Vector3 at = light.Position;
-        float size = MathF.Max(Vector3.Distance(camera.Position, at) * 0.022f, 0.02f);
+        float size = LightIconSize(light, camera);
         Vector3 right = camera.Right * size;
         Vector3 up = camera.Up * size;
 
@@ -253,8 +456,6 @@ public static class EditorOverlays
                     lines.AddThickLine(at + (ray * 1.5f), at + (ray * 2.2f), colour, LightWidth);
                 }
 
-                // Parallel rays have no source to point from, so the direction is the whole message.
-                AddArrow(lines, at, at + (light.Direction * size * 9f), colour, LightWidth);
                 break;
 
             case LightKind.Point:
@@ -265,9 +466,39 @@ public static class EditorOverlays
                 AddSpotCone(lines, light, size, colour);
                 break;
         }
+
+        if (AimHandle(light, camera) is not { } handle)
+        {
+            return;
+        }
+
+        // Parallel rays have no source to point from, so for the sun the direction is the whole
+        // message. No head on it: a cone at the end covered the very spot it pointed at.
+        Vector3 end = aimedAt ?? handle;
+        Color32 aim = aimLit || aimedAt is not null ? GizmoActive : colour;
+        Vector3 start = at;
+        if (light.Kind == LightKind.Directional && Vector3.DistanceSquared(at, end) > 1e-8f)
+        {
+            start = at + (Vector3.Normalize(end - at) * size * 1.1f);
+        }
+
+        if (Vector3.DistanceSquared(start, end) > 1e-8f)
+        {
+            lines.AddThickLine(start, end, aim, AimWidth);
+        }
+
+        float handleSize = IconSizeAt(end, camera);
+        AddBillboardCircle(lines, end, camera.Right * handleSize, camera.Up * handleSize, AimHandleRadius, aim, AimWidth);
     }
 
-    private static void AddBillboardCircle(LineGeometry lines, Vector3 centre, Vector3 right, Vector3 up, float radius, Color32 colour)
+    private static void AddBillboardCircle(
+        LineGeometry lines,
+        Vector3 centre,
+        Vector3 right,
+        Vector3 up,
+        float radius,
+        Color32 colour,
+        float width = LightWidth)
     {
         const int Segments = 16;
         Vector3 previous = centre + (right * radius);
@@ -276,18 +507,20 @@ public static class EditorOverlays
         {
             float angle = i * (MathF.Tau / Segments);
             Vector3 point = centre + (((right * MathF.Cos(angle)) + (up * MathF.Sin(angle))) * radius);
-            lines.AddThickLine(previous, point, colour, LightWidth);
+            lines.AddThickLine(previous, point, colour, width);
             previous = point;
         }
     }
 
     /// <summary>The beam drawn out to its range, or a dozen icon-sizes if that is nearer: far enough to aim by.</summary>
+    private static float SpotLength(SceneLight light, float size) => MathF.Min(light.Range, size * 12f);
+
     private static void AddSpotCone(LineGeometry lines, SceneLight light, float size, Color32 colour)
     {
         const int Segments = 20;
 
         Vector3 direction = light.Direction;
-        float length = MathF.Min(light.Range, size * 12f);
+        float length = SpotLength(light, size);
         float radius = length * MathF.Tan(light.SpotAngle * 0.5f * (MathF.PI / 180f));
         Vector3 mouth = light.Position + (direction * length);
 
@@ -372,47 +605,23 @@ public static class EditorOverlays
     };
 
     /// <summary>
-    /// The loop cut plane, as a rectangle spanning the object's bounds with one diagonal so it reads
-    /// as a surface rather than an empty frame. Drawn in the focused object's own space.
+    /// Where the loop cut would go through the model: a ring round the section it cuts, with the cut
+    /// face tinted inside it. A frame round the whole object's bounds said which plane, but not what
+    /// of the model it would cut. Drawn in the focused object's own space.
     /// </summary>
     public static void AddCutPreview(LineGeometry lines, EditorSession session)
     {
         // Gated on the tool as well as on the plane: a preview must never outlive its own tool.
         if (session.ActiveTool != EditorTool.LoopCut
             || session.PreviewCutPlane is not { } plane
-            || session.Scene.Focus is not { } focus
-            || !focus.Grid.TryGetBounds(out Int3 min, out Int3 max))
+            || session.Scene.Focus is not { } focus)
         {
             return;
         }
 
-        int axis = plane.AxisIndex;
-        int uAxis = axis == 0 ? 1 : 0;
-        int vAxis = axis == 2 ? 1 : 2;
+        HashSet<Int3> section = LoopCut.CrossSection(focus.Grid, plane);
 
-        Vector3 Corner(float u, float v)
-        {
-            Span<float> parts = stackalloc float[3];
-            parts[axis] = plane.Coordinate;
-            parts[uAxis] = u;
-            parts[vAxis] = v;
-            return new Vector3(parts[0], parts[1], parts[2]);
-        }
-
-        float uMin = VoxelBox.Component(min, uAxis);
-        float uMax = VoxelBox.Component(max, uAxis) + 1f;
-        float vMin = VoxelBox.Component(min, vAxis);
-        float vMax = VoxelBox.Component(max, vAxis) + 1f;
-
-        Vector3 a = Corner(uMin, vMin);
-        Vector3 b = Corner(uMax, vMin);
-        Vector3 c = Corner(uMax, vMax);
-        Vector3 d = Corner(uMin, vMax);
-
-        lines.AddThickLine(a, b, CutPlane, SelectionWidth);
-        lines.AddThickLine(b, c, CutPlane, SelectionWidth);
-        lines.AddThickLine(c, d, CutPlane, SelectionWidth);
-        lines.AddThickLine(d, a, CutPlane, SelectionWidth);
-        lines.AddThickLine(a, c, CutPlane, SelectionWidth);
+        // Exactly on the plane: the cells are the ones below it, and their upper faces are the cut.
+        AddFacePatch(lines, section, section.Contains, LoopCut.Towards(plane.AxisIndex), CutPlane, SelectionWidth, offset: 0f);
     }
 }

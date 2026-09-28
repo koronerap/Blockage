@@ -15,9 +15,12 @@ public sealed class LineBatch : LineGeometry, IDisposable
     private readonly uint _lineVbo;
     private readonly uint _quadVao;
     private readonly uint _quadVbo;
+    private readonly uint _fillVao;
+    private readonly uint _fillVbo;
 
     private nuint _lineCapacity;
     private nuint _quadCapacity;
+    private nuint _fillCapacity;
 
     public LineBatch(GL gl)
     {
@@ -25,6 +28,7 @@ public sealed class LineBatch : LineGeometry, IDisposable
 
         (_lineVao, _lineVbo) = CreateBuffer();
         (_quadVao, _quadVbo) = CreateBuffer();
+        (_fillVao, _fillVbo) = CreateBuffer();
     }
 
     private unsafe (uint Vao, uint Vbo) CreateBuffer()
@@ -47,6 +51,25 @@ public sealed class LineBatch : LineGeometry, IDisposable
 
     public void Draw()
     {
+        // Tints first, blended, writing no depth: the strokes that follow then land on top of them
+        // rather than being hidden behind a tint that happens to sit a hair nearer the camera.
+        Upload(FillVertices, _fillVao, _fillVbo, ref _fillCapacity);
+        if (FillVertices.Length > 0)
+        {
+            // The colour blends; the alpha already there is kept, or a tint would leave the
+            // framebuffer part transparent wherever a compositor or a screenshot reads it.
+            _gl.Enable(EnableCap.Blend);
+            _gl.BlendFuncSeparate(
+                BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha, BlendingFactor.Zero, BlendingFactor.One);
+            _gl.DepthMask(false);
+
+            _gl.BindVertexArray(_fillVao);
+            _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)FillVertices.Length);
+
+            _gl.DepthMask(true);
+            _gl.Disable(EnableCap.Blend);
+        }
+
         Upload(LineVertices, _lineVao, _lineVbo, ref _lineCapacity);
         if (LineVertices.Length > 0)
         {
@@ -97,7 +120,9 @@ public sealed class LineBatch : LineGeometry, IDisposable
     {
         _gl.DeleteBuffer(_lineVbo);
         _gl.DeleteBuffer(_quadVbo);
+        _gl.DeleteBuffer(_fillVbo);
         _gl.DeleteVertexArray(_lineVao);
         _gl.DeleteVertexArray(_quadVao);
+        _gl.DeleteVertexArray(_fillVao);
     }
 }

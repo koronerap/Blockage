@@ -193,6 +193,52 @@ public class PaintOperationsTests
 
         Assert.Equal(7, world.GetFaceColor(Int3.Zero, Face.NegY));
     }
+
+    /// <summary>What the preview draws is what the stroke paints: the same cells, face for face.</summary>
+    [Fact]
+    public void TheBrushPaintsExactlyTheCellsItPreviews()
+    {
+        VoxelWorld world = SolidCube(9);
+        var centre = new Int3(4, 8, 4);
+
+        List<Int3> previewed = PaintOperations.BrushCells(world, centre, Face.PosY, 2.5f);
+
+        var command = new VoxelEditCommand("paint", world);
+        int painted = PaintOperations.Brush(centre, Face.PosY, 2.5f, 9, command);
+
+        Assert.Equal(previewed.Count, painted);
+        Assert.All(previewed, cell => Assert.Equal(9, world.GetFaceColor(cell, Face.PosY)));
+    }
+
+    /// <summary>
+    /// Round on a flat surface: the disc of radius three has its cells at (2, 2) but not the square's
+    /// corners at (3, 3), nor (3, 1), which is further than three away.
+    /// </summary>
+    [Fact]
+    public void TheBrushIsADiscOnAFlatFace()
+    {
+        VoxelWorld world = SolidCube(9);
+        var centre = new Int3(4, 8, 4);
+
+        var cells = new HashSet<Int3>(PaintOperations.BrushCells(world, centre, Face.PosY, 3f));
+
+        Assert.Contains(centre + new Int3(2, 0, 2), cells);
+        Assert.Contains(centre + new Int3(3, 0, 0), cells);
+        Assert.DoesNotContain(centre + new Int3(3, 0, 1), cells);
+        Assert.DoesNotContain(centre + new Int3(3, 0, 3), cells);
+        Assert.Equal(29, cells.Count);
+    }
+
+    /// <summary>Only faces on the outside: the brush reaching into the block below paints nothing there.</summary>
+    [Fact]
+    public void TheBrushCellsAreAllOnTheSurface()
+    {
+        VoxelWorld world = SolidCube(9);
+
+        List<Int3> cells = PaintOperations.BrushCells(world, new Int3(4, 8, 4), Face.PosY, 3f);
+
+        Assert.All(cells, cell => Assert.Equal(8, cell.Y));
+    }
 }
 
 public class PaintSessionTests

@@ -28,7 +28,8 @@ public static class ViewportOverlay
         FlyCamera camera,
         ViewportRect viewport,
         bool showMeasurements,
-        string dragReadout)
+        string dragReadout,
+        SelectionOperation? cursorMark = null)
     {
         // The background list, not the foreground one. Both draw over the 3D scene, since all of
         // ImGui is composited on top of GL — but the foreground list is submitted after every
@@ -44,6 +45,34 @@ public static class ViewportOverlay
         if (dragReadout.Length > 0)
         {
             DrawCursorReadout(drawList, dragReadout);
+        }
+
+        if (cursorMark is { } operation)
+        {
+            DrawCursorMark(drawList, operation);
+        }
+    }
+
+    /// <summary>
+    /// A small badge by the pointer, + to add or - to take away, in the colour the faces will be
+    /// drawn in: the operator's own cursor badge, as a file manager puts one on a copy.
+    /// </summary>
+    private static void DrawCursorMark(ImDrawListPtr drawList, SelectionOperation operation)
+    {
+        const float Radius = 7f;
+        const float Arm = 3.5f;
+
+        Vector2 centre = ImGui.GetIO().MousePos + new Vector2(17f, 19f);
+        Vector4 colour = EditorOverlays.SelectionColour(operation).ToVector4();
+
+        drawList.AddCircleFilled(centre, Radius + 1.5f, Colour(Theme.Background with { W = 0.9f }), 16);
+        drawList.AddCircleFilled(centre, Radius, Colour(colour), 16);
+
+        uint mark = Colour(Theme.Background);
+        drawList.AddLine(centre - new Vector2(Arm, 0f), centre + new Vector2(Arm, 0f), mark, 2f);
+        if (operation == SelectionOperation.Add)
+        {
+            drawList.AddLine(centre - new Vector2(0f, Arm), centre + new Vector2(0f, Arm), mark, 2f);
         }
     }
 

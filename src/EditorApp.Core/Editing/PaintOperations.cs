@@ -45,12 +45,28 @@ public static class PaintOperations
     /// </summary>
     public static int Brush(Int3 centre, Face face, float radius, byte paletteIndex, VoxelEditCommand command)
     {
-        VoxelWorld world = command.Target;
+        int changed = 0;
+        foreach (Int3 cell in BrushCells(command.Target, centre, face, radius))
+        {
+            if (command.ApplyFace(cell, face, paletteIndex))
+            {
+                changed++;
+            }
+        }
 
+        return changed;
+    }
+
+    /// <summary>
+    /// The cells whose <paramref name="face"/> a brush stroke here would paint. The preview draws
+    /// exactly these, so what is highlighted under the cursor is what the click will change.
+    /// </summary>
+    public static List<Int3> BrushCells(VoxelWorld world, Int3 centre, Face face, float radius)
+    {
         int extent = (int)MathF.Floor(MathF.Max(radius, 0f));
         float radiusSquared = radius * radius;
 
-        int changed = 0;
+        var cells = new List<Int3>();
         for (int dy = -extent; dy <= extent; dy++)
         {
             for (int dz = -extent; dz <= extent; dz++)
@@ -65,15 +81,15 @@ public static class PaintOperations
                     }
 
                     var cell = centre + new Int3(dx, dy, dz);
-                    if (IsFaceExposed(world, cell, face) && command.ApplyFace(cell, face, paletteIndex))
+                    if (IsFaceExposed(world, cell, face))
                     {
-                        changed++;
+                        cells.Add(cell);
                     }
                 }
             }
         }
 
-        return changed;
+        return cells;
     }
 
     /// <summary>

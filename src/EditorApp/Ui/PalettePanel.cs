@@ -40,16 +40,40 @@ public sealed class PalettePanel
     public static (Vector2 Min, Vector2 Max)? QuickSwatchRect(int index) =>
         QuickRects.TryGetValue(index, out var rect) ? rect : null;
 
+    /// <summary>The colour wheel's width in the quick popover: big enough to aim in, small beside the swatches.</summary>
+    private const float QuickPickerWidth = 176f;
+
+    /// <summary>What the quick popover's wheel shows; taken from the colour in hand each time it opens.</summary>
+    private Vector3 _quickWorking = new(0.85f, 0.35f, 0.25f);
+
+    /// <summary>Where the quick popover's colour wheel was drawn last frame — for tests to aim at.</summary>
+    public static (Vector2 Min, Vector2 Max) QuickPickerRect { get; private set; }
+
     /// <summary>
-    /// The palette at a glance, for the popover under the tool column: the saved colours, then the
-    /// library, in small swatches. Returns true when a colour was picked, so the popover can close —
-    /// choosing a colour is the one thing it is opened for.
+    /// The palette at a glance, for the popover under the tool column: a colour wheel for any colour
+    /// at all, and beside it the saved colours and the library in small swatches. Returns true when
+    /// a swatch was picked, so the popover can close — a swatch is a choice made. The wheel is not:
+    /// it is dragged about until the colour is right, and closing under it would end that at once.
     /// </summary>
     public bool DrawQuickPalette(EditorSession session)
     {
         Palette palette = session.Scene.Palette;
         bool picked = false;
 
+        // From the colour in hand, not from wherever the wheel was left last time.
+        if (ImGui.IsWindowAppearing())
+        {
+            Vector4 current = palette[session.ActiveColorIndex].ToVector4();
+            _quickWorking = new Vector3(current.X, current.Y, current.Z);
+        }
+
+        ImGui.BeginGroup();
+        DrawQuickWheel(session);
+        ImGui.EndGroup();
+
+        ImGui.SameLine(0f, 12f);
+
+        ImGui.BeginGroup();
         int[] saved = [.. palette.SavedCustomSlots()];
         if (saved.Length > 0)
         {
@@ -62,8 +86,48 @@ public sealed class PalettePanel
         picked |= DrawQuickRow(session, palette, [.. Enumerable.Range(1, Palette.CustomStart - 1)]);
 
         ImGui.Spacing();
-        ImGui.TextDisabled("More in the Palette tab. Alt+click the model samples a colour.");
+        ImGui.TextDisabled("Alt+click the model samples a colour.");
+        ImGui.EndGroup();
         return picked;
+    }
+
+    /// <summary>
+    /// A hue ring with the triangle inside it, as Blender and Krita have: the hue round the ring,
+    /// how pale and how dark in the triangle. Applied live, like the Palette tab's picker, into a
+    /// working slot that is not a swatch until saved.
+    /// </summary>
+    private void DrawQuickWheel(EditorSession session)
+    {
+        ImGui.SetNextItemWidth(QuickPickerWidth);
+        if (ImGui.ColorPicker3(
+                "##quick-wheel",
+                ref _quickWorking,
+                ImGuiColorEditFlags.PickerHueWheel | ImGuiColorEditFlags.NoSidePreview
+                | ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.NoAlpha))
+        {
+            session.SelectColor(Color32.FromVector4(new Vector4(_quickWorking, 1f)));
+        }
+
+        QuickPickerRect = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+
+        bool alreadySaved = session.Scene.Palette.IsCustomSaved(session.ActiveColorIndex);
+        bool inLibrary = !Palette.IsCustomIndex(session.ActiveColorIndex);
+
+        ImGui.BeginDisabled(alreadySaved || inLibrary);
+        if (ImGui.Button("Save colour##quick", new Vector2(QuickPickerWidth, 0f)))
+        {
+            session.SaveActiveColor();
+        }
+
+        ImGui.EndDisabled();
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            ImGui.SetTooltip(
+                inLibrary ? "Already in the library."
+                : alreadySaved ? "Already saved."
+                : "Keeps it among the Custom swatches.");
+        }
     }
 
     private static bool DrawQuickRow(EditorSession session, Palette palette, int[] indices)

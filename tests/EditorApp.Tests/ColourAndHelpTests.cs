@@ -37,6 +37,28 @@ public sealed class ColourAndHelpTests : IDisposable
         Assert.True(picked);
     }
 
+    /// <summary>The wheel sets any colour at all, and the popover stays open while it is dragged about.</summary>
+    [Fact]
+    public void TheQuickWheelChoosesAnyColourWithoutClosing()
+    {
+        bool picked = false;
+        void Draw() => picked |= _palette.DrawQuickPalette(_session);
+
+        Core.Voxels.Color32 before = _session.Scene.Palette[_session.ActiveColorIndex];
+
+        _ui.Frame(Draw);
+        _ui.Frame(Draw);
+
+        // The middle of the ring is the middle of the triangle inside it.
+        (Vector2 min, Vector2 max) = PalettePanel.QuickPickerRect;
+        float side = max.X - min.X;
+        _ui.Click(min + new Vector2(side * 0.5f), Draw);
+
+        Assert.NotEqual(before, _session.Scene.Palette[_session.ActiveColorIndex]);
+        Assert.True(Core.Voxels.Palette.IsCustomIndex(_session.ActiveColorIndex));
+        Assert.False(picked);
+    }
+
     [Fact]
     public void TheColourUnderTheToolsOpensThePalette()
     {

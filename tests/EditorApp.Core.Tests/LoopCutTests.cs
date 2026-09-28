@@ -215,4 +215,118 @@ public class LoopCutTests
         Assert.NotNull(session.Scene.Focus);
         Assert.Contains(session.Scene.Objects, o => o.Id == session.Scene.FocusId);
     }
+    /// <summary>A four by four floor with a one-voxel post standing on its corner.</summary>
+    private static VoxelWorld FloorWithPost()
+    {
+        var grid = new VoxelWorld();
+        for (int x = 0; x < 4; x++)
+        {
+            for (int z = 0; z < 4; z++)
+            {
+                grid.SetVoxel(x, 0, z, 5);
+            }
+        }
+
+        for (int y = 1; y < 4; y++)
+        {
+            grid.SetVoxel(0, y, 0, 5);
+        }
+
+        return grid;
+    }
+
+    /// <summary>
+    /// A cut through the post is a cut through one voxel, however wide the floor below it: the
+    /// section is what the plane actually goes through, not the bounds.
+    /// </summary>
+    [Fact]
+    public void TheCrossSectionIsOnlyWhatThePlaneGoesThrough()
+    {
+        HashSet<Int3> section = LoopCut.CrossSection(FloorWithPost(), new CutPlane(Axis.Y, 2));
+
+        Assert.Equal([new Int3(0, 1, 0)], section);
+    }
+
+    [Fact]
+    public void ACutAcrossTheFloorGoesThroughAWholeRow()
+    {
+        HashSet<Int3> section = LoopCut.CrossSection(FloorWithPost(), new CutPlane(Axis.X, 2));
+
+        // The cells just below the plane, which are the ones whose far faces it opens.
+        Assert.Equal(4, section.Count);
+        Assert.All(section, cell => Assert.Equal(1, cell.X));
+        Assert.All(section, cell => Assert.Equal(0, cell.Y));
+    }
+
+    /// <summary>
+    /// Between two parts that never touch, the plane cuts nothing but still divides them — so what is
+    /// shown is where they come apart.
+    /// </summary>
+    [Fact]
+    public void BetweenPartsThatDoNotTouchTheSectionIsTheirFootprint()
+    {
+        var grid = new VoxelWorld();
+        grid.SetVoxel(0, 0, 0, 5);
+        grid.SetVoxel(3, 0, 0, 5);
+        grid.SetVoxel(3, 1, 0, 5);
+
+        HashSet<Int3> section = LoopCut.CrossSection(grid, new CutPlane(Axis.X, 3));
+
+        Assert.Equal(2, section.Count);
+        Assert.Contains(new Int3(2, 0, 0), section);
+        Assert.Contains(new Int3(2, 1, 0), section);
+    }
+
+    /// <summary>
+    /// A step: two rows high below the plane, one row across it. Only the lower row goes through the
+    /// plane; the upper one ends at it and is not cut.
+    /// </summary>
+    [Fact]
+    public void OnlyWhereBothSidesAreSolidIsCut()
+    {
+        var grid = new VoxelWorld();
+        for (int x = 0; x < 4; x++)
+        {
+            for (int z = 0; z < 4; z++)
+            {
+                grid.SetVoxel(x, 0, z, 5);
+                if (x < 2)
+                {
+                    grid.SetVoxel(x, 1, z, 5);
+                }
+            }
+        }
+
+        HashSet<Int3> section = LoopCut.CrossSection(grid, new CutPlane(Axis.X, 2));
+
+        Assert.Equal(4, section.Count);
+        Assert.All(section, cell => Assert.Equal(0, cell.Y));
+    }
+
+    /// <summary>
+    /// A part across the plane in a chunk of its own, with nothing in the chunk beside it on this
+    /// side: its footprint is still found, from the chunk it is in.
+    /// </summary>
+    [Fact]
+    public void APartAcrossThePlaneInAChunkOfItsOwnIsFound()
+    {
+        var grid = new VoxelWorld();
+        grid.SetVoxel(0, 0, 0, 5);
+        grid.SetVoxel(Chunk.Size, Chunk.Size + 8, 0, 5);
+
+        HashSet<Int3> section = LoopCut.CrossSection(grid, new CutPlane(Axis.X, Chunk.Size));
+
+        Assert.Equal([new Int3(Chunk.Size - 1, Chunk.Size + 8, 0)], section);
+    }
+
+    /// <summary>A plane on a chunk boundary still finds the cells on both sides of it.</summary>
+    [Fact]
+    public void ASectionOnAChunkBoundaryIsFound()
+    {
+        VoxelWorld grid = Bar(40);
+
+        HashSet<Int3> section = LoopCut.CrossSection(grid, new CutPlane(Axis.X, Chunk.Size));
+
+        Assert.Equal([new Int3(Chunk.Size - 1, 0, 0)], section);
+    }
 }

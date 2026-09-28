@@ -78,6 +78,73 @@ public static class LoopCut
     }
 
     /// <summary>
+    /// Where the plane goes through the object: the cells just below it that have solid across the
+    /// plane from them. This is the face the cut will open up, and the outline the preview draws — a
+    /// frame round the whole object's bounds said which plane, but not what of the model it would cut.
+    ///
+    /// A plane can also run between parts that never touch, and then it cuts nothing but still
+    /// divides them. For that the footprint of both sides is returned instead, which is where the
+    /// object will come apart.
+    /// </summary>
+    public static HashSet<Int3> CrossSection(VoxelWorld grid, CutPlane plane)
+    {
+        int axis = plane.AxisIndex;
+        int below = plane.Coordinate - 1;
+        Int3 across = FaceInfo.Offset(Towards(axis));
+
+        var touching = new HashSet<Int3>();
+        var footprint = new HashSet<Int3>();
+
+        // Chunk by chunk, so the cost follows what is there rather than the bounds' whole area.
+        foreach ((ChunkCoord coord, Chunk chunk) in grid.Chunks)
+        {
+            Int3 origin = coord.Origin;
+            int start = VoxelBox.Component(origin, axis);
+
+            // The chunks holding the layer below the plane, and the ones holding the layer above it.
+            if (chunk.IsEmpty || below < start - 1 || below >= start + Chunk.Size)
+            {
+                continue;
+            }
+
+            int u = (axis + 1) % 3;
+            int v = (axis + 2) % 3;
+
+            for (int a = 0; a < Chunk.Size; a++)
+            {
+                for (int b = 0; b < Chunk.Size; b++)
+                {
+                    Int3 cell = VoxelBox.WithComponent(origin, axis, below);
+                    cell = VoxelBox.WithComponent(cell, u, VoxelBox.Component(origin, u) + a);
+                    cell = VoxelBox.WithComponent(cell, v, VoxelBox.Component(origin, v) + b);
+
+                    bool near = grid.IsSolid(cell);
+                    bool far = grid.IsSolid(cell + across);
+
+                    if (near && far)
+                    {
+                        touching.Add(cell);
+                    }
+                    else if (near || far)
+                    {
+                        footprint.Add(cell);
+                    }
+                }
+            }
+        }
+
+        if (touching.Count > 0)
+        {
+            return touching;
+        }
+
+        return footprint;
+    }
+
+    /// <summary>The face pointing up an axis.</summary>
+    public static Face Towards(int axis) => (Face)(axis * 2);
+
+    /// <summary>
     /// Splits the grid into the part below the plane and the part at or above it. Both keep the
     /// original coordinates, which is what lets the two halves share one transform.
     /// </summary>

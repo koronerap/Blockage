@@ -9,11 +9,11 @@ namespace EditorApp;
 
 /// <summary>
 /// Extrude's gesture state machine (EditorApp.md, "Extrude"): drag on a surface to select it, then
-/// drag the arrow that comes out of the selection. One flow, no separate add and remove tools.
+/// drag the arrow that comes out of the selection — or the selection itself. One flow, no separate
+/// add and remove tools.
 /// </summary>
 public sealed class ExtrudeInteraction(EditorSession session)
 {
-    /// <summary>How close in pixels the cursor has to be to the arrow to grab it.</summary>
     /// <summary>
     /// How near the arrow a press has to land to grab it, in pixels. Settable because a fingertip
     /// covers several times what a cursor points at — the desktop default would be unhittable on a
@@ -45,6 +45,34 @@ public sealed class ExtrudeInteraction(EditorSession session)
     public bool IsDraggingArrow { get; private set; }
 
     public bool IsBusy => IsSelecting || IsDraggingArrow;
+
+    /// <summary>A new selection is being dragged out that will take the old one's place when it lands.</summary>
+    public bool IsReplacing => IsSelecting && PendingOperation == SelectionOperation.Replace;
+
+    /// <summary>
+    /// Whether a face is part of the held surface, where it is on screen right now — carried out
+    /// with the preview while the arrow is pulled. In the focused object's own space.
+    /// </summary>
+    public bool IsOnSelection(RaycastHit hit)
+    {
+        if (session.Selection is not { IsEmpty: false } selection || hit.Face != selection.Direction)
+        {
+            return false;
+        }
+
+        return selection.Contains(hit.Voxel - (FaceInfo.Offset(selection.Direction) * session.ExtrudeSteps));
+    }
+
+    /// <summary>Whether a press here would pull the surface: on the arrow, or on the selection itself.</summary>
+    public bool WouldPull(ScenePick? pick, Vector2 mouse, Vector2 viewport, FlyCamera camera, bool shift, bool alt)
+    {
+        if (IsOnArrow(mouse, viewport, camera))
+        {
+            return true;
+        }
+
+        return !shift && !alt && pick is { } target && target.Object.Id == session.Scene.FocusId && IsOnSelection(target.Hit);
+    }
 
     /// <summary>
     /// The arrow segment in <b>world</b> space, or null when there is nothing selected. The
@@ -88,6 +116,14 @@ public sealed class ExtrudeInteraction(EditorSession session)
             return;
         }
 
+        // Pressing on the held surface pulls it, as the arrow does: the arrow is small and the
+        // surface is not. Shift and Alt still mean add to it and take from it.
+        if (!shift && !alt && target.Object.Id == session.Scene.FocusId && IsOnSelection(target.Hit))
+        {
+            StartPull(mouse);
+            return;
+        }
+
         if (target.Object.Id != session.Scene.FocusId)
         {
             // Clearing first is what lets the focus change through — a held selection pins it.
@@ -124,22 +160,27 @@ public sealed class ExtrudeInteraction(EditorSession session)
 
     private bool TryGrabArrow(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
-        if (Arrow() is not { } arrow
-            || !camera.TryProjectToScreen(arrow.Start, viewport, out Vector2 start)
-            || !camera.TryProjectToScreen(arrow.End, viewport, out Vector2 end))
+        if (!IsOnArrow(mouse, viewport, camera))
         {
             return false;
         }
 
-        if (DistanceToSegment(mouse, start, end) > ArrowGrabPixels)
-        {
-            return false;
-        }
+        StartPull(mouse);
+        return true;
+    }
 
+    private bool IsOnArrow(Vector2 mouse, Vector2 viewport, FlyCamera camera) =>
+        Arrow() is { } arrow
+        && camera.TryProjectToScreen(arrow.Start, viewport, out Vector2 start)
+        && camera.TryProjectToScreen(arrow.End, viewport, out Vector2 end)
+        && DistanceToSegment(mouse, start, end) <= ArrowGrabPixels;
+
+    /// <summary>The drag along the arrow's axis, from wherever it was taken hold of.</summary>
+    private void StartPull(Vector2 mouse)
+    {
         IsDraggingArrow = true;
         _arrowPressPosition = mouse;
         _arrowBaseSteps = session.ExtrudeSteps;
-        return true;
     }
 
     public void OnDrag(RaycastHit? hover, Vector2 mouse, Vector2 viewport, FlyCamera camera)

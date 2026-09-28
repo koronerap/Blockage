@@ -7,24 +7,27 @@ namespace EditorApp.Mobile.Rendering;
 
 /// <summary>
 /// The overlay pass on ES. All the geometry — the grid, outlines, gizmo cones — comes from
-/// <see cref="LineGeometry"/>, shared with the desktop; only the upload and the two draw calls are
+/// <see cref="LineGeometry"/>, shared with the desktop; only the upload and the draw calls are
 /// written again here.
 /// </summary>
 public sealed class EsLineBatch : LineGeometry, IDisposable
 {
-    private readonly int[] _names = new int[4];
+    // Three vertex arrays, then their three buffers: lines, quads, fills.
+    private readonly int[] _names = new int[6];
 
     private byte[] _staging = [];
     private int _lineCapacity;
     private int _quadCapacity;
+    private int _fillCapacity;
 
     public EsLineBatch()
     {
-        GLES30.GlGenVertexArrays(2, _names, 0);
-        GLES30.GlGenBuffers(2, _names, 2);
+        GLES30.GlGenVertexArrays(3, _names, 0);
+        GLES30.GlGenBuffers(3, _names, 3);
 
-        Describe(_names[0], _names[2]);
-        Describe(_names[1], _names[3]);
+        Describe(_names[0], _names[3]);
+        Describe(_names[1], _names[4]);
+        Describe(_names[2], _names[5]);
     }
 
     private static void Describe(int vao, int vbo)
@@ -43,15 +46,27 @@ public sealed class EsLineBatch : LineGeometry, IDisposable
 
     public void Draw()
     {
+        // Tints first, blended and writing no depth, as on the desktop.
+        if (FillVertices.Length > 0)
+        {
+            Upload(FillVertices, _names[2], _names[5], ref _fillCapacity);
+            GLES30.GlEnable(GLES30.GlBlend);
+            GLES30.GlBlendFuncSeparate(GLES30.GlSrcAlpha, GLES30.GlOneMinusSrcAlpha, GLES30.GlZero, GLES30.GlOne);
+            GLES30.GlDepthMask(false);
+            GLES30.GlDrawArrays(GLES30.GlTriangles, 0, FillVertices.Length);
+            GLES30.GlDepthMask(true);
+            GLES30.GlDisable(GLES30.GlBlend);
+        }
+
         if (LineVertices.Length > 0)
         {
-            Upload(LineVertices, _names[0], _names[2], ref _lineCapacity);
+            Upload(LineVertices, _names[0], _names[3], ref _lineCapacity);
             GLES30.GlDrawArrays(GLES30.GlLines, 0, LineVertices.Length);
         }
 
         if (QuadVertices.Length > 0)
         {
-            Upload(QuadVertices, _names[1], _names[3], ref _quadCapacity);
+            Upload(QuadVertices, _names[1], _names[4], ref _quadCapacity);
             GLES30.GlDrawArrays(GLES30.GlTriangles, 0, QuadVertices.Length);
         }
 
@@ -88,7 +103,7 @@ public sealed class EsLineBatch : LineGeometry, IDisposable
 
     public void Dispose()
     {
-        GLES30.GlDeleteBuffers(2, _names, 2);
-        GLES30.GlDeleteVertexArrays(2, _names, 0);
+        GLES30.GlDeleteBuffers(3, _names, 3);
+        GLES30.GlDeleteVertexArrays(3, _names, 0);
     }
 }

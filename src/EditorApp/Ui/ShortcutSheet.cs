@@ -35,6 +35,12 @@ public static class ShortcutSheet
             ("Enter", "Keep an extrude"),
             ("Esc", "Cancel, or let go"),
         ]),
+        ("Extrude",
+        [
+            ("Drag the selection", "Pull it out, push it in"),
+            ("Shift+drag", "Add to the selection"),
+            ("Alt+drag", "Take from the selection"),
+        ]),
         ("File",
         [
             ("Ctrl+N", "New level"),
@@ -66,6 +72,10 @@ public static class ShortcutSheet
             ("Ctrl+drag", "A box"),
             ("Alt+click", "Pick a colour"),
         ]),
+        ("Lights",
+        [
+            ("Drag a sun's line", "Aim it at what it lands on"),
+        ]),
         ("Help",
         [
             ("F1", "This sheet"),
@@ -96,7 +106,8 @@ public static class ShortcutSheet
             ref open,
             ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoMove);
 
-        // Three groups a column: the camera's list is the long one, so it gets a column with less else in it.
+        // Tools, editing and Extrude down the left; the camera's list is the long one, so it goes on
+        // the right with the short groups.
         if (ImGui.BeginTable("##shortcut-columns", 2, ImGuiTableFlags.SizingFixedFit))
         {
             ImGui.TableNextColumn();

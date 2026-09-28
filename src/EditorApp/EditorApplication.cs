@@ -64,6 +64,13 @@ public sealed class EditorApplication : IDisposable
     private bool _leftButtonWasDown;
     private ExtrudeInteraction? _extrude;
     private TransformInteraction? _transform;
+    private LightAimInteraction? _aim;
+
+    /// <summary>The light whose aim line is under the pointer, drawn lit so it is seen to be grabbable.</summary>
+    private SceneLight? _aimHover;
+
+    /// <summary>A press would pull the extrude surface — the pointer is on its arrow or on the selection.</summary>
+    private bool _extrudeWouldPull;
 
     /// <summary>What the cursor is over, whichever object owns it.</summary>
     private ScenePick? _pick;
@@ -159,6 +166,7 @@ public sealed class EditorApplication : IDisposable
         _mimicraft = new MimicraftController(_session);
         _extrude = new ExtrudeInteraction(_session);
         _transform = new TransformInteraction(_session);
+        _aim = new LightAimInteraction(_session);
 
         // The editor opens on the same thing New gives you: an 8³ white cube to extrude from.
         _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
@@ -418,7 +426,7 @@ public sealed class EditorApplication : IDisposable
         // guards strokes, extrude previews and held selections itself; the drags that have none of
         // those — a gizmo, and the box-drag that is still deciding what the selection will be — are
         // guarded here.
-        if (_transform is not { IsDragging: true } && _extrude is not { IsBusy: true })
+        if (_transform is not { IsDragging: true } && _extrude is not { IsBusy: true } && _aim is not { IsAiming: true })
         {
             _session.TryFocus(pick.Object.Id);
         }
@@ -451,14 +459,19 @@ public sealed class EditorApplication : IDisposable
         Vector2 local = _viewport.ToLocal(mouse.Position);
         Vector2 viewport = _viewport.Size;
 
+        // Hover marks are for a pointer over the model, not over a panel in front of it.
+        bool pointing = !ImGui.GetIO().WantCaptureMouse && !_looking && _viewport.Contains(mouse.Position);
+        _aimHover = null;
+        _extrudeWouldPull = false;
+
         switch (_session.ActiveTool)
         {
             case EditorTool.Transform:
-                UpdateTransform(local, viewport, leftDown, pressed, released);
+                UpdateTransform(local, viewport, leftDown, pressed, released, pointing);
                 break;
 
             case EditorTool.Extrude:
-                UpdateExtrude(local, viewport, leftDown, pressed, released);
+                UpdateExtrude(local, viewport, leftDown, pressed, released, pointing);
                 break;
 
             case EditorTool.Paint:
@@ -475,9 +488,33 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    private void UpdateTransform(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released)
+    private void UpdateTransform(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released, bool pointing)
     {
         _transform!.UpdateHover(mouse, viewport, _camera);
+
+        if (pointing && !_aim!.IsAiming && !_transform.IsDragging)
+        {
+            _aimHover = _aim.LineUnder(mouse, viewport, _camera, IsLightShown);
+        }
+
+        // A sun's or a spot's aim line first: it reaches out past the gizmo, and a press on it means
+        // "point the light there".
+        if (pressed && _aim!.OnPress(mouse, viewport, _camera, IsLightShown))
+        {
+            return;
+        }
+
+        if (leftDown && _aim!.IsAiming)
+        {
+            _aim.OnDrag(mouse, viewport, _camera);
+            return;
+        }
+
+        if (released && _aim!.IsAiming)
+        {
+            _aim.OnRelease();
+            return;
+        }
 
         if (pressed && !_transform.OnPress(mouse, viewport, _camera))
         {
@@ -504,8 +541,12 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    private void UpdateExtrude(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released)
+    private void UpdateExtrude(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released, bool pointing)
     {
+        _extrudeWouldPull = pointing
+            && !_extrude!.IsBusy
+            && _extrude.WouldPull(_pick, mouse, viewport, _camera, IsShiftHeld(), IsAltHeld());
+
         if (pressed)
         {
             _extrude!.OnPress(_pick, mouse, viewport, _camera, IsShiftHeld(), IsAltHeld());
@@ -612,6 +653,15 @@ public sealed class EditorApplication : IDisposable
     private bool IsAltHeld() =>
         _input is { Keyboards.Count: > 0 }
         && (_input.Keyboards[0].IsKeyPressed(Key.AltLeft) || _input.Keyboards[0].IsKeyPressed(Key.AltRight));
+
+    /// <summary>Whether a light's icon is drawn, and so whether it can be taken hold of.</summary>
+    private bool IsLightShown(SceneLight light) => _showLightIcons || light.Id == _session.SelectedLightId;
+
+    /// <summary>What a click in Extrude would do to the selection, by the modifier held right now.</summary>
+    private SelectionOperation HeldSelectionOperation() =>
+        IsShiftHeld() ? SelectionOperation.Add
+        : IsAltHeld() ? SelectionOperation.Subtract
+        : SelectionOperation.Replace;
 
     private bool IsShiftHeld() =>
         _input is { Keyboards.Count: > 0 }
@@ -851,11 +901,11 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>A drag is running that an object-level key would pull the object out from under.</summary>
-    private bool IsDragging() => _extrude!.IsBusy || _transform!.IsDragging || _session.IsStrokeActive;
+    private bool IsDragging() => _extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming || _session.IsStrokeActive;
 
     private void SwitchTool(EditorTool tool)
     {
-        if (_extrude!.IsBusy || _transform!.IsDragging)
+        if (_extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming)
         {
             return;   // never swap tools out from under a running drag
         }
@@ -901,6 +951,12 @@ public sealed class EditorApplication : IDisposable
         if (ShortcutSheet.IsOpen)
         {
             ShortcutSheet.Close();
+            return;
+        }
+
+        if (_aim!.IsAiming)
+        {
+            _aim.Cancel();
             return;
         }
 
@@ -1093,7 +1149,8 @@ public sealed class EditorApplication : IDisposable
             }
 
             bool marked = light.Id == _session.SelectedLightId || light.Id == ObjectListPanel.HoveredId;
-            EditorOverlays.AddLight(gizmos, light, _camera, marked);
+            Vector3? aimedAt = _aim!.Light?.Id == light.Id ? _aim.Target : null;
+            EditorOverlays.AddLight(gizmos, light, _camera, marked, aimedAt, aimLit: _aimHover?.Id == light.Id);
         }
 
         // The object whose row the mouse is over in the outliner, so a name can be matched to a shape.
@@ -1114,14 +1171,7 @@ public sealed class EditorApplication : IDisposable
         // not thrown away on the way out — coming back to the tool finds the same surface still
         // chosen — but a highlighted patch left glowing over the model while painting reads as
         // something the paint tool is about to do.
-        if (_session.ActiveTool == EditorTool.Extrude)
-        {
-            EditorOverlays.AddSelectionOutline(lines, _session.Selection, EditorOverlays.Selection);
-            EditorOverlays.AddSelectionOutline(
-                lines,
-                _extrude!.PendingSelection,
-                _extrude.PendingOperation == SelectionOperation.Subtract ? EditorOverlays.SelectionSubtract : EditorOverlays.SelectionAdd);
-        }
+        EditorOverlays.AddExtrudeSelection(lines, _session, _extrude!);
 
         // Over the model, not into it: a plane through the middle of the model is mostly inside it.
         if (_showMirrorPlanes)
@@ -1129,19 +1179,27 @@ public sealed class EditorApplication : IDisposable
             EditorOverlays.AddMirrorPlanes(gizmos, _session);
         }
 
-        if (_session.ActiveTool == EditorTool.Extrude)
-        {
-            EditorOverlays.AddMirroredSelection(lines, _session, _session.Selection);
-        }
-
         if (_hover is { } hit)
         {
-            lines.AddVoxelFace(hit.Voxel, hit.Face, EditorOverlays.Highlight, width: EditorOverlays.SelectionWidth);
-            EditorOverlays.AddMirroredHover(lines, _session, hit.Voxel, hit.Face);
+            switch (_session.ActiveTool)
+            {
+                case EditorTool.Extrude:
+                    EditorOverlays.AddExtrudeHover(lines, _session, _extrude!, hit, HeldSelectionOperation());
+                    break;
+
+                // The brush shows the faces it would paint, all of them; the fills, the one they start from.
+                case EditorTool.Paint when _session.PaintMode == PaintMode.Brush:
+                    EditorOverlays.AddBrushPreview(lines, _session, hit);
+                    break;
+
+                default:
+                    lines.AddVoxelFace(hit.Voxel, hit.Face, EditorOverlays.Highlight, width: EditorOverlays.SelectionWidth);
+                    EditorOverlays.AddMirroredHover(lines, _session, hit.Voxel, hit.Face);
+                    break;
+            }
 
             if (_session.ActiveTool == EditorTool.Paint)
             {
-                AddBrushOutline(lines, hit.Voxel);
                 AddPaintShapePreview(lines, hit.Voxel);
             }
         }
@@ -1153,7 +1211,7 @@ public sealed class EditorApplication : IDisposable
         lines.Transform = Matrix4x4.Identity;
         gizmos.Transform = Matrix4x4.Identity;
 
-        EditorOverlays.AddExtrudeArrow(gizmos, _session, _extrude!);
+        EditorOverlays.AddExtrudeArrow(gizmos, _session, _extrude!, _extrudeWouldPull);
         EditorOverlays.AddTransformGizmo(gizmos, _session, _transform!, _camera);
     }
 
@@ -1179,15 +1237,6 @@ public sealed class EditorApplication : IDisposable
             cursor.ToVector3() + half,
             EditorOverlays.BrushOutline,
             EditorOverlays.SelectionWidth);
-    }
-
-    private void AddBrushOutline(LineBatch lines, Int3 center)
-    {
-        float radius = _session.BrushRadius;
-        Vector3 centre = center.ToVector3() + new Vector3(0.5f);
-        var extent = new Vector3(radius + 0.5f);
-
-        lines.AddBox(centre - extent, centre + extent, EditorOverlays.BrushOutline);
     }
 
     private void DrawUi()
@@ -1217,7 +1266,7 @@ public sealed class EditorApplication : IDisposable
         _viewport = _shell.Draw(context);
         ShortcutSheet.Draw(ImGui.GetIO().DisplaySize);
 
-        ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout);
+        ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout, CursorMark());
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -1283,8 +1332,33 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>Whatever number the gesture in progress is producing, or nothing.</summary>
+    /// <summary>
+    /// The + or - by the pointer in Extrude while Shift or Alt is held, or while a drag started with
+    /// one is running: what a click will do to the selection, where the eye already is.
+    /// </summary>
+    private SelectionOperation? CursorMark()
+    {
+        if (_session.ActiveTool != EditorTool.Extrude
+            || _extrude!.IsDraggingArrow
+            || _looking
+            || ImGui.GetIO().WantCaptureMouse
+            || _input is not { Mice.Count: > 0 }
+            || !_viewport.Contains(_input.Mice[0].Position))
+        {
+            return null;
+        }
+
+        SelectionOperation operation = _extrude.IsSelecting ? _extrude.PendingOperation : HeldSelectionOperation();
+        return operation == SelectionOperation.Replace ? null : operation;
+    }
+
     private string CurrentDragReadout()
     {
+        if (_aim is { Readout.Length: > 0 } aim)
+        {
+            return aim.Readout;
+        }
+
         if (_transform is { Readout.Length: > 0 } transform)
         {
             return transform.Readout;
