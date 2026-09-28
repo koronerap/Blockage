@@ -80,7 +80,10 @@ public sealed class ExtrudeInteraction(EditorSession session)
     /// here — otherwise the arrow would be drawn and grabbed in the wrong place for a moved or
     /// rotated object.
     /// </summary>
-    public (Vector3 Start, Vector3 End)? Arrow()
+    public (Vector3 Start, Vector3 End)? Arrow() => ArrowAt(session.ExtrudeSteps);
+
+    /// <summary>The arrow as it stands after a given number of steps: it follows the preview, so it stays attached to the moving surface.</summary>
+    private (Vector3 Start, Vector3 End)? ArrowAt(int steps)
     {
         if (session.Selection is not { IsEmpty: false } selection || session.Scene.Focus is not { } focus)
         {
@@ -88,9 +91,7 @@ public sealed class ExtrudeInteraction(EditorSession session)
         }
 
         Vector3 localDirection = FaceInfo.Normal(selection.Direction);
-
-        // While dragging, the arrow follows the preview so it stays attached to the moving surface.
-        Vector3 localStart = selection.ArrowOrigin() + localDirection * session.ExtrudeSteps;
+        Vector3 localStart = selection.ArrowOrigin() + localDirection * steps;
 
         Vector3 start = focus.Transform.TransformPoint(localStart);
         Vector3 direction = focus.Transform.TransformDirection(localDirection);
@@ -204,12 +205,17 @@ public sealed class ExtrudeInteraction(EditorSession session)
     /// Projects the cursor's travel onto the arrow's screen-space direction and rounds it to whole
     /// voxels. Rounding here rather than at apply time is what stops a drag ever sitting between
     /// two units.
+    ///
+    /// Measured from where the arrow stood when it was grabbed, not where the preview has carried
+    /// it. In perspective a pixel is worth a different amount at each distance, so a reading taken
+    /// from the moving arrow changed the answer, which moved the arrow, which changed the reading —
+    /// a mouse held still flickered between two steps, and near the edge of the view between many.
     /// </summary>
     private int StepsFromDrag(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
         if (session.Selection is not { } selection
             || session.Scene.Focus is not { } focus
-            || Arrow() is not { } arrow)
+            || ArrowAt(_arrowBaseSteps) is not { } arrow)
         {
             return 0;
         }

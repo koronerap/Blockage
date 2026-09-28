@@ -1030,8 +1030,25 @@ public sealed class EditorSession
             return false;
         }
 
+        RetainSelection();
         HasUnsavedChanges = true;
         return true;
+    }
+
+    /// <summary>
+    /// Drops whatever of the selection the world no longer shows. Undoing an extrude takes away the
+    /// very faces the selection had advanced onto, and left as it was the arrow stood in empty air,
+    /// still offering a pull.
+    /// </summary>
+    private void RetainSelection()
+    {
+        if (Selection is not { } selection)
+        {
+            return;
+        }
+
+        FaceSelection kept = selection.Retain(World);
+        Selection = kept.IsEmpty ? null : kept;
     }
 
     public bool Redo()
@@ -1044,6 +1061,7 @@ public sealed class EditorSession
             return false;
         }
 
+        RetainSelection();
         HasUnsavedChanges = true;
         return true;
     }

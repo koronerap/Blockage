@@ -29,7 +29,8 @@ public static class ViewportOverlay
         ViewportRect viewport,
         bool showMeasurements,
         string dragReadout,
-        SelectionOperation? cursorMark = null)
+        SelectionOperation? cursorMark = null,
+        Color32? cursorSample = null)
     {
         // The background list, not the foreground one. Both draw over the 3D scene, since all of
         // ImGui is composited on top of GL — but the foreground list is submitted after every
@@ -51,6 +52,34 @@ public static class ViewportOverlay
         {
             DrawCursorMark(drawList, operation);
         }
+
+        if (cursorSample is { } sample)
+        {
+            DrawCursorSample(drawList, sample);
+        }
+    }
+
+    /// <summary>
+    /// The eyedropper by the pointer while Alt is held in Paint, with the colour under it in a
+    /// swatch: what a click would pick, seen before it is picked. A pointer that looks the same
+    /// whether it is about to paint or to sample is how the wrong one happens.
+    /// </summary>
+    private static void DrawCursorSample(ImDrawListPtr drawList, Color32 sample)
+    {
+        const float Icon = 8f;
+        const float Swatch = 18f;
+
+        Vector2 at = ImGui.GetIO().MousePos + new Vector2(14f, 16f);
+        Vector2 plateMin = at - new Vector2(4f);
+        Vector2 plateMax = at + new Vector2((Icon * 2f) + 6f + Swatch + 4f, (Icon * 2f) + 4f);
+
+        drawList.AddRectFilled(plateMin, plateMax, Colour(Theme.Background with { W = 0.9f }), 4f);
+        Icons.Eyedropper(new ImGuiIconCanvas(drawList, Colour(Theme.Text), 1.4f), at + new Vector2(Icon), Icon);
+
+        Vector2 swatchMin = at + new Vector2((Icon * 2f) + 6f, 0f);
+        Vector2 swatchMax = swatchMin + new Vector2(Swatch, Icon * 2f);
+        drawList.AddRectFilled(swatchMin, swatchMax, Colour(sample.ToVector4()), 3f);
+        drawList.AddRect(swatchMin, swatchMax, Colour(Theme.Text with { W = 0.6f }), 3f);
     }
 
     /// <summary>

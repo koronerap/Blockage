@@ -183,6 +183,24 @@ public sealed class FaceSelection
 
     public bool Contains(Int3 voxel) => _voxels.Contains(voxel);
 
+    /// <summary>
+    /// The same selection without the faces the world no longer shows. After an undo the voxels a
+    /// selection sat on may be gone, or buried; the faces left are the ones still there to pull.
+    /// </summary>
+    public FaceSelection Retain(VoxelWorld world)
+    {
+        var kept = new HashSet<Int3>(_voxels.Count);
+        foreach (Int3 voxel in _voxels)
+        {
+            if (IsFaceExposed(world, voxel, Direction))
+            {
+                kept.Add(voxel);
+            }
+        }
+
+        return kept.Count == _voxels.Count ? this : new FaceSelection(Direction, Plane, kept);
+    }
+
     public VoxelBox Bounds()
     {
         if (_voxels.Count == 0)

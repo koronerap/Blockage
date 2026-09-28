@@ -1187,8 +1187,9 @@ public sealed class EditorApplication : IDisposable
                     EditorOverlays.AddExtrudeHover(lines, _session, _extrude!, hit, HeldSelectionOperation());
                     break;
 
-                // The brush shows the faces it would paint, all of them; the fills, the one they start from.
-                case EditorTool.Paint when _session.PaintMode == PaintMode.Brush:
+                // The brush shows the faces it would paint, all of them; the fills, the one they start
+                // from — and the eyedropper the one face it would read.
+                case EditorTool.Paint when _session.PaintMode == PaintMode.Brush && !IsSamplingColour():
                     EditorOverlays.AddBrushPreview(lines, _session, hit);
                     break;
 
@@ -1266,7 +1267,7 @@ public sealed class EditorApplication : IDisposable
         _viewport = _shell.Draw(context);
         ShortcutSheet.Draw(ImGui.GetIO().DisplaySize);
 
-        ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout, CursorMark());
+        ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout, CursorMark(), CursorSample());
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -1351,6 +1352,27 @@ public sealed class EditorApplication : IDisposable
         SelectionOperation operation = _extrude.IsSelecting ? _extrude.PendingOperation : HeldSelectionOperation();
         return operation == SelectionOperation.Replace ? null : operation;
     }
+
+    /// <summary>The colour a click would sample: Alt held in Paint, over a face. Null otherwise.</summary>
+    private Color32? CursorSample()
+    {
+        if (_session.ActiveTool != EditorTool.Paint || !IsSamplingColour() || _hover is not { } hit)
+        {
+            return null;
+        }
+
+        return PaintOperations.Sample(_session.World, hit.Voxel, hit.Face) is { } index
+            ? _session.Scene.Palette[index]
+            : null;
+    }
+
+    /// <summary>Alt in Paint means the eyedropper, for as long as it is held and the pointer is over the model.</summary>
+    private bool IsSamplingColour() =>
+        IsAltHeld()
+        && !_looking
+        && !ImGui.GetIO().WantCaptureMouse
+        && _input is { Mice.Count: > 0 }
+        && _viewport.Contains(_input.Mice[0].Position);
 
     private string CurrentDragReadout()
     {

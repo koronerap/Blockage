@@ -1,4 +1,5 @@
 using System.Numerics;
+using EditorApp.Core.Commands;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
 using EditorApp.Core.Scene;
@@ -122,6 +123,47 @@ public class ExtrudeInteractionTests
 
         Assert.Equal(before, session.World.SolidCount);
         Assert.False(session.History.CanUndo);
+
+        // The selection had advanced onto the new faces, and they are gone: no arrow left in the air.
+        Assert.False(session.HasSelection);
+        Assert.Null(extrude.Arrow());
+    }
+
+    /// <summary>A push in leaves the selection buried; undone, it is back on the surface it came from.</summary>
+    [Fact]
+    public void UndoingAPushInLeavesNoBuriedSelection()
+    {
+        (EditorSession session, ExtrudeInteraction extrude, FlyCamera camera) = WithTopFaceSelected();
+        (Vector3 start, _) = extrude.Arrow()!.Value;
+
+        extrude.OnPress(null, ScreenOf(camera, start), Viewport, camera, shift: false, alt: false);
+        extrude.OnDrag(null, ScreenOf(camera, start - (Vector3.UnitY * 2f)), Viewport, camera);
+        extrude.OnRelease();
+        Assert.Equal(1, session.Selection!.Plane);
+
+        session.Undo();
+
+        Assert.False(session.HasSelection);
+    }
+
+    /// <summary>Only what an edit takes away leaves the selection; the rest of it stays to be pulled again.</summary>
+    [Fact]
+    public void OnlyTheFacesAnEditRemovesLeaveTheSelection()
+    {
+        (EditorSession session, _, _) = WithTopFaceSelected();
+        Assert.Equal(16, session.Selection!.Count);
+
+        // One corner voxel of the top goes, as its own undoable step.
+        var edit = new VoxelEditCommand("Remove corner", session.World);
+        edit.Apply(new Int3(0, 3, 0), Palette.EmptyIndex);
+        session.History.Push(edit);
+
+        session.Undo();
+        Assert.Equal(16, session.Selection!.Count);
+
+        session.Redo();
+        Assert.Equal(15, session.Selection!.Count);
+        Assert.False(session.Selection.Contains(new Int3(0, 3, 0)));
     }
 
     [Fact]
