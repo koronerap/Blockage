@@ -178,7 +178,7 @@ public sealed class EditorShell
 
         if (ImGui.BeginPopup("##object-menu"))
         {
-            ObjectMenu.DrawItems(context.Session);
+            ObjectMenu.DrawItems(context.Session, context.Camera);
             ImGui.EndPopup();
         }
     }
@@ -221,9 +221,15 @@ public sealed class EditorShell
             LevelPanel.DrawContent(context.Session);
         }
 
+        // A rename asked for by key or menu has to be seen, even with the section folded away.
+        if (ObjectListPanel.WantsToBeOpen)
+        {
+            ImGui.SetNextItemOpen(true);
+        }
+
         if (ImGui.CollapsingHeader("Objects", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            ObjectListPanel.Draw(context.Session);
+            ObjectListPanel.Draw(context.Session, context.Camera);
         }
 
         if (ImGui.CollapsingHeader("Palette", ImGuiTreeNodeFlags.DefaultOpen))

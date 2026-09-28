@@ -236,6 +236,35 @@ public sealed class VoxelWorld
         MarkAllDirty();
     }
 
+    /// <summary>
+    /// A deep copy: every voxel and every painted face, sharing only the palette — which every grid
+    /// in a scene shares anyway. Chunks are copied whole rather than cell by cell, so even a large
+    /// object costs one memory copy per chunk.
+    /// </summary>
+    public VoxelWorld Copy()
+    {
+        var copy = new VoxelWorld();
+        copy.ReplacePalette(Palette);
+
+        foreach ((ChunkCoord coord, Chunk chunk) in _chunks)
+        {
+            if (chunk.IsEmpty)
+            {
+                continue;
+            }
+
+            Chunk target = copy.GetOrCreateChunk(coord);
+            target.LoadIndices(chunk.Indices);
+
+            foreach ((int linear, Face face, byte index) in chunk.FaceOverrides())
+            {
+                target.LoadFaceOverride(linear, face, index);
+            }
+        }
+
+        return copy;
+    }
+
     /// <summary>Order-independent hash of the world contents. Used by tests to compare states.</summary>
     public ulong ContentHash()
     {

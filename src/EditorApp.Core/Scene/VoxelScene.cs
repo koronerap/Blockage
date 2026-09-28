@@ -74,7 +74,8 @@ public sealed class VoxelScene
         }
     }
 
-    public VoxelObject Add(VoxelWorld grid, ObjectTransform transform, string? name = null)
+    /// <param name="insertAt">Where in the list it goes; the end when null.</param>
+    public VoxelObject Add(VoxelWorld grid, ObjectTransform transform, string? name = null, int? insertAt = null)
     {
         // Every grid points at the scene's palette, so recoloring an index repaints the whole level.
         grid.ReplacePalette(Palette);
@@ -82,7 +83,7 @@ public sealed class VoxelScene
         var created = new VoxelObject(_nextId, grid, transform, name ?? $"Object {_nextId}");
         _nextId++;
 
-        _objects.Add(created);
+        Insert(created, insertAt);
         if (FocusId == 0)
         {
             FocusId = created.Id;
@@ -93,9 +94,10 @@ public sealed class VoxelScene
 
     /// <summary>
     /// Puts a previously removed object back, keeping its identity. Undo needs the original object
-    /// itself, not a copy of it, so anything still holding a reference stays correct.
+    /// itself, not a copy of it, so anything still holding a reference stays correct — and it goes
+    /// back where it was in the list, so undoing a delete does not reshuffle the outliner.
     /// </summary>
-    public void Restore(VoxelObject original)
+    public void Restore(VoxelObject original, int? insertAt = null)
     {
         if (_objects.Any(o => o.Id == original.Id))
         {
@@ -103,12 +105,55 @@ public sealed class VoxelScene
         }
 
         original.Grid.ReplacePalette(Palette);
-        _objects.Add(original);
+        Insert(original, insertAt);
 
         if (FocusId == 0)
         {
             FocusId = original.Id;
         }
+    }
+
+    /// <summary>The object with this id, or null.</summary>
+    public VoxelObject? Find(int id) => _objects.Find(o => o.Id == id);
+
+    /// <summary>Where the object sits in the list, or -1.</summary>
+    public int IndexOf(int id) => _objects.FindIndex(o => o.Id == id);
+
+    private void Insert(VoxelObject item, int? index)
+    {
+        if (index is { } at)
+        {
+            _objects.Insert(Math.Clamp(at, 0, _objects.Count), item);
+        }
+        else
+        {
+            _objects.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// A deep copy of the whole level — objects, voxels, painted faces, palette — sharing nothing
+    /// with this one. For writing it out away from the editing thread: once taken, nothing the editor
+    /// does can reach into it halfway through being saved.
+    /// </summary>
+    public VoxelScene Snapshot()
+    {
+        var copy = new VoxelScene
+        {
+            _voxelSize = _voxelSize,
+            _nextId = _nextId,
+            FocusId = FocusId,
+            Palette = Palette.Clone(),
+        };
+
+        foreach (VoxelObject o in _objects)
+        {
+            VoxelWorld grid = o.Grid.Copy();
+            grid.ReplacePalette(copy.Palette);
+            copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name) { Visible = o.Visible });
+        }
+
+        return copy;
     }
 
     public bool Remove(int id)

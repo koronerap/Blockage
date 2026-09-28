@@ -200,19 +200,17 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
 
     /// <summary>
     /// Hiding an object is a way of looking, not an edit, so it goes around the undo stack — and the
-    /// chunks it owns have to be dropped or a hidden object would keep its buffers forever.
+    /// chunks it owns have to be dropped or a hidden object would keep its buffers forever. The rule
+    /// itself — saved with the level, focus moving off a hidden object — is the session's, shared
+    /// with the desktop.
     /// </summary>
     public void ToggleObjectVisible(int id)
     {
         lock (_sceneGate)
         {
-            foreach (VoxelObject o in _session.Scene.Objects)
+            if (_session.Scene.Find(id) is { } target)
             {
-                if (o.Id == id)
-                {
-                    o.Visible = !o.Visible;
-                    break;
-                }
+                _session.SetObjectVisible(id, !target.Visible);
             }
         }
 
@@ -225,23 +223,9 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
     /// </summary>
     public void RenameObject(int id, string name)
     {
-        string trimmed = name.Trim();
-        if (trimmed.Length == 0)
-        {
-            return;
-        }
-
         lock (_sceneGate)
         {
-            foreach (VoxelObject o in _session.Scene.Objects)
-            {
-                if (o.Id == id)
-                {
-                    o.Name = trimmed;
-                    _session.HasUnsavedChanges = true;
-                    break;
-                }
-            }
+            _session.RenameObject(id, name);
         }
 
         Changed();

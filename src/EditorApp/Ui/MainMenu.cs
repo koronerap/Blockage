@@ -36,6 +36,13 @@ public static class MainMenu
 
             DrawRecentMenu(project);
 
+            // Only enabled when an earlier session left autosaved work behind. Offered once at
+            // start; this is the way back to it after "Decide later".
+            if (ImGui.MenuItem("Recover Unsaved Work...", null, false, project.CanRecover))
+            {
+                project.OfferRecovery();
+            }
+
             ImGui.Separator();
 
             if (ImGui.MenuItem("Save", "Ctrl+S"))
@@ -91,7 +98,7 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("Object"))
         {
-            ObjectMenu.DrawItems(session);
+            ObjectMenu.DrawItems(session, view.Camera);
             ImGui.EndMenu();
         }
 

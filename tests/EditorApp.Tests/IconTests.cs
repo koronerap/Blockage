@@ -111,6 +111,8 @@ public class IconTests
         { nameof(Icons.MouseMiddle), Icons.MouseMiddle },
         { nameof(Icons.MouseRight), Icons.MouseRight },
         { nameof(Icons.MouseWheel), Icons.MouseWheel },
+        { nameof(Icons.Eye), Icons.Eye },
+        { nameof(Icons.EyeClosed), Icons.EyeClosed },
     };
 
     [Theory]

@@ -388,6 +388,51 @@ public static class Icons
         canvas.Line(lens - new Vector2(0f, r * 0.26f), lens + new Vector2(0f, r * 0.26f), 0.8f);
     }
 
+    // ---- Outliner ------------------------------------------------------------------------------
+
+    /// <summary>Visible: an open eye.</summary>
+    public static void Eye(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Lid(canvas, centre, r, upper: true);
+        Lid(canvas, centre, r, upper: false);
+        canvas.FilledCircle(centre, r * 0.3f);
+    }
+
+    /// <summary>
+    /// Hidden: the eye shut — the lower lid with lashes. Shut rather than crossed out, which would
+    /// read as "not allowed" when all it means is "not shown".
+    /// </summary>
+    public static void EyeClosed(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Lid(canvas, centre, r, upper: false);
+
+        // The lid's own circle, so the lashes stand square to it.
+        Vector2 middle = centre - new Vector2(0f, LidOffset * r);
+        Span<float> angles = [MathF.PI / 2f - 0.55f, MathF.PI / 2f, MathF.PI / 2f + 0.55f];
+
+        foreach (float angle in angles)
+        {
+            var outward = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+            Vector2 root = middle + (outward * LidRadius * r);
+            canvas.Line(root, root + (outward * r * 0.3f), 0.9f);
+        }
+    }
+
+    // A lid is an arc of a circle through both corners of the eye, 0.9 either side of the centre,
+    // bulging 0.55 away from it: that circle sits 0.4614 the other way with radius 1.0114.
+    private const float LidOffset = 0.4614f;
+    private const float LidRadius = 1.0114f;
+    private const float LidSweep = 1.0971f;   // from the bottom (or top) of the circle to a corner
+
+    private static void Lid(IIconCanvas canvas, Vector2 centre, float r, bool upper)
+    {
+        float sign = upper ? 1f : -1f;
+        Vector2 middle = centre + new Vector2(0f, sign * LidOffset * r);
+        float peak = upper ? -MathF.PI / 2f : MathF.PI / 2f;
+
+        Arc(canvas, middle, LidRadius * r, Vector2.One, peak - LidSweep, peak + LidSweep, 14);
+    }
+
     // ---- Mouse, for the hints along the bottom -------------------------------------------------
 
     public static void MouseLeft(IIconCanvas canvas, Vector2 centre, float r) =>

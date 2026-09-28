@@ -78,6 +78,10 @@ public sealed class LevelManifest
 
         [JsonPropertyName("chunks")]
         public int[][] Chunks { get; set; } = [];
+
+        /// <summary>Absent before version 5, where every object was visible.</summary>
+        [JsonPropertyName("visible")]
+        public bool Visible { get; set; } = true;
     }
 
     [JsonPropertyName("savedUtc")]

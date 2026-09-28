@@ -42,6 +42,7 @@ public sealed class EditorApplication : IDisposable
     private ProjectController? _project;
     private ExportController? _export;
     private MimicraftController? _mimicraft;
+    private AutosaveController? _autosave;
     private string _windowTitle = string.Empty;
 
     private Vector2 _previousMousePosition;
@@ -77,6 +78,7 @@ public sealed class EditorApplication : IDisposable
     private readonly string? _screenshotPath;
     private readonly bool _startUnlit;
     private readonly AlignedView? _startView;
+    private readonly string? _startLevel;
 
     /// <param name="smokeFrames">When positive, the window closes after this many frames (used for automated smoke runs).</param>
     /// <param name="screenshotPath">When set, the last frame is written here as a PNG before closing.</param>
@@ -85,11 +87,13 @@ public sealed class EditorApplication : IDisposable
         int smokeFrames = 0,
         string? screenshotPath = null,
         bool startUnlit = false,
-        AlignedView? startView = null)
+        AlignedView? startView = null,
+        string? startLevel = null)
     {
         _screenshotPath = screenshotPath;
         _startUnlit = startUnlit;
         _startView = startView;
+        _startLevel = startLevel;
         _smokeFrames = screenshotPath is not null && smokeFrames <= 0 ? 10 : smokeFrames;
 
         WindowOptions options = WindowOptions.Default with
@@ -152,14 +156,29 @@ public sealed class EditorApplication : IDisposable
         _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
         _session.ActiveColorIndex = Palette.WhiteIndex;
 
-        if (_session.World.TryGetBounds(out Int3 min, out Int3 max))
+        // A smoke or screenshot run leaves the user's recent-files list as it found it.
+        _project.RemembersRecent = _smokeFrames <= 0;
+
+        if (_startLevel is not null)
         {
-            _camera.FrameBox(min.ToVector3(), max.ToVector3() + Vector3.One);
+            _project.OpenRecent(_startLevel);
         }
+
+        FrameLevel();
 
         if (_startView is { } view)
         {
             _camera.Align(view);
+        }
+
+        // Not in a smoke or screenshot run: those must neither write the user's recovery folder nor
+        // stop at a question about what is already in it.
+        if (_smokeFrames <= 0)
+        {
+            _autosave = new AutosaveController(_session);
+            _project.Autosave = _autosave;
+            CrashLog.Crashing += _autosave.WriteBeforeDying;
+            _project.OfferRecovery();
         }
 
         if (_input.Mice.Count > 0)
@@ -240,6 +259,7 @@ public sealed class EditorApplication : IDisposable
     private void OnUpdate(double deltaSeconds)
     {
         _lastDelta = (float)deltaSeconds;
+        _autosave?.Tick(deltaSeconds);
         UpdateCamera((float)deltaSeconds);
         UpdateHover();
         UpdateTools();
@@ -593,6 +613,7 @@ public sealed class EditorApplication : IDisposable
 
         bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
         bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
+        bool alt = keyboard.IsKeyPressed(Key.AltLeft) || keyboard.IsKeyPressed(Key.AltRight);
 
         // While the look button is held, the letter keys are flying the camera, not picking tools.
         if (_looking && !control)
@@ -640,6 +661,44 @@ public sealed class EditorApplication : IDisposable
                 _showGrid = !_showGrid;
                 break;
 
+            // Blender's object keys: Shift+D duplicates, H hides, Alt+H shows everything again,
+            // Delete deletes, F2 renames. Before plain D, which is the measurements.
+            case Key.D when shift && !control:
+                if (!IsDragging())
+                {
+                    ObjectMenu.Duplicate(_session, _camera);
+                }
+
+                break;
+
+            case Key.H when alt:
+                _session.ShowAllObjects();
+                break;
+
+            case Key.H when !control:
+                if (!IsDragging())
+                {
+                    _session.SetObjectVisible(_session.Scene.FocusId, false);
+                }
+
+                break;
+
+            case Key.Delete:
+                if (!IsDragging())
+                {
+                    _session.DeleteObject(_session.Scene.FocusId);
+                }
+
+                break;
+
+            case Key.F2:
+                if (_session.Scene.Focus is { } renamed)
+                {
+                    ObjectListPanel.StartRename(renamed);
+                }
+
+                break;
+
             case Key.D when !control:
                 _showMeasurements = !_showMeasurements;
                 break;
@@ -675,6 +734,9 @@ public sealed class EditorApplication : IDisposable
 
     /// <summary>How far one press of a numpad arrow turns the view: Blender's fifteen degrees.</summary>
     private const float OrbitStep = 15f * (MathF.PI / 180f);
+
+    /// <summary>A drag is running that an object-level key would pull the object out from under.</summary>
+    private bool IsDragging() => _extrude!.IsBusy || _transform!.IsDragging || _session.IsStrokeActive;
 
     private void SwitchTool(EditorTool tool)
     {
@@ -867,6 +929,15 @@ public sealed class EditorApplication : IDisposable
                 EditorOverlays.GridMajor);
         }
 
+        // The object whose row the mouse is over in the outliner, so a name can be matched to a shape.
+        if (ObjectListPanel.HoveredId != 0
+            && _session.Scene.Find(ObjectListPanel.HoveredId) is { Visible: true } listed
+            && listed.TryGetLocalBounds(out Vector3 listedMin, out Vector3 listedMax))
+        {
+            lines.Transform = listed.Transform.ToMatrix();
+            lines.AddBox(listedMin, listedMax, EditorOverlays.Highlight, EditorOverlays.SelectionWidth);
+        }
+
         // Everything from here on is expressed in the focused object's own space.
         Matrix4x4 focusMatrix = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;
         lines.Transform = focusMatrix;
@@ -1056,6 +1127,11 @@ public sealed class EditorApplication : IDisposable
 
             return;
         }
+
+        // Past the guard, so the user has answered for any unsaved work — kept or thrown away, the
+        // autosave is nobody's safety net any more. A crash never reaches this line, which is what
+        // leaves the copy behind to be offered next time.
+        _autosave?.CloseCleanly();
 
         _imgui?.Dispose();
         _renderer?.Dispose();

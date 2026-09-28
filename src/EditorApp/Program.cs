@@ -16,6 +16,8 @@ CrashLog.Install();
 // --stress[=halfExtent]   measures build, mesh, greedy and file times on a large level and exits.
 // --shading=lit|unlit     which shading mode to start in. Mainly so a screenshot run can capture
 //                         either one, since a shading change is only ever visible in a picture.
+// <path>.vxlevel          opens that level instead of the starter cube — what double-clicking a
+//                         level in Explorer passes. --level=<path> does the same.
 // --view=front|back|right|left|top|bottom
 //                         start looking along an axis, in orthographic — for the same reason.
 int smokeFrames = 0;
@@ -55,6 +57,11 @@ foreach (string argument in args)
     {
         levelPath = argument["--level=".Length..];
     }
+    else if (!argument.StartsWith("--", StringComparison.Ordinal)
+        && argument.EndsWith(EditorApp.Core.Project.VxLevelFile.Extension, StringComparison.OrdinalIgnoreCase))
+    {
+        levelPath = argument;
+    }
     else if (argument.StartsWith("--screenshot=", StringComparison.Ordinal))
     {
         screenshotPath = argument["--screenshot=".Length..];
@@ -93,6 +100,6 @@ if (exportDirectory is not null)
     return HeadlessExport.Run(exportDirectory, levelPath);
 }
 
-using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit, startView);
+using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit, startView, levelPath);
 application.Run();
 return 0;

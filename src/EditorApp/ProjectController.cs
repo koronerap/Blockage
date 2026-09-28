@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Project;
@@ -20,11 +21,33 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
     private readonly FileBrowserDialog _browser = new();
 
+    private const string RecoveryPopupId = "Recover unsaved work###recovery";
+
     private Action? _pendingAction;
     private string _pendingDescription = string.Empty;
     private bool _shouldOpenConfirm;
 
+    private RecoveryEntry? _offer;
+    private int _moreWaiting;
+    private bool _shouldOpenRecovery;
+
+    /// <summary>
+    /// Keeps unsaved work in the recovery folder. Set by the host; left null for a smoke or
+    /// screenshot run, which must neither write the user's recovery folder nor stop at a question
+    /// about what is in it.
+    /// </summary>
+    public AutosaveController? Autosave { get; set; }
+
+    /// <summary>
+    /// Whether an earlier session left autosaved work behind. Remembered rather than asked every
+    /// frame, since asking means reading the disk; refreshed whenever the answer can have changed.
+    /// </summary>
+    public bool CanRecover { get; private set; }
+
     public RecentFiles Recent { get; } = new();
+
+    /// <summary>Whether opening and saving add to the recent-files list. Off for smoke and screenshot runs.</summary>
+    public bool RemembersRecent { get; set; } = true;
 
     /// <summary>Last outcome, shown in the status line.</summary>
     public string StatusMessage { get; private set; } = string.Empty;
@@ -101,7 +124,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             VoxelScene scene = VxLevelFile.LoadScene(path);
             session.ReplaceScene(scene, path);
             onWorldReplaced();
-            Recent.Add(path);
+            Remember(path);
             Report(
                 $"Opened {Path.GetFileName(path)} - {scene.SolidCount:N0} voxels in {scene.Objects.Count} object(s).",
                 isError: false);
@@ -111,7 +134,11 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         // ways a stored format can surprise its reader is not one worth betting the session on.
         catch (Exception exception)
         {
-            Recent.Remove(path);
+            if (RemembersRecent)
+            {
+                Recent.Remove(path);
+            }
+
             Report($"Could not open {Path.GetFileName(path)}: {exception.Message}", isError: true);
             CrashLog.Record($"opening {path}", exception);
         }
@@ -124,7 +151,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             VxLevelFile.Save(session.Scene, path);
             session.ProjectPath = path;
             session.HasUnsavedChanges = false;
-            Recent.Add(path);
+            Remember(path);
             Report($"Saved {Path.GetFileName(path)}.", isError: false);
         }
         catch (Exception exception)
@@ -133,6 +160,48 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             CrashLog.Record($"saving {path}", exception);
         }
     }
+
+    /// <summary>Offers the newest autosave an earlier session left behind, if there is one.</summary>
+    public void OfferRecovery()
+    {
+        IReadOnlyList<RecoveryEntry> found = Autosave?.FindAbandoned() ?? [];
+        CanRecover = found.Count > 0;
+
+        if (found.Count == 0)
+        {
+            _offer = null;
+            return;
+        }
+
+        _offer = found[0];
+        _moreWaiting = found.Count - 1;
+        _shouldOpenRecovery = true;
+    }
+
+    /// <summary>
+    /// Opens an abandoned autosave in place of the current level. It comes back unsaved even when it
+    /// knows its project's path — the file at that path is older than what was recovered — and the
+    /// copy becomes this session's own autosave, so a second crash straight away loses nothing.
+    /// </summary>
+    public void Recover(RecoveryEntry entry) => GuardUnsaved("recover the autosaved work", () =>
+    {
+        try
+        {
+            VoxelScene scene = VxLevelFile.LoadScene(entry.LevelPath);
+            session.ReplaceScene(scene, entry.ProjectPath);
+            session.HasUnsavedChanges = true;
+            onWorldReplaced();
+            Autosave?.Adopt(entry);
+            Report($"Recovered {entry.ProjectName} - save it to keep it.", isError: false);
+        }
+        catch (Exception exception)
+        {
+            Report($"Could not recover {entry.ProjectName}: {exception.Message}", isError: true);
+            CrashLog.Record($"recovering {entry.LevelPath}", exception);
+        }
+
+        CanRecover = Autosave?.FindAbandoned().Count > 0;
+    });
 
     /// <summary>True while the discard prompt is waiting for an answer.</summary>
     public bool IsAwaitingConfirmation => _pendingAction is not null;
@@ -174,7 +243,83 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         }
 
         DrawConfirmPopup();
+        DrawRecoveryPopup();
         _browser.Draw();
+    }
+
+    private void DrawRecoveryPopup()
+    {
+        if (_shouldOpenRecovery)
+        {
+            ImGui.OpenPopup(RecoveryPopupId);
+            _shouldOpenRecovery = false;
+        }
+
+        if (_offer is not { } offer)
+        {
+            return;
+        }
+
+        bool open = true;
+        if (!ImGui.BeginPopupModal(RecoveryPopupId, ref open, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+        {
+            return;
+        }
+
+        string when = offer.SavedUtc.ToLocalTime().ToString("d MMM, HH:mm", CultureInfo.InvariantCulture);
+
+        ImGui.Text("Blockage did not close properly last time.");
+        ImGui.Text($"Unsaved work on {offer.ProjectName} was autosaved at {when}.");
+        ImGui.TextDisabled(offer.ProjectPath ?? "It had never been saved.");
+
+        if (_moreWaiting > 0)
+        {
+            ImGui.TextDisabled($"{_moreWaiting} older autosave(s) are waiting as well.");
+        }
+
+        ImGui.Spacing();
+
+        if (ImGui.Button("Recover", Theme.ModalButton))
+        {
+            ImGui.CloseCurrentPopup();
+            _offer = null;
+            Recover(offer);
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Delete it", Theme.ModalButton))
+        {
+            ImGui.CloseCurrentPopup();
+            _offer = null;
+            Autosave?.Discard(offer);
+
+            // The next one, if there is one, rather than leaving it to be found by accident.
+            OfferRecovery();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Throws the autosaved work away for good.");
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Decide later", Theme.ModalButton))
+        {
+            ImGui.CloseCurrentPopup();
+            _offer = null;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Keeps it. File > Recover Unsaved Work brings this back.");
+        }
+
+        ImGui.EndPopup();
+
+        if (!open)
+        {
+            _offer = null;
+        }
     }
 
     private void DrawConfirmPopup()
@@ -222,6 +367,14 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         if (!open)
         {
             CancelPending();
+        }
+    }
+
+    private void Remember(string path)
+    {
+        if (RemembersRecent)
+        {
+            Recent.Add(path);
         }
     }
 

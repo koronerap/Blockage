@@ -73,6 +73,22 @@ internal sealed class ImGuiHarness : IDisposable
         Frame(draw, at, pressed: false, inWindow);
     }
 
+    /// <summary>Types text into whatever has keyboard focus, in one frame.</summary>
+    public void Type(string text, Action draw)
+    {
+        ImGui.GetIO().AddInputCharactersUTF8(text);
+        Frame(draw);
+    }
+
+    /// <summary>A key pressed on one frame and released on the next.</summary>
+    public void Press(ImGuiKey key, Action draw)
+    {
+        ImGui.GetIO().AddKeyEvent(key, true);
+        Frame(draw);
+        ImGui.GetIO().AddKeyEvent(key, false);
+        Frame(draw);
+    }
+
     /// <summary>Press at one point, move to another with the button held, let go there.</summary>
     public void Drag(Vector2 from, Vector2 to, Action draw, bool inWindow = true)
     {

@@ -1,3 +1,4 @@
+using System.Numerics;
 using EditorApp.Core.Commands;
 using EditorApp.Core.Raycast;
 using EditorApp.Core.Scene;
@@ -107,7 +108,26 @@ public sealed class EditorSession
     public PatternSource? Pattern { get; set; }
 
     /// <summary>True when the world has changed since the last save.</summary>
-    public bool HasUnsavedChanges { get; set; }
+    public bool HasUnsavedChanges
+    {
+        get => _hasUnsavedChanges;
+        set
+        {
+            _hasUnsavedChanges = value;
+            if (value)
+            {
+                Revision++;
+            }
+        }
+    }
+
+    private bool _hasUnsavedChanges;
+
+    /// <summary>
+    /// Goes up by one every time the level is marked changed. Whatever keeps a copy of its own —
+    /// autosave — compares this rather than the level itself to know whether its copy is stale.
+    /// </summary>
+    public long Revision { get; private set; }
 
     /// <summary>Path of the open project, or null for an unsaved one.</summary>
     public string? ProjectPath { get; set; }
@@ -428,6 +448,201 @@ public sealed class EditorSession
 
         HasUnsavedChanges = true;
         return true;
+    }
+
+    // ---- Objects as a whole ------------------------------------------------------------------
+
+    /// <summary>
+    /// A deliberate choice of object — from a list, not the cursor passing over. Unlike
+    /// <see cref="TryFocus"/>, a held Extrude selection does not pin focus against it: the selection
+    /// belongs to the object being left, and is dropped. Still refused mid-gesture.
+    /// </summary>
+    public bool ChooseObject(int objectId)
+    {
+        if (objectId != Scene.FocusId && !IsStrokeActive && !IsExtruding)
+        {
+            ClearSelection();
+        }
+
+        return TryFocus(objectId);
+    }
+
+    /// <summary>
+    /// Renames an object. Not an undo step — a name is not part of what the voxels are, and the
+    /// phone treats it the same way — but it is saved, so the level counts as changed. Refused for a
+    /// blank name.
+    /// </summary>
+    public bool RenameObject(int objectId, string name)
+    {
+        string trimmed = name.Trim();
+        if (trimmed.Length == 0 || Scene.Find(objectId) is not { } target)
+        {
+            return false;
+        }
+
+        if (target.Name != trimmed)
+        {
+            target.Name = trimmed;
+            HasUnsavedChanges = true;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Shows or hides an object. Hidden objects are not drawn, picked or exported, so the state is
+    /// saved with the level; but it is a way of looking rather than an edit to the voxels, so it goes
+    /// around the undo stack, as it does on the phone.
+    ///
+    /// Hiding the focused object moves focus to the nearest visible one: every tool acts on the
+    /// focused object, and a gizmo floating over nothing is no use to anybody.
+    /// </summary>
+    public bool SetObjectVisible(int objectId, bool visible)
+    {
+        if (Scene.Find(objectId) is not { } target || target.Visible == visible)
+        {
+            return false;
+        }
+
+        target.Visible = visible;
+
+        if (!visible && target.Id == Scene.FocusId)
+        {
+            EndStroke();
+            CancelExtrude();
+            Selection = null;
+
+            if (NearestVisible(Scene.IndexOf(target.Id)) is { } next)
+            {
+                Scene.SetFocus(next.Id);
+            }
+        }
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>Shows every hidden object. Returns how many there were.</summary>
+    public int ShowAllObjects()
+    {
+        int shown = 0;
+        foreach (VoxelObject o in Scene.Objects)
+        {
+            if (!o.Visible)
+            {
+                o.Visible = true;
+                shown++;
+            }
+        }
+
+        if (shown > 0)
+        {
+            HasUnsavedChanges = true;
+        }
+
+        return shown;
+    }
+
+    /// <summary>The visible object nearest a place in the list, looking down it first.</summary>
+    private VoxelObject? NearestVisible(int index)
+    {
+        IReadOnlyList<VoxelObject> objects = Scene.Objects;
+
+        for (int step = 1; step < objects.Count; step++)
+        {
+            if (index + step < objects.Count && objects[index + step].Visible)
+            {
+                return objects[index + step];
+            }
+
+            if (index - step >= 0 && objects[index - step].Visible)
+            {
+                return objects[index - step];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Copies the focused object — voxels, painted faces, turn — and places the copy beside it, one
+    /// voxel clear, on the side <paramref name="towards"/> points most along. The host passes the
+    /// camera's right, so the copy turns up to the right of the original on screen rather than on
+    /// top of it, where it would look as though nothing had happened.
+    ///
+    /// The copy is focused and goes straight after the original in the list. One undo step.
+    /// </summary>
+    public VoxelObject? DuplicateFocus(Vector3 towards)
+    {
+        if (Scene.Focus is not { IsEmpty: false } source)
+        {
+            return null;
+        }
+
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        ObjectTransform placed = source.Transform with
+        {
+            Position = source.Transform.Position + DuplicateOffset(source, towards),
+        };
+
+        var command = new CreateObjectCommand(
+            Scene,
+            source.Grid.Copy(),
+            placed,
+            DuplicateName(source.Name, Scene.Objects.Select(o => o.Name)),
+            $"Duplicate {source.Name}",
+            Scene.IndexOf(source.Id) + 1);
+
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        return command.Created;
+    }
+
+    /// <summary>
+    /// Where a copy goes relative to its original: along X or Z, whichever the direction leans on
+    /// more, by the object's world width on that axis plus one voxel. Whole voxels, so a copy of an
+    /// object on the grid stays on it. Never up or down — the camera's right never points that way,
+    /// and a copy stacked on top is rarely where it is wanted.
+    /// </summary>
+    public static Vector3 DuplicateOffset(VoxelObject source, Vector3 towards)
+    {
+        Vector3 size = source.TryGetWorldBounds(out Vector3 min, out Vector3 max) ? max - min : Vector3.One;
+
+        bool alongX = MathF.Abs(towards.X) >= MathF.Abs(towards.Z);
+        float sign = (alongX ? towards.X : towards.Z) >= 0f ? 1f : -1f;
+        float step = MathF.Ceiling((alongX ? size.X : size.Z) - 1e-3f) + 1f;
+
+        return alongX ? new Vector3(sign * step, 0f, 0f) : new Vector3(0f, 0f, sign * step);
+    }
+
+    /// <summary>
+    /// Blender's naming: "Tree" becomes "Tree.001", and "Tree.001" becomes "Tree.002" rather than
+    /// "Tree.001.001" — the first number not already taken.
+    /// </summary>
+    public static string DuplicateName(string name, IEnumerable<string> taken)
+    {
+        var used = new HashSet<string>(taken, StringComparer.Ordinal);
+
+        string stem = name;
+        int dot = name.LastIndexOf('.');
+        if (dot > 0 && name.Length - dot - 1 >= 3 && name.AsSpan(dot + 1).IndexOfAnyExceptInRange('0', '9') < 0)
+        {
+            stem = name[..dot];
+        }
+
+        for (int number = 1; ; number++)
+        {
+            string candidate = $"{stem}.{number:000}";
+            if (!used.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
     }
 
     // ---- Loop Cut ----------------------------------------------------------------------------

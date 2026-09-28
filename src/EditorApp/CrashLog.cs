@@ -22,6 +22,12 @@ public static class CrashLog
         "EditorApp",
         "crash.log");
 
+    /// <summary>
+    /// Raised once something has escaped and the process is going down — the last moment anything
+    /// can still be written. Autosave uses it to put the unsaved level in the recovery folder.
+    /// </summary>
+    public static event Action? Crashing;
+
     /// <summary>Routes anything that escapes the application here, then to the console.</summary>
     public static void Install()
     {
@@ -31,6 +37,16 @@ public static class CrashLog
             {
                 Record("unhandled", exception);
                 Console.Error.WriteLine($"Blockage crashed. Details written to {Path}");
+            }
+
+            try
+            {
+                Crashing?.Invoke();
+            }
+            catch (Exception failure)
+            {
+                // Whatever goes wrong now, the original failure is already on record.
+                Record("rescuing work while crashing", failure);
             }
         };
 

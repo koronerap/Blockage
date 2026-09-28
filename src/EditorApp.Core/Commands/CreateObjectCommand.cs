@@ -6,18 +6,21 @@ namespace EditorApp.Core.Commands;
 /// <summary>
 /// Adds a new object to the scene, reversibly. Extrude's Create sub-mode uses it: the voxels it
 /// pulled out become a separate object instead of joining the one they came from, which is the
-/// "extrude and loop cut in one motion" the spec describes.
+/// "extrude and loop cut in one motion" the spec describes. Duplicating uses it too, placing the
+/// copy right after the original in the list.
 /// </summary>
 public sealed class CreateObjectCommand(
     VoxelScene scene,
     VoxelWorld grid,
     ObjectTransform transform,
-    string name) : ICommand
+    string name,
+    string commandName = "Create object",
+    int? insertAt = null) : ICommand
 {
     private VoxelObject? _created;
     private int _previousFocusId;
 
-    public string Name => "Create object";
+    public string Name => commandName;
 
     public int RetainedCells { get; } = grid.SolidCount;
 
@@ -29,11 +32,11 @@ public sealed class CreateObjectCommand(
 
         if (_created is null)
         {
-            _created = scene.Add(grid, transform, name);
+            _created = scene.Add(grid, transform, name, insertAt);
         }
         else
         {
-            scene.Restore(_created);
+            scene.Restore(_created, insertAt);
         }
 
         scene.SetFocus(_created.Id);

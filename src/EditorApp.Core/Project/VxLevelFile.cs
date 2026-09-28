@@ -27,13 +27,15 @@ public static class VxLevelFile
 {
     /// <summary>
     /// 1: a single grid. 2: objects with transforms. 3: per-face colours. 4: voxel size.
+    /// 5: hidden objects.
     ///
     /// Version 4 is a bump for a field an older build would simply not see. That is exactly why it
     /// is one: it sets the scale of everything exported from the file, so a build that ignored it
     /// would write a correct-looking mesh at the wrong size rather than fail. Refusing to open the
-    /// file says so out loud.
+    /// file says so out loud. Version 5 is the same case: hidden objects are left out of an export,
+    /// and a build that did not know about hiding would quietly put them back in.
     /// </summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     public const string Extension = ".vxlevel";
 
@@ -133,6 +135,7 @@ public static class VxLevelFile
                     o.Transform.Rotation.W,
                 ],
                 Chunks = [.. coordinates.Select(c => new[] { c.X, c.Y, c.Z })],
+                Visible = o.Visible,
             });
 
             foreach (ChunkCoord coord in coordinates)
@@ -285,10 +288,12 @@ public static class VxLevelFile
         {
             foreach (LevelManifest.ObjectEntry entry in objects)
             {
-                scene.Add(
+                VoxelObject added = scene.Add(
                     ReadGrid(archive, entry.Chunks, coord => ChunkEntryName(entry.Id, coord), entry.Id),
                     ReadTransform(entry),
                     entry.Name);
+
+                added.Visible = entry.Visible;
             }
         }
         else
