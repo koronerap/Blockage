@@ -185,6 +185,11 @@ public static class MainMenu
             view.ToggleMeasurements();
         }
 
+        if (ImGui.MenuItem("Statistics", null, view.StatisticsVisible()))
+        {
+            view.ToggleStatistics();
+        }
+
         ImGui.Separator();
 
         // One checkable item, the same single switch the header carries.

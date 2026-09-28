@@ -37,7 +37,7 @@ public sealed class OutlinerTests : IDisposable
 
     public void Dispose() => _ui.Dispose();
 
-    private void Draw() => ObjectListPanel.Draw(_session, _camera);
+    private void Draw() => ObjectListPanel.Draw(_session, _camera, new Vector2(560f, 180f));
 
     private VoxelObject Named(string name) => _session.Scene.Objects.First(o => o.Name == name);
 

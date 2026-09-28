@@ -30,7 +30,8 @@ public sealed class EditorApplication : IDisposable
     private readonly PalettePanel _palettePanel = new();
     private readonly ReferencePanel _referencePanel = new();
     private readonly StatsOverlay _stats = new();
-    private readonly EditorShell _shell = new();
+    private readonly LayoutSettings _layout;
+    private readonly EditorShell _shell;
 
     /// <summary>The space the shell leaves for the 3D view, in logical window pixels.</summary>
     private ViewportRect _viewport = new(Vector2.Zero, Vector2.One);
@@ -92,6 +93,11 @@ public sealed class EditorApplication : IDisposable
     {
         _screenshotPath = screenshotPath;
         _startUnlit = startUnlit;
+
+        // A smoke or screenshot run draws the default layout, whatever the user left theirs as, and
+        // leaves their file alone.
+        _layout = smokeFrames <= 0 && screenshotPath is null ? LayoutSettings.Load(LayoutSettings.DefaultPath) : new LayoutSettings();
+        _shell = new EditorShell(_layout);
         _startView = startView;
         _startLevel = startLevel;
         _smokeFrames = screenshotPath is not null && smokeFrames <= 0 ? 10 : smokeFrames;
@@ -805,6 +811,35 @@ public sealed class EditorApplication : IDisposable
     /// <summary>How far one press of a numpad arrow turns the view: Blender's fifteen degrees.</summary>
     private const float OrbitStep = 15f * (MathF.PI / 180f);
 
+    /// <summary>
+    /// Shows the cursor ImGui asked for — the resize arrows over the sidebar's handles, the text bar
+    /// over a text field. The ImGui backend leaves the system cursor alone, so without this every
+    /// handle would look like plain window.
+    /// </summary>
+    private void UpdateCursor()
+    {
+        if (_input is null || _input.Mice.Count == 0 || _looking)
+        {
+            return;
+        }
+
+        ICursor cursor = _input.Mice[0].Cursor;
+        StandardCursor wanted = ImGui.GetMouseCursor() switch
+        {
+            ImGuiMouseCursor.ResizeEW => StandardCursor.HResize,
+            ImGuiMouseCursor.ResizeNS => StandardCursor.VResize,
+            ImGuiMouseCursor.TextInput => StandardCursor.IBeam,
+            ImGuiMouseCursor.Hand => StandardCursor.Hand,
+            _ => StandardCursor.Default,
+        };
+
+        if (cursor.Type != CursorType.Standard || cursor.StandardCursor != wanted)
+        {
+            cursor.Type = CursorType.Standard;
+            cursor.StandardCursor = wanted;
+        }
+    }
+
     /// <summary>A drag is running that an object-level key would pull the object out from under.</summary>
     private bool IsDragging() => _extrude!.IsBusy || _transform!.IsDragging || _session.IsStrokeActive;
 
@@ -930,6 +965,7 @@ public sealed class EditorApplication : IDisposable
         // The shell runs first so the viewport rectangle it leaves is known before the scene is
         // drawn into it; ImGui's own draw data is submitted afterwards, on top.
         DrawUi();
+        UpdateCursor();
 
         _renderer.SyncDirtyChunks(_session.Scene);
         _renderer.AdvanceFocusFade(_session.Scene, _lastDelta);
@@ -1193,6 +1229,8 @@ public sealed class EditorApplication : IDisposable
         ToggleGrid = () => _showGrid = !_showGrid,
         MeasurementsVisible = () => _showMeasurements,
         ToggleMeasurements = () => _showMeasurements = !_showMeasurements,
+        StatisticsVisible = () => _layout.StatisticsVisible,
+        ToggleStatistics = () => _layout.StatisticsVisible = !_layout.StatisticsVisible,
         Lighting = _renderer!.Lighting,
     };
 
@@ -1250,6 +1288,11 @@ public sealed class EditorApplication : IDisposable
         // autosave is nobody's safety net any more. A crash never reaches this line, which is what
         // leaves the copy behind to be offered next time.
         _autosave?.CloseCleanly();
+
+        if (_smokeFrames <= 0)
+        {
+            _layout.Save(LayoutSettings.DefaultPath);
+        }
 
         _imgui?.Dispose();
         _renderer?.Dispose();

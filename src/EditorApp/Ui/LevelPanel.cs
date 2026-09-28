@@ -24,6 +24,7 @@ public static class LevelPanel
 
         Vector3 extent = max - min;
         ImGui.TextDisabled($"Level  {extent.X:0.###} x {extent.Y:0.###} x {extent.Z:0.###} units");
+        ImGui.TextDisabled($"{scene.Objects.Count} object(s)  ·  {scene.SolidCount:N0} voxels");
 
         // What the ground grid is measuring, so the cells the model sits on can be read as a number.
         float cell = Rendering.GroundGrid.WorldUnitsPerCell(scene.Focus?.VoxelSize ?? 1f);

@@ -32,6 +32,11 @@ public sealed class ViewActions
 
     public required Action ToggleMeasurements { get; init; }
 
+    /// <summary>The frame and mesh counters over the viewport.</summary>
+    public required Func<bool> StatisticsVisible { get; init; }
+
+    public required Action ToggleStatistics { get; init; }
+
     /// <summary>
     /// How the viewport shades the level. Handed over as the object rather than as get/set pairs:
     /// it is a small bag of settings that several controls edit directly, and wrapping each field

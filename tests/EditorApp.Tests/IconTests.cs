@@ -116,6 +116,10 @@ public class IconTests
         { nameof(Icons.LightSun), Icons.LightSun },
         { nameof(Icons.LightPoint), Icons.LightPoint },
         { nameof(Icons.LightSpot), Icons.LightSpot },
+        { nameof(Icons.ObjectTab), Icons.ObjectTab },
+        { nameof(Icons.WorldTab), Icons.WorldTab },
+        { nameof(Icons.PaletteTab), Icons.PaletteTab },
+        { nameof(Icons.ReferenceTab), Icons.ReferenceTab },
     };
 
     [Theory]

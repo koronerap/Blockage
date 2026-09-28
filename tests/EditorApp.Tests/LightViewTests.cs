@@ -204,7 +204,7 @@ public sealed class LightEditingTests : IDisposable
         SceneLight sun = session.Scene.Lights[0];
         var camera = new FlyCamera();
 
-        void Draw() => ObjectListPanel.Draw(session, camera);
+        void Draw() => ObjectListPanel.Draw(session, camera, new Vector2(560f, 180f));
 
         _ui.Frame(Draw);
         _ui.Frame(Draw);

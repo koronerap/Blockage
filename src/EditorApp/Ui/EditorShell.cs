@@ -29,14 +29,14 @@ public readonly record struct ViewportRect(Vector2 Position, Vector2 Size)
 /// <c>DockBuilder</c>, so a docked default layout could only come from a shipped ini file — a fixed
 /// shell is both simpler and more predictable.
 /// </summary>
-public sealed class EditorShell
+public sealed class EditorShell(LayoutSettings layout)
 {
-    private const float PropertiesColumnWidth = 340f;
 
     /// <summary>How far the floating tool column sits in from the viewport's corner.</summary>
     private const float ToolInset = 8f;
 
     private readonly NavigationGizmo _navigation = new();
+    private readonly Sidebar _sidebar = new(layout);
 
     private const ImGuiWindowFlags PanelFlags =
         ImGuiWindowFlags.NoTitleBar
@@ -63,10 +63,7 @@ public sealed class EditorShell
         DrawToolOptions(context, new Vector2(0f, top), new Vector2(screen.X, optionsHeight));
         top += optionsHeight;
 
-        DrawProperties(
-            context,
-            new Vector2(screen.X - PropertiesColumnWidth, top),
-            new Vector2(PropertiesColumnWidth, bottom - top));
+        float sidebarLeft = _sidebar.Draw(top, bottom, screen.X, SidebarContentFor(context));
 
         DrawStatusBar(context, new Vector2(0f, bottom), new Vector2(screen.X, statusHeight));
 
@@ -76,11 +73,10 @@ public sealed class EditorShell
 
         var viewport = new ViewportRect(
             new Vector2(0f, top),
-            new Vector2(
-                MathF.Max(screen.X - PropertiesColumnWidth, 1f),
-                MathF.Max(bottom - top, 1f)));
+            new Vector2(MathF.Max(sidebarLeft, 1f), MathF.Max(bottom - top, 1f)));
 
         _navigation.Draw(context.Camera, viewport, context.View.FrameLevel);
+        DrawStatistics(context, viewport);
 
         return viewport;
     }
@@ -210,50 +206,62 @@ public sealed class EditorShell
         ImGui.PopStyleVar(2);
     }
 
-    private void DrawProperties(ShellContext context, Vector2 position, Vector2 size)
+    /// <summary>What each part of the sidebar shows, gathered from this frame's context.</summary>
+    private static SidebarContent SidebarContentFor(ShellContext context) => new()
     {
-        BeginPanel("##properties", position, size);
-
-        // Collapsing sections rather than separate windows: one column, one scrollbar, one place to
-        // look for anything that is not the model itself.
-        if (ImGui.CollapsingHeader("Level", ImGuiTreeNodeFlags.DefaultOpen))
+        Outliner = size => ObjectListPanel.Draw(context.Session, context.Camera, size),
+        Properties = tab => DrawTab(context, tab),
+        Tab = tab => tab switch
         {
-            LevelPanel.DrawContent(context.Session);
+            // Picking a light turns the Object tab into the light's: the same place, for whatever is picked.
+            PropertiesTab.Object => context.Session.SelectedLight is { } light
+                ? (Icons.For(light.Kind), $"Light  -  {light.Name}")
+                : (Icons.ObjectTab, "Object"),
+            PropertiesTab.World => (Icons.WorldTab, "World  -  the level, its grid and its lighting"),
+            PropertiesTab.Palette => (Icons.PaletteTab, "Palette"),
+            _ => (Icons.ReferenceTab, "Reference model"),
+        },
+    };
+
+    private static void DrawTab(ShellContext context, PropertiesTab tab)
+    {
+        switch (tab)
+        {
+            case PropertiesTab.Object:
+                ObjectPropertiesPanel.DrawContent(context.Session);
+                break;
+
+            case PropertiesTab.World:
+                LevelPanel.DrawContent(context.Session);
+                ImGui.Separator();
+                LightingPanel.DrawContent(context);
+                break;
+
+            case PropertiesTab.Palette:
+                context.Palette.DrawContent(context.Session);
+                break;
+
+            default:
+                context.Reference.DrawContent(context.Session, context.ReferenceRenderer);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The frame and mesh counters, over the bottom-left of the viewport where Blender puts its own —
+    /// numbers to glance at while working, not a section to scroll to.
+    /// </summary>
+    private static void DrawStatistics(ShellContext context, ViewportRect viewport)
+    {
+        if (!context.View.StatisticsVisible())
+        {
+            return;
         }
 
-        // A rename asked for by key or menu has to be seen, even with the section folded away.
-        if (ObjectListPanel.WantsToBeOpen)
-        {
-            ImGui.SetNextItemOpen(true);
-        }
-
-        if (ImGui.CollapsingHeader("Outliner", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            ObjectListPanel.Draw(context.Session, context.Camera);
-            ImGui.Separator();
-            ObjectPropertiesPanel.DrawContent(context.Session);
-        }
-
-        if (ImGui.CollapsingHeader("Palette", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            context.Palette.DrawContent(context.Session);
-        }
-
-        if (ImGui.CollapsingHeader("Lighting"))
-        {
-            LightingPanel.DrawContent(context);
-        }
-
-        if (ImGui.CollapsingHeader("Reference model"))
-        {
-            context.Reference.DrawContent(context.Session, context.ReferenceRenderer);
-        }
-
-        if (ImGui.CollapsingHeader("Statistics"))
-        {
-            context.Stats.DrawContent(context.Renderer, context.Camera, context.Session);
-        }
-
+        ImGui.SetNextWindowPos(viewport.Position + new Vector2(12f, viewport.Size.Y - 12f), ImGuiCond.Always, new Vector2(0f, 1f));
+        ImGui.SetNextWindowBgAlpha(0.72f);
+        ImGui.Begin("##statistics", PanelFlags | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoInputs);
+        context.Stats.DrawContent(context.Renderer, context.Camera, context.Session);
         ImGui.End();
     }
 

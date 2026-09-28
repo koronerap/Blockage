@@ -388,6 +388,62 @@ public static class Icons
         canvas.Line(lens - new Vector2(0f, r * 0.26f), lens + new Vector2(0f, r * 0.26f), 0.8f);
     }
 
+    // ---- Properties tabs -----------------------------------------------------------------------
+
+    /// <summary>Object: a cube seen from above a corner — the thing itself.</summary>
+    public static void ObjectTab(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 top = centre + new Vector2(0f, -r * 0.9f);
+        Vector2 left = centre + new Vector2(-r * 0.8f, -r * 0.45f);
+        Vector2 right = centre + new Vector2(r * 0.8f, -r * 0.45f);
+        Vector2 middle = centre;
+        Vector2 bottomLeft = centre + new Vector2(-r * 0.8f, r * 0.45f);
+        Vector2 bottomRight = centre + new Vector2(r * 0.8f, r * 0.45f);
+        Vector2 bottom = centre + new Vector2(0f, r * 0.9f);
+
+        canvas.Polyline([top, right, middle, left, top]);
+        canvas.Line(left, bottomLeft);
+        canvas.Line(bottomLeft, bottom);
+        canvas.Line(bottom, bottomRight);
+        canvas.Line(bottomRight, right);
+        canvas.Line(middle, bottom);
+    }
+
+    /// <summary>World: a globe — everything around the objects rather than any one of them.</summary>
+    public static void WorldTab(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre, r * 0.85f);
+        Arc(canvas, centre, r * 0.85f, new Vector2(0.42f, 1f), 0f, MathF.Tau, 16);
+        canvas.Line(centre - new Vector2(r * 0.85f, 0f), centre + new Vector2(r * 0.85f, 0f), 0.8f);
+    }
+
+    /// <summary>Palette: four swatches.</summary>
+    public static void PaletteTab(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        float gap = r * 0.12f;
+        float side = r * 0.72f;
+
+        canvas.FilledRect(centre + new Vector2(-side - gap, -side - gap), centre + new Vector2(-gap, -gap), r * 0.12f);
+        canvas.Rect(centre + new Vector2(gap, -side - gap), centre + new Vector2(side + gap, -gap), r * 0.12f);
+        canvas.Rect(centre + new Vector2(-side - gap, gap), centre + new Vector2(-gap, side + gap), r * 0.12f);
+        canvas.FilledRect(centre + new Vector2(gap, gap), centre + new Vector2(side + gap, side + gap), r * 0.12f);
+    }
+
+    /// <summary>Reference: a picture in a frame — a guide to build against, not something built.</summary>
+    public static void ReferenceTab(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r * 0.9f, r * 0.72f), centre + new Vector2(r * 0.9f, r * 0.72f), r * 0.1f);
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.7f, r * 0.5f),
+            centre + new Vector2(-r * 0.2f, -r * 0.15f),
+            centre + new Vector2(r * 0.1f, r * 0.2f),
+            centre + new Vector2(r * 0.35f, -r * 0.05f),
+            centre + new Vector2(r * 0.7f, r * 0.5f),
+        ]);
+        canvas.FilledCircle(centre + new Vector2(r * 0.45f, -r * 0.4f), r * 0.14f);
+    }
+
     // ---- Lights --------------------------------------------------------------------------------
 
     /// <summary>A sun: a disc with rays all the way round — a source, where Lit's rays on one side are light arriving.</summary>

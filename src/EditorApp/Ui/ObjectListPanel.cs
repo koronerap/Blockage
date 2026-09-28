@@ -18,9 +18,6 @@ namespace EditorApp.Ui;
 /// </summary>
 public static class ObjectListPanel
 {
-    /// <summary>Rows shown before the list scrolls, so a level of many pieces cannot push the palette off the bottom.</summary>
-    private const int MaxVisibleRows = 10;
-
     /// <summary>Between rows. Tighter than the theme's spacing: a list reads as one thing, not as separate controls.</summary>
     private const float RowGap = 2f;
 
@@ -33,11 +30,10 @@ public static class ObjectListPanel
     /// <summary>The object or light whose row the mouse is over, for the viewport to mark. 0 for none.</summary>
     public static int HoveredId { get; private set; }
 
-    /// <summary>
-    /// True while a rename has been asked for from outside the panel — F2, or the Object menu — and
-    /// the panel may be folded away. The shell opens the section so the field can be seen.
-    /// </summary>
-    public static bool WantsToBeOpen => _renameJustStarted;
+    /// <summary>Filters in the Outliner's header: a level with many lights can hide them to find its objects, and back.</summary>
+    public static bool ShowObjects { get; set; } = true;
+
+    public static bool ShowLights { get; set; } = true;
 
     public static void StartRename(VoxelObject o) => StartRename(o.Id, o.Name);
 
@@ -50,13 +46,14 @@ public static class ObjectListPanel
         _renameJustStarted = true;
     }
 
-    public static void Draw(EditorSession session, FlyCamera camera)
+    /// <summary>The Outliner's header and list, filling the space it is given; the list scrolls within it.</summary>
+    public static void Draw(EditorSession session, FlyCamera camera, Vector2 size)
     {
         HoveredId = 0;
         VoxelScene scene = session.Scene;
 
         float row = ImGui.GetFrameHeight();
-        int rows = Math.Clamp(scene.Objects.Count + scene.Lights.Count, 1, MaxVisibleRows);
+        float headerHeight = DrawHeader(session);
 
         // Focus or the picked light changed from elsewhere — a click in the viewport, a duplicate —
         // so the list follows it to wherever the row is.
@@ -67,27 +64,96 @@ public static class ObjectListPanel
 
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4f, RowGap));
 
-        if (ImGui.BeginChild("##outliner", new Vector2(-1f, (rows * (row + RowGap)) - RowGap)))
+        if (ImGui.BeginChild("##outliner", new Vector2(-1f, MathF.Max(size.Y - headerHeight, row))))
         {
-            foreach (VoxelObject o in scene.Objects.ToArray())
+            if (ShowObjects)
             {
-                ImGui.PushID(o.Id);
-                DrawObjectRow(session, camera, o, row, focusMoved);
-                ImGui.PopID();
+                foreach (VoxelObject o in scene.Objects.ToArray())
+                {
+                    ImGui.PushID(o.Id);
+                    DrawObjectRow(session, camera, o, row, focusMoved);
+                    ImGui.PopID();
+                }
             }
 
-            foreach (SceneLight light in scene.Lights.ToArray())
+            if (ShowLights)
             {
-                ImGui.PushID(light.Id);
-                DrawLightRow(session, camera, light, row, lightMoved);
-                ImGui.PopID();
+                foreach (SceneLight light in scene.Lights.ToArray())
+                {
+                    ImGui.PushID(light.Id);
+                    DrawLightRow(session, camera, light, row, lightMoved);
+                    ImGui.PopID();
+                }
             }
         }
 
         ImGui.EndChild();
         ImGui.PopStyleVar();
+    }
 
-        DrawFooter(session);
+    /// <summary>
+    /// One slim row: the title, and on the right the filters, "show everything" when anything is
+    /// hidden, and adding a light. Returns how much height it took.
+    /// </summary>
+    private static float DrawHeader(EditorSession session)
+    {
+        float start = ImGui.GetCursorPosY();
+        float button = ImGui.GetFrameHeight() - 4f;
+        float spacing = 2f;
+
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled("Outliner");
+
+        bool anyHidden = session.Scene.Objects.Any(o => !o.Visible) || session.Scene.Lights.Any(l => !l.Visible);
+        int buttons = anyHidden ? 4 : 3;
+        float width = (buttons * button) + ((buttons - 1) * spacing);
+
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - width);
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(spacing, 0f));
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+
+        if (anyHidden)
+        {
+            if (IconButton.Draw("show-all", Icons.Eye, active: false, "Show everything hidden  (Alt+H)", button))
+            {
+                session.ShowAllObjects();
+                foreach (SceneLight light in session.Scene.Lights)
+                {
+                    session.SetLightVisible(light.Id, true);
+                }
+            }
+
+            ImGui.SameLine();
+        }
+
+        // Lit only while filtering: the ordinary state, everything listed, should not look like a setting.
+        if (IconButton.Draw("filter-objects", Icons.ObjectTab, !ShowObjects, ShowObjects ? "Objects shown - click to hide them here" : "Objects hidden here - click to list them", button))
+        {
+            ShowObjects = !ShowObjects;
+        }
+
+        ImGui.SameLine();
+        if (IconButton.Draw("filter-lights", Icons.LightPoint, !ShowLights, ShowLights ? "Lights shown - click to hide them here" : "Lights hidden here - click to list them", button))
+        {
+            ShowLights = !ShowLights;
+        }
+
+        ImGui.SameLine();
+        if (IconButton.Draw("add-light", Icons.Plus, active: false, "Add a light", button, hasAlternatives: true))
+        {
+            ImGui.OpenPopup("##outliner-add");
+        }
+
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
+
+        if (ImGui.BeginPopup("##outliner-add"))
+        {
+            LightMenu.DrawItems(session);
+            ImGui.EndPopup();
+        }
+
+        return ImGui.GetCursorPosY() - start;
     }
 
     private static void DrawObjectRow(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved)
@@ -369,31 +435,6 @@ public static class ObjectListPanel
             }
 
             _renamingId = 0;
-        }
-    }
-
-    private static void DrawFooter(EditorSession session)
-    {
-        VoxelScene scene = session.Scene;
-        int hidden = scene.Objects.Count(o => !o.Visible);
-
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled(hidden > 0
-            ? $"{scene.Objects.Count} objects, {hidden} hidden · {scene.SolidCount:N0} voxels"
-            : $"{scene.Objects.Count} object(s) · {scene.SolidCount:N0} voxels");
-
-        if (hidden > 0)
-        {
-            ImGui.SameLine();
-            if (ImGui.SmallButton("Show all"))
-            {
-                session.ShowAllObjects();
-            }
-
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Alt+H");
-            }
         }
     }
 }
