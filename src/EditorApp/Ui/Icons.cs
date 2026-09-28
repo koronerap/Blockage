@@ -388,6 +388,25 @@ public static class Icons
         canvas.Line(lens - new Vector2(0f, r * 0.26f), lens + new Vector2(0f, r * 0.26f), 0.8f);
     }
 
+    // ---- Header --------------------------------------------------------------------------------
+
+    /// <summary>Overlays: two circles over each other, Blender's mark for what is drawn over the scene.</summary>
+    public static void Overlays(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre - new Vector2(r * 0.28f, 0f), r * 0.58f);
+        canvas.Circle(centre + new Vector2(r * 0.28f, 0f), r * 0.58f);
+    }
+
+    /// <summary>New object: a cube with a plus — what extruding into a new object makes.</summary>
+    public static void NewObject(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        ObjectTab(canvas, centre + new Vector2(-r * 0.18f, r * 0.14f), r * 0.78f);
+
+        Vector2 plus = centre + new Vector2(r * 0.62f, -r * 0.62f);
+        canvas.Line(plus - new Vector2(r * 0.3f, 0f), plus + new Vector2(r * 0.3f, 0f));
+        canvas.Line(plus - new Vector2(0f, r * 0.3f), plus + new Vector2(0f, r * 0.3f));
+    }
+
     // ---- Properties tabs -----------------------------------------------------------------------
 
     /// <summary>Object: a cube seen from above a corner — the thing itself.</summary>

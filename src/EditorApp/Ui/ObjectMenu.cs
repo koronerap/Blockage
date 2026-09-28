@@ -51,13 +51,16 @@ public static class ObjectMenu
     }
 
     /// <summary>Pastes as a new object and hands it to the Transform tool, the same as a duplicate.</summary>
-    public static void Paste(EditorSession session, FlyCamera camera)
+    public static VoxelObject? Paste(EditorSession session, FlyCamera camera)
     {
-        if (session.Paste(camera.Right) is not null)
+        if (session.Paste(camera.Right) is not { } pasted)
         {
-            session.ActiveTool = EditorTool.Transform;
-            session.TransformMode = TransformMode.Move;
+            return null;
         }
+
+        session.ActiveTool = EditorTool.Transform;
+        session.TransformMode = TransformMode.Move;
+        return pasted;
     }
 
     /// <summary>
@@ -81,7 +84,7 @@ public static class ObjectMenu
             string? problem = session.JoinProblem(source.Id, target.Id);
             if (ImGui.MenuItem($"{target.Name}##join-{target.Id}", null, false, problem is null))
             {
-                session.JoinInto(source.Id, target.Id);
+                ClipboardActions.Join(session, source, target, ReportLog.Shared);
             }
 
             if (problem is not null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))

@@ -48,6 +48,8 @@ public sealed class EditorApplication : IDisposable
 
     private Vector2 _previousMousePosition;
     private bool _looking;
+    private bool _showLightIcons = true;
+    private bool _showMirrorPlanes = true;
     private MiddleDrag _middleDrag;
     private bool _middleWasDown;
     private bool _confirmedClose;
@@ -675,7 +677,7 @@ public sealed class EditorApplication : IDisposable
             case Key.C when control:
                 if (!IsDragging())
                 {
-                    _session.Copy();
+                    ClipboardActions.Copy(_session, ReportLog.Shared);
                 }
 
                 break;
@@ -683,7 +685,7 @@ public sealed class EditorApplication : IDisposable
             case Key.X when control:
                 if (!IsDragging())
                 {
-                    _session.Cut();
+                    ClipboardActions.Cut(_session, ReportLog.Shared);
                 }
 
                 break;
@@ -691,7 +693,7 @@ public sealed class EditorApplication : IDisposable
             case Key.V when control:
                 if (!IsDragging())
                 {
-                    ObjectMenu.Paste(_session, _camera);
+                    ClipboardActions.Paste(_session, _camera, ReportLog.Shared);
                 }
 
                 break;
@@ -1067,9 +1069,15 @@ public sealed class EditorApplication : IDisposable
                 EditorOverlays.GridMajor);
         }
 
-        // The lights, over everything: an icon hidden inside a wall could not be picked.
+        // The lights, over everything: an icon hidden inside a wall could not be picked. A picked light
+        // is drawn even with the icons switched off, so what the gizmo is on can still be seen.
         foreach (SceneLight light in _session.Scene.Lights)
         {
+            if (!_showLightIcons && light.Id != _session.SelectedLightId)
+            {
+                continue;
+            }
+
             bool marked = light.Id == _session.SelectedLightId || light.Id == ObjectListPanel.HoveredId;
             EditorOverlays.AddLight(gizmos, light, _camera, marked);
         }
@@ -1102,7 +1110,10 @@ public sealed class EditorApplication : IDisposable
         }
 
         // Over the model, not into it: a plane through the middle of the model is mostly inside it.
-        EditorOverlays.AddMirrorPlanes(gizmos, _session);
+        if (_showMirrorPlanes)
+        {
+            EditorOverlays.AddMirrorPlanes(gizmos, _session);
+        }
 
         if (_session.ActiveTool == EditorTool.Extrude)
         {
@@ -1231,6 +1242,10 @@ public sealed class EditorApplication : IDisposable
         ToggleMeasurements = () => _showMeasurements = !_showMeasurements,
         StatisticsVisible = () => _layout.StatisticsVisible,
         ToggleStatistics = () => _layout.StatisticsVisible = !_layout.StatisticsVisible,
+        LightIconsVisible = () => _showLightIcons,
+        ToggleLightIcons = () => _showLightIcons = !_showLightIcons,
+        MirrorPlanesVisible = () => _showMirrorPlanes,
+        ToggleMirrorPlanes = () => _showMirrorPlanes = !_showMirrorPlanes,
         Lighting = _renderer!.Lighting,
     };
 

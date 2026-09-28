@@ -29,10 +29,6 @@ public static class StatusBar
             ImGui.SameLine(0f, 8f);
             ImGui.TextDisabled($"· {hit.Face}");
         }
-        else
-        {
-            ImGui.TextDisabled("-");
-        }
 
         // What is selected, and how big it is. The cursor's own coordinates answer "where am I";
         // this answers "how much have I got", which is the question a selection actually raises.
@@ -124,23 +120,37 @@ public static class StatusBar
         }
     }
 
+    /// <summary>
+    /// The latest report, at the right-hand end, fading out when its time is up. The frame and mesh
+    /// counters that used to sit here are in the Statistics overlay.
+    /// </summary>
     private static void DrawRightAligned(ShellContext context)
     {
-        float fps = context.FrameSeconds > 0f ? 1f / context.FrameSeconds : 0f;
-        string text = $"{context.Renderer.VisibleChunks} chunks · {context.Renderer.DrawnTriangles:N0} tris · {fps:0} fps";
+        _ = context;
+        ReportLog reports = ReportLog.Shared;
+        if (reports.Current is not { } report)
+        {
+            return;
+        }
 
-        float width = ImGui.CalcTextSize(text).X;
+        float width = ImGui.CalcTextSize(report.Text).X;
         float x = ImGui.GetWindowWidth() - width - ImGui.GetStyle().WindowPadding.X;
 
-        // On a narrow window the readouts are worth more than the counters: drop the counters rather
-        // than print them over the top.
+        // On a narrow window the readouts win: a report that would print over them waits its turn.
         float used = ImGui.GetItemRectMax().X - ImGui.GetWindowPos().X;
         if (x < used + 20f)
         {
             return;
         }
 
+        Vector4 colour = report.Kind switch
+        {
+            ReportKind.Error => Theme.Danger,
+            ReportKind.Warning => Theme.Highlight,
+            _ => Theme.Text with { W = 0.8f },
+        };
+
         ImGui.SameLine(x);
-        ImGui.TextDisabled(text);
+        ImGui.TextColored(colour with { W = colour.W * reports.Opacity }, report.Text);
     }
 }

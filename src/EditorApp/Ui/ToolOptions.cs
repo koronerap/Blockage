@@ -1,15 +1,22 @@
+using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Voxels;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
 
 /// <summary>
-/// The header strip: the active tool's own settings laid out horizontally, and nothing belonging to
-/// any other tool. Controls that do not apply are absent rather than dimmed, so the strip is always
-/// short enough to read at a glance.
+/// The header strip: the settings of the tool in hand that are reached for while working, as icons
+/// and small fields, and nothing belonging to any other tool. Everything else — and every setting
+/// with its name spelled out — is in the Tool tab.
+///
+/// No sentences. How to use the tool is in the hint strip along the bottom, which changes with the
+/// keys held; saying it again up here only pushed the controls apart and crowded the right-hand end.
 /// </summary>
 public static class ToolOptions
 {
+    private const float Gap = 14f;
+
     public static void Draw(EditorSession session)
     {
         switch (session.ActiveTool)
@@ -24,16 +31,6 @@ public static class ToolOptions
 
             case EditorTool.Paint:
                 DrawPaint(session);
-                break;
-
-            case EditorTool.LoopCut:
-                ImGui.AlignTextToFramePadding();
-                ImGui.TextDisabled("Hover the model to preview a cut plane, click to split it in two.");
-                break;
-
-            default:
-                ImGui.AlignTextToFramePadding();
-                ImGui.TextDisabled("Camera only. Hold the right mouse button to look, WASD/QE to fly.");
                 break;
         }
     }
@@ -55,15 +52,15 @@ public static class ToolOptions
                 : TransformMode.Move;
         }
 
-        ImGui.SameLine(0f, 8f);
+        ImGui.SameLine(0f, 4f);
 
         // The edge hinge a rotation turns about is always the object's own, so the choice has
         // nothing to say while rotating.
         ImGui.BeginDisabled(session.TransformMode != TransformMode.Move);
         if (IconButton.Toggle(
                 "transform-space",
-                (Icons.Global, "Global space"),
-                (Icons.Local, "Local space"),
+                (Icons.Global, "Global axes"),
+                (Icons.Local, "Local axes"),
                 session.TransformSpace == TransformSpace.Local,
                 "X",
                 size))
@@ -74,63 +71,125 @@ public static class ToolOptions
         }
 
         ImGui.EndDisabled();
-
-        ImGui.SameLine(0f, 18f);
-        ImGui.AlignTextToFramePadding();
-        ImGui.TextDisabled("Snap on - hold Shift for free movement");
     }
 
     private static void DrawExtrude(EditorSession session)
     {
+        float size = ImGui.GetFrameHeight();
+
         if (IconButton.Toggle(
                 "extrude-select",
                 (Icons.BoxSelect, "Box select"),
                 (Icons.FaceSelect, "Whole face"),
                 session.ExtrudeSelectionMode == ExtrudeSelectionMode.Face,
                 "F",
-                ImGui.GetFrameHeight()))
+                size))
         {
             session.ExtrudeSelectionMode = session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box
                 ? ExtrudeSelectionMode.Face
                 : ExtrudeSelectionMode.Box;
         }
 
-        ImGui.SameLine(0f, 18f);
+        ImGui.SameLine(0f, 4f);
+
+        // A switch that stays lit while on: pulled voxels go into an object of their own.
+        if (IconButton.Draw(
+                "extrude-creates",
+                Icons.NewObject,
+                session.ExtrudeCreatesObject,
+                session.ExtrudeCreatesObject
+                    ? "Pulling out a new object  (X)\nClick to extrude into this one instead"
+                    : "Extruding into this object  (X)\nClick to pull out a new object instead",
+                size))
+        {
+            session.ExtrudeCreatesObject = !session.ExtrudeCreatesObject;
+        }
+
+        ImGui.SameLine(0f, Gap);
         DrawSymmetry(session);
-        ImGui.SameLine(0f, 18f);
+    }
 
-        bool creates = session.ExtrudeCreatesObject;
-        if (ImGui.Checkbox("New object (X)", ref creates))
-        {
-            session.ExtrudeCreatesObject = creates;
-        }
+    private static void DrawPaint(EditorSession session)
+    {
+        float size = ImGui.GetFrameHeight();
 
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Pulled voxels become a separate object instead of joining this one.");
-        }
+        IconButton.Choice(
+            "paint-mode",
+            [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill")],
+            (int)session.PaintMode,
+            "X",
+            size,
+            value => session.PaintMode = (PaintMode)value);
 
-        ImGui.SameLine(0f, 18f);
-        ImGui.AlignTextToFramePadding();
+        ImGui.SameLine(0f, 4f);
 
-        if (session.IsExtruding)
+        if (session.PaintMode == PaintMode.Brush)
         {
-            ImGui.TextColored(Theme.Highlight, $"{session.ExtrudeSteps:+0;-0} units - Enter confirms, Esc cancels");
-        }
-        else if (session.Selection is { IsEmpty: false } selection)
-        {
-            ImGui.TextDisabled($"{selection.Count} face(s) selected - drag the arrow");
+            float radius = session.BrushRadius;
+            Field("Radius", 84f);
+            if (ImGui.DragFloat("##brush-radius", ref radius, 0.1f, 0f, 12f, radius < 0.5f ? "1 face" : "%.1f", ImGuiSliderFlags.AlwaysClamp))
+            {
+                session.BrushRadius = radius;
+            }
+
+            Tooltip("Brush radius in voxels  -  Ctrl+Scroll over the model");
         }
         else
         {
-            ImGui.TextDisabled("Drag a surface to select. Shift adds, Alt subtracts.");
+            bool whole = session.BucketWholeObject;
+            if (IconButton.Draw(
+                    "bucket-whole",
+                    Icons.ObjectTab,
+                    whole,
+                    whole ? "Filling the whole object\nClick to fill only the surface under the cursor" : "Filling the surface under the cursor\nClick to fill the whole object instead",
+                    size))
+            {
+                session.BucketWholeObject = !whole;
+            }
+
+            // How far a fill spreads; a whole-object fill does not spread at all.
+            ImGui.SameLine(0f, 4f);
+            ImGui.BeginDisabled(whole);
+            Field("Match", 96f);
+            int threshold = session.BucketThreshold;
+            if (ImGui.DragInt("##bucket-threshold", ref threshold, 1f, 0, 128, threshold == 0 ? "exact" : "±%d", ImGuiSliderFlags.AlwaysClamp))
+            {
+                session.BucketThreshold = threshold;
+            }
+
+            ImGui.EndDisabled();
+            Tooltip("How close a colour has to be to be filled over");
+
+            if (session.PaintMode == PaintMode.Pattern)
+            {
+                ImGui.SameLine(0f, 4f);
+                if (ImGui.Button("Pattern..."))
+                {
+                    ShowPatternBrowser(session);
+                }
+
+                Tooltip(session.Pattern is { } pattern
+                    ? $"{pattern.Name}  {pattern.Width}×{pattern.Height}\nThe voxel clicked takes the image's top-left pixel."
+                    : "No image loaded - fills with the colour instead.");
+            }
         }
+
+        ImGui.SameLine(0f, Gap);
+        DrawSymmetry(session);
+    }
+
+    /// <summary>A small label before the next field, and the field sized to hold a number rather than stretching.</summary>
+    private static void Field(string label, float width)
+    {
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled(label);
+        ImGui.SameLine(0f, 4f);
+        ImGui.SetNextItemWidth(width);
     }
 
     /// <summary>
     /// Three switches, one per axis, lit in the axis's colour when on. The planes go through the
-    /// middle of the object when symmetry comes on and stay there; Recentre moves them to the middle
-    /// of what is there now.
+    /// middle of the object when symmetry comes on and stay there; Recentre is in the Tool tab.
     /// </summary>
     private static void DrawSymmetry(EditorSession session)
     {
@@ -140,14 +199,14 @@ public static class ToolOptions
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled("Mirror");
 
-        foreach ((Core.Voxels.Axis axis, string label, System.Numerics.Vector4 colour) in new[]
+        foreach ((Axis axis, string label, Vector4 colour) in new[]
                  {
-                     (Core.Voxels.Axis.X, "X", Theme.AxisX),
-                     (Core.Voxels.Axis.Y, "Y", Theme.AxisY),
-                     (Core.Voxels.Axis.Z, "Z", Theme.AxisZ),
+                     (Axis.X, "X", Theme.AxisX),
+                     (Axis.Y, "Y", Theme.AxisY),
+                     (Axis.Z, "Z", Theme.AxisZ),
                  })
         {
-            ImGui.SameLine(0f, 4f);
+            ImGui.SameLine(0f, 2f);
             bool on = symmetry[axis];
 
             if (on)
@@ -156,7 +215,7 @@ public static class ToolOptions
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colour with { W = 0.75f });
             }
 
-            if (ImGui.Button($"{label}##mirror-{label}", new System.Numerics.Vector2(size, size)))
+            if (ImGui.Button($"{label}##mirror-{label}", new Vector2(size, size)))
             {
                 symmetry[axis] = !on;
             }
@@ -166,91 +225,19 @@ public static class ToolOptions
                 ImGui.PopStyleColor(2);
             }
 
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip($"Mirror across {label}: every edit is repeated on the other side of the {label} plane.");
-            }
-        }
-
-        if (symmetry.IsOn && session.Scene.Focus is { } focus)
-        {
-            ImGui.SameLine(0f, 4f);
-            if (ImGui.Button("Recentre##mirror"))
-            {
-                symmetry.Recentre(focus);
-            }
-
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Move the planes to the middle of the object as it is now.");
-            }
+            Tooltip($"Mirror across {label}: every edit is repeated on the other side of the {label} plane.");
         }
     }
 
-    private static void DrawPaint(EditorSession session)
+    private static void Tooltip(string text)
     {
-        IconButton.Choice(
-            "paint-mode",
-            [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill")],
-            (int)session.PaintMode,
-            "X",
-            ImGui.GetFrameHeight(),
-            value => session.PaintMode = (PaintMode)value);
-
-        ImGui.SameLine(0f, 18f);
-        DrawSymmetry(session);
-        ImGui.SameLine(0f, 18f);
-
-        if (session.PaintMode == PaintMode.Bucket)
+        if (ImGui.IsItemHovered())
         {
-            bool whole = session.BucketWholeObject;
-            if (ImGui.Checkbox("Whole object", ref whole))
-            {
-                session.BucketWholeObject = whole;
-            }
-
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip(
-                    "Recolour every voxel of the object instead of the surface under the "
-                    + "cursor, including faces that are not exposed yet.");
-            }
-
-            // The threshold decides how far a surface fill spreads, and a whole-object fill does not
-            // spread at all, so it has nothing left to say.
-            ImGui.BeginDisabled(whole);
-            ImGui.SameLine(0f, 18f);
-
-            int threshold = session.BucketThreshold;
-            ImGui.SetNextItemWidth(160f);
-            if (ImGui.DragInt("Colour match", ref threshold, 1f, 0, 128, threshold == 0 ? "exact" : "within %d"))
-            {
-                session.BucketThreshold = threshold;
-            }
-
-            ImGui.EndDisabled();
-        }
-        else
-        {
-            float radius = session.BrushRadius;
-            ImGui.SetNextItemWidth(160f);
-            if (ImGui.DragFloat("Radius", ref radius, 0.1f, 0f, 12f, radius < 0.5f ? "one face" : "%.1f vx"))
-            {
-                session.BrushRadius = radius;
-            }
-
-            ImGui.SameLine(0f, 18f);
-            ImGui.AlignTextToFramePadding();
-            ImGui.TextDisabled("Ctrl+Scroll resizes · Shift drag = line · Ctrl drag = box · Alt = sample");
-        }
-
-        if (session.PaintMode == PaintMode.Pattern)
-        {
-            DrawPatternControls(session);
+            ImGui.SetTooltip(text);
         }
     }
 
-    /// <summary>The pattern browser lives here rather than in a panel: it belongs to one sub-mode.</summary>
+    /// <summary>The pattern browser: a file dialog drawn at the top level, owned here because one sub-mode uses it.</summary>
     private static readonly FileBrowserDialog PatternBrowser = new();
 
     private static string _patternStatus = string.Empty;
@@ -269,32 +256,6 @@ public static class ToolOptions
 
     /// <summary>What went wrong loading the last pattern, or empty.</summary>
     public static string PatternError => _patternStatus;
-
-    private static void DrawPatternControls(EditorSession session)
-    {
-        ImGui.SameLine(0f, 18f);
-
-        if (ImGui.Button("Load pattern..."))
-        {
-            ShowPatternBrowser(session);
-        }
-
-        ImGui.SameLine(0f, 12f);
-        ImGui.AlignTextToFramePadding();
-
-        if (_patternStatus.Length > 0)
-        {
-            ImGui.TextColored(Theme.Danger, _patternStatus);
-        }
-        else if (session.Pattern is { } pattern)
-        {
-            ImGui.TextDisabled($"{pattern.Name}  {pattern.Width}x{pattern.Height}  ·  the clicked voxel takes its top-left pixel");
-        }
-        else
-        {
-            ImGui.TextDisabled("No pattern loaded - filling with the active colour instead.");
-        }
-    }
 
     private static Action<string> LoadPattern(EditorSession session) => path =>
     {

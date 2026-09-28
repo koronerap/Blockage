@@ -49,11 +49,6 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     /// <summary>Whether opening and saving add to the recent-files list. Off for smoke and screenshot runs.</summary>
     public bool RemembersRecent { get; set; } = true;
 
-    /// <summary>Last outcome, shown in the status line.</summary>
-    public string StatusMessage { get; private set; } = string.Empty;
-
-    public bool IsError { get; private set; }
-
     public string WindowTitle =>
         $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} - Blockage";
 
@@ -378,9 +373,6 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         }
     }
 
-    private void Report(string message, bool isError)
-    {
-        StatusMessage = message;
-        IsError = isError;
-    }
+    private static void Report(string message, bool isError) =>
+        ReportLog.Shared.Post(message, isError ? ReportKind.Error : ReportKind.Info);
 }

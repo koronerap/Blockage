@@ -37,6 +37,16 @@ public sealed class ViewActions
 
     public required Action ToggleStatistics { get; init; }
 
+    /// <summary>The lights' icons in the viewport.</summary>
+    public required Func<bool> LightIconsVisible { get; init; }
+
+    public required Action ToggleLightIcons { get; init; }
+
+    /// <summary>The symmetry planes, while a tool that mirrors is in hand.</summary>
+    public required Func<bool> MirrorPlanesVisible { get; init; }
+
+    public required Action ToggleMirrorPlanes { get; init; }
+
     /// <summary>
     /// How the viewport shades the level. Handed over as the object rather than as get/set pairs:
     /// it is a small bag of settings that several controls edit directly, and wrapping each field

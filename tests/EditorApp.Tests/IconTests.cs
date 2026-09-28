@@ -120,6 +120,8 @@ public class IconTests
         { nameof(Icons.WorldTab), Icons.WorldTab },
         { nameof(Icons.PaletteTab), Icons.PaletteTab },
         { nameof(Icons.ReferenceTab), Icons.ReferenceTab },
+        { nameof(Icons.Overlays), Icons.Overlays },
+        { nameof(Icons.NewObject), Icons.NewObject },
     };
 
     [Theory]

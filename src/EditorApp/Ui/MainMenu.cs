@@ -100,18 +100,18 @@ public static class MainMenu
 
             if (ImGui.MenuItem($"Copy {what}", "Ctrl+C", false, session.Scene.Focus is { IsEmpty: false }))
             {
-                session.Copy();
+                ClipboardActions.Copy(session, ReportLog.Shared);
             }
 
             if (ImGui.MenuItem($"Cut {what}", "Ctrl+X", false, session.Scene.Focus is { IsEmpty: false }))
             {
-                session.Cut();
+                ClipboardActions.Cut(session, ReportLog.Shared);
             }
 
             string paste = session.Clipboard is { } clipboard ? $"Paste {clipboard.Grid.SolidCount:N0} voxels" : "Paste";
             if (ImGui.MenuItem(paste, "Ctrl+V", false, session.Clipboard is not null))
             {
-                ObjectMenu.Paste(session, view.Camera);
+                ClipboardActions.Paste(session, view.Camera, ReportLog.Shared);
             }
 
             ImGui.EndMenu();
@@ -129,8 +129,6 @@ public static class MainMenu
             LightMenu.DrawItems(session);
             ImGui.EndMenu();
         }
-
-        DrawStatus(project);
 
         float height = ImGui.GetWindowSize().Y;
         ImGui.EndMainMenuBar();
@@ -264,27 +262,6 @@ public static class MainMenu
         if (chosen is not null)
         {
             project.OpenRecent(chosen);
-        }
-    }
-
-    private static void DrawStatus(ProjectController project)
-    {
-        if (project.StatusMessage.Length == 0)
-        {
-            return;
-        }
-
-        // Right-aligned so it never fights the menus for space.
-        float width = ImGui.CalcTextSize(project.StatusMessage).X;
-        ImGui.SameLine(ImGui.GetWindowWidth() - width - 16f);
-
-        if (project.IsError)
-        {
-            ImGui.TextColored(Theme.Danger, project.StatusMessage);
-        }
-        else
-        {
-            ImGui.TextDisabled(project.StatusMessage);
         }
     }
 }

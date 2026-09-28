@@ -98,8 +98,8 @@ public sealed class EditorShell(LayoutSettings layout)
 
         EditorSession session = context.Session;
         ImGui.AlignTextToFramePadding();
-        ImGui.TextColored(Theme.Highlight, session.ActiveTool.ToString());
-        ImGui.SameLine(0f, 16f);
+        ImGui.TextUnformatted(ToolColumn.Describe(session.ActiveTool).Name);
+        ImGui.SameLine(0f, 14f);
 
         ToolOptions.Draw(session);
         DrawOverlayToggles(context, size);
@@ -108,39 +108,28 @@ public sealed class EditorShell(LayoutSettings layout)
     }
 
     /// <summary>
-    /// The right-hand end of the header: what can be done to the object as a whole, what is drawn
-    /// over the scene, and how the scene is shaded. They belong to the viewport rather than to any
-    /// tool, so they keep the same place whichever tool is active.
+    /// The right-hand end of the header: what can be done to the object as a whole, then — as Blender
+    /// puts them — what is drawn over the scene and how the scene is shaded. They belong to the
+    /// viewport rather than to any tool, so they keep the same place whichever tool is active.
     /// </summary>
     private static void DrawOverlayToggles(ShellContext context, Vector2 size)
     {
         float button = ImGui.GetFrameHeight();
-        float spacing = ImGui.GetStyle().ItemSpacing.X;
 
-        // Three groups, and the wider gaps between them are what say they are different kinds of
-        // thing: the first edits the level, the other two only change how it is looked at.
+        // The wider gap is what says the first edits the level and the other two only change how it
+        // is looked at.
         const float GroupGap = 14f;
-        float width = (button * 4f) + spacing + (GroupGap * 2f);
+        const float Pair = 4f;
+        float width = (button * 3f) + GroupGap + Pair;
 
         ImGui.SameLine(size.X - width - ImGui.GetStyle().WindowPadding.X);
 
         DrawObjectMenuButton(context, button);
 
         ImGui.SameLine(0f, GroupGap);
+        OverlaysMenu.DrawButton(context.View, button);
 
-        if (IconButton.Draw("grid", Icons.Grid, context.View.GridVisible(), "Ground grid  (G)", button))
-        {
-            context.View.ToggleGrid();
-        }
-
-        ImGui.SameLine();
-
-        if (IconButton.Draw("measure", Icons.Measure, context.View.MeasurementsVisible(), "Measurements  (D)", button))
-        {
-            context.View.ToggleMeasurements();
-        }
-
-        ImGui.SameLine(0f, GroupGap);
+        ImGui.SameLine(0f, Pair);
 
         SceneLighting lighting = context.View.Lighting;
         if (IconButton.Toggle(
