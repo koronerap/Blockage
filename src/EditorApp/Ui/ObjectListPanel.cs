@@ -35,6 +35,9 @@ public static class ObjectListPanel
 
     public static bool ShowLights { get; set; } = true;
 
+    /// <summary>A rename asked for and not yet begun — the shell shows the sidebar, if hidden, so it can be.</summary>
+    public static bool RenamePending => _renameJustStarted;
+
     public static void StartRename(VoxelObject o) => StartRename(o.Id, o.Name);
 
     public static void StartRename(SceneLight light) => StartRename(light.Id, light.Name);

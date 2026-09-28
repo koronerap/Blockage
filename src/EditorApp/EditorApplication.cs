@@ -785,6 +785,14 @@ public sealed class EditorApplication : IDisposable
                 FrameLevel();
                 break;
 
+            case Key.N when !control:
+                _layout.SidebarVisible = !_layout.SidebarVisible;
+                break;
+
+            case Key.F1:
+                ShortcutSheet.Toggle();
+                break;
+
             // Blender's numpad: 1 front, 3 right, 7 top, with Ctrl for the side opposite; 9 turns
             // an aligned view round; 5 swaps the projection; 2 4 6 8 step the view round the pivot
             // the way the scene would move under a drag that way; the decimal point frames the
@@ -890,6 +898,12 @@ public sealed class EditorApplication : IDisposable
 
     private void OnEscape()
     {
+        if (ShortcutSheet.IsOpen)
+        {
+            ShortcutSheet.Close();
+            return;
+        }
+
         if (_transform!.IsDragging)
         {
             _transform.Cancel();
@@ -1201,6 +1215,7 @@ public sealed class EditorApplication : IDisposable
         };
 
         _viewport = _shell.Draw(context);
+        ShortcutSheet.Draw(ImGui.GetIO().DisplaySize);
 
         ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout);
 
@@ -1240,6 +1255,8 @@ public sealed class EditorApplication : IDisposable
         ToggleGrid = () => _showGrid = !_showGrid,
         MeasurementsVisible = () => _showMeasurements,
         ToggleMeasurements = () => _showMeasurements = !_showMeasurements,
+        SidebarVisible = () => _layout.SidebarVisible,
+        ToggleSidebar = () => _layout.SidebarVisible = !_layout.SidebarVisible,
         StatisticsVisible = () => _layout.StatisticsVisible,
         ToggleStatistics = () => _layout.StatisticsVisible = !_layout.StatisticsVisible,
         LightIconsVisible = () => _showLightIcons,

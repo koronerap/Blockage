@@ -155,6 +155,8 @@ public sealed class OverlaysMenuTests : IDisposable
             ToggleGrid = () => grid = !grid,
             MeasurementsVisible = () => measurements,
             ToggleMeasurements = () => measurements = !measurements,
+            SidebarVisible = () => true,
+            ToggleSidebar = () => { },
             StatisticsVisible = () => statistics,
             ToggleStatistics = () => statistics = !statistics,
             LightIconsVisible = () => lights,

@@ -31,6 +31,90 @@ public sealed class PalettePanel
     private Color32 _editingBefore;
     private bool _openEditPopup;
 
+    /// <summary>Swatch size in the quick palette: small enough for the whole library in one glance.</summary>
+    private const float QuickSwatch = 15f;
+
+    private static readonly Dictionary<int, (Vector2 Min, Vector2 Max)> QuickRects = [];
+
+    /// <summary>Where a swatch of the quick palette was drawn last frame — for tests to aim at.</summary>
+    public static (Vector2 Min, Vector2 Max)? QuickSwatchRect(int index) =>
+        QuickRects.TryGetValue(index, out var rect) ? rect : null;
+
+    /// <summary>
+    /// The palette at a glance, for the popover under the tool column: the saved colours, then the
+    /// library, in small swatches. Returns true when a colour was picked, so the popover can close —
+    /// choosing a colour is the one thing it is opened for.
+    /// </summary>
+    public bool DrawQuickPalette(EditorSession session)
+    {
+        Palette palette = session.Scene.Palette;
+        bool picked = false;
+
+        int[] saved = [.. palette.SavedCustomSlots()];
+        if (saved.Length > 0)
+        {
+            ImGui.TextDisabled("Custom");
+            picked |= DrawQuickRow(session, palette, saved);
+            ImGui.Spacing();
+        }
+
+        ImGui.TextDisabled("Library");
+        picked |= DrawQuickRow(session, palette, [.. Enumerable.Range(1, Palette.CustomStart - 1)]);
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("More in the Palette tab. Alt+click the model samples a colour.");
+        return picked;
+    }
+
+    private static bool DrawQuickRow(EditorSession session, Palette palette, int[] indices)
+    {
+        bool picked = false;
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 2f);
+
+        for (int i = 0; i < indices.Length; i++)
+        {
+            if (i % Columns != 0)
+            {
+                ImGui.SameLine(0f, SwatchGap);
+            }
+
+            int index = indices[i];
+            bool isActive = index == session.ActiveColorIndex;
+
+            if (isActive)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Border, Theme.Text);
+                ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 2f);
+            }
+
+            if (ImGui.ColorButton(
+                    $"##quick{index}",
+                    palette[index].ToVector4(),
+                    ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoBorder,
+                    new Vector2(QuickSwatch, QuickSwatch)))
+            {
+                session.ActiveColorIndex = (byte)index;
+                picked = true;
+            }
+
+            QuickRects[index] = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+
+            if (isActive)
+            {
+                ImGui.PopStyleVar();
+                ImGui.PopStyleColor();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip($"Index {index}  {palette[index]}");
+            }
+        }
+
+        ImGui.PopStyleVar();
+        return picked;
+    }
+
     public void DrawContent(EditorSession session)
     {
         Palette palette = session.Scene.Palette;

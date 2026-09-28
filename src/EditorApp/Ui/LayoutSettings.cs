@@ -74,6 +74,9 @@ public sealed class LayoutSettings
     /// <summary>The frame and mesh counters over the viewport.</summary>
     public bool StatisticsVisible { get; set; }
 
+    /// <summary>The whole right-hand column; N hides it for more of the model.</summary>
+    public bool SidebarVisible { get; set; } = true;
+
     /// <summary>The Outliner's height in a column this tall: never so much that Properties lose their minimum.</summary>
     public float OutlinerHeightWithin(float columnHeight) =>
         Math.Clamp(OutlinerHeight, MinOutlinerHeight, MathF.Max(columnHeight - MinPropertiesHeight, MinOutlinerHeight));
@@ -96,6 +99,7 @@ public sealed class LayoutSettings
                     OutlinerHeight = stored.OutlinerHeight,
                     Tab = Enum.IsDefined(stored.Tab) ? stored.Tab : PropertiesTab.Object,
                     StatisticsVisible = stored.StatisticsVisible,
+                    SidebarVisible = stored.SidebarVisible ?? true,
                 };
             }
         }
@@ -117,7 +121,7 @@ public sealed class LayoutSettings
                 Directory.CreateDirectory(directory);
             }
 
-            var stored = new Stored(SidebarWidth, OutlinerHeight, Tab, StatisticsVisible);
+            var stored = new Stored(SidebarWidth, OutlinerHeight, Tab, StatisticsVisible, SidebarVisible);
             File.WriteAllText(path, JsonSerializer.Serialize(stored, JsonOptions));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -126,5 +130,6 @@ public sealed class LayoutSettings
         }
     }
 
-    private sealed record Stored(float SidebarWidth, float OutlinerHeight, PropertiesTab Tab, bool StatisticsVisible);
+    /// <param name="SidebarVisible">Absent from layouts saved before the sidebar could be hidden.</param>
+    private sealed record Stored(float SidebarWidth, float OutlinerHeight, PropertiesTab Tab, bool StatisticsVisible, bool? SidebarVisible = null);
 }

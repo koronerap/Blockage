@@ -37,6 +37,11 @@ public sealed class ViewActions
 
     public required Action ToggleStatistics { get; init; }
 
+    /// <summary>The right-hand column: Outliner and Properties.</summary>
+    public required Func<bool> SidebarVisible { get; init; }
+
+    public required Action ToggleSidebar { get; init; }
+
     /// <summary>The lights' icons in the viewport.</summary>
     public required Func<bool> LightIconsVisible { get; init; }
 

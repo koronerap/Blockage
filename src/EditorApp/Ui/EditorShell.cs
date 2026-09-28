@@ -63,7 +63,15 @@ public sealed class EditorShell(LayoutSettings layout)
         DrawToolOptions(context, new Vector2(0f, top), new Vector2(screen.X, optionsHeight));
         top += optionsHeight;
 
-        float sidebarLeft = _sidebar.Draw(top, bottom, screen.X, SidebarContentFor(context));
+        // A rename has to be seen to be typed, so asking for one brings the sidebar back.
+        if (ObjectListPanel.RenamePending)
+        {
+            layout.SidebarVisible = true;
+        }
+
+        float sidebarLeft = layout.SidebarVisible
+            ? _sidebar.Draw(top, bottom, screen.X, SidebarContentFor(context))
+            : screen.X;
 
         DrawStatusBar(context, new Vector2(0f, bottom), new Vector2(screen.X, statusHeight));
 
@@ -189,7 +197,7 @@ public sealed class EditorShell(LayoutSettings layout)
                 | ImGuiWindowFlags.AlwaysAutoResize
                 | ImGuiWindowFlags.NoScrollbar);
 
-        ToolColumn.Draw(context.Session);
+        ToolColumn.Draw(context.Session, context.Palette);
 
         ImGui.End();
         ImGui.PopStyleVar(2);

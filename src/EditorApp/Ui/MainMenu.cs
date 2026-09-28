@@ -130,6 +130,16 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
+        if (ImGui.BeginMenu("Help"))
+        {
+            if (ImGui.MenuItem("Keyboard Shortcuts", "F1", ShortcutSheet.IsOpen))
+            {
+                ShortcutSheet.Toggle();
+            }
+
+            ImGui.EndMenu();
+        }
+
         float height = ImGui.GetWindowSize().Y;
         ImGui.EndMainMenuBar();
         return height;
@@ -186,6 +196,11 @@ public static class MainMenu
         if (ImGui.MenuItem("Statistics", null, view.StatisticsVisible()))
         {
             view.ToggleStatistics();
+        }
+
+        if (ImGui.MenuItem("Sidebar", "N", view.SidebarVisible()))
+        {
+            view.ToggleSidebar();
         }
 
         ImGui.Separator();
