@@ -666,6 +666,30 @@ public sealed class EditorApplication : IDisposable
                 _session.Undo();
                 break;
 
+            case Key.C when control:
+                if (!IsDragging())
+                {
+                    _session.Copy();
+                }
+
+                break;
+
+            case Key.X when control:
+                if (!IsDragging())
+                {
+                    _session.Cut();
+                }
+
+                break;
+
+            case Key.V when control:
+                if (!IsDragging())
+                {
+                    ObjectMenu.Paste(_session, _camera);
+                }
+
+                break;
+
             case Key.G:
                 _showGrid = !_showGrid;
                 break;

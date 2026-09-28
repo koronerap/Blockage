@@ -483,6 +483,158 @@ public sealed class EditorSession
         return TryFocus(objectId);
     }
 
+    // ---- Clipboard -----------------------------------------------------------------------------
+
+    /// <summary>What was last copied or cut, or null. Kept by the session, not the system clipboard.</summary>
+    public VoxelClipboard? Clipboard { get; private set; }
+
+    /// <summary>Pastes since the last copy, so each lands a step further along instead of on the last.</summary>
+    private int _pasteCount;
+
+    /// <summary>
+    /// True when a copy would take the voxels behind the Extrude selection rather than the whole
+    /// focused object — only while Extrude is the tool, since a selection outlives its tool.
+    /// </summary>
+    public bool CopiesSelection => ActiveTool == EditorTool.Extrude && Selection is { IsEmpty: false };
+
+    /// <summary>
+    /// Copies the voxels behind the Extrude selection — a wall's thickness behind each selected face —
+    /// or, with nothing selected, the whole focused object. Painted faces come along. Returns how many
+    /// voxels were copied.
+    /// </summary>
+    public int Copy()
+    {
+        if (Scene.Focus is not { } focus)
+        {
+            return 0;
+        }
+
+        IEnumerable<Int3> cells = CopiesSelection
+            ? ClipboardOperations.RegionBehind(Selection!, focus.Grid)
+            : ClipboardOperations.Everything(focus.Grid);
+
+        VoxelWorld grid = ClipboardOperations.Extract(focus.Grid, cells);
+        if (grid.SolidCount == 0)
+        {
+            return 0;
+        }
+
+        Clipboard = new VoxelClipboard(grid, focus.Transform, focus.Name);
+        _pasteCount = 0;
+        return grid.SolidCount;
+    }
+
+    /// <summary>
+    /// Copies, then takes the copied voxels out, as one undo step. With nothing selected it is the
+    /// whole object that goes — except the last, which cannot, so that is only copied.
+    /// </summary>
+    public int Cut()
+    {
+        if (Scene.Focus is not { } focus)
+        {
+            return 0;
+        }
+
+        EndStroke();
+        CancelExtrude();
+
+        bool region = CopiesSelection;
+        int copied = Copy();
+        if (copied == 0)
+        {
+            return 0;
+        }
+
+        if (!region)
+        {
+            DeleteObject(focus.Id);
+            return copied;
+        }
+
+        var command = new VoxelEditCommand("Cut", focus.Grid);
+        foreach (Int3 cell in ClipboardOperations.Everything(Clipboard!.Grid))
+        {
+            command.Apply(cell, Palette.EmptyIndex);
+        }
+
+        // The selected faces are gone with the voxels under them.
+        Selection = null;
+
+        History.Push(command);
+        HasUnsavedChanges = true;
+        return copied;
+    }
+
+    /// <summary>
+    /// Pastes as a new object, on the lattice of the one the voxels came from, beside where they were
+    /// copied from — further along with each paste. The new object is focused. One undo step.
+    /// </summary>
+    public VoxelObject? Paste(Vector3 towards)
+    {
+        if (Clipboard is not { } clipboard)
+        {
+            return null;
+        }
+
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+        SelectedLightId = 0;
+
+        _pasteCount++;
+        var where = new VoxelObject(0, clipboard.Grid, clipboard.Transform, clipboard.Name);
+        Vector3 offset = DuplicateOffset(where, towards) * _pasteCount;
+
+        var command = new CreateObjectCommand(
+            Scene,
+            clipboard.Grid.Copy(),
+            clipboard.Transform.Translated(offset),
+            DuplicateName(clipboard.Name, Scene.Objects.Select(o => o.Name)),
+            "Paste");
+
+        command.Redo();
+        History.Push(command);
+        HasUnsavedChanges = true;
+        return command.Created;
+    }
+
+    /// <summary>Why one object cannot be joined into another, or null when it can.</summary>
+    public string? JoinProblem(int sourceId, int targetId)
+    {
+        if (sourceId == targetId || Scene.Find(sourceId) is not { } source || Scene.Find(targetId) is not { } target)
+        {
+            return "Pick another object to join into.";
+        }
+
+        return LatticeMap.Between(source.Transform, target.Transform, out string reason) is null ? reason : null;
+    }
+
+    /// <summary>
+    /// Moves one object's voxels into another and takes the first out of the level, as one undo step.
+    /// Only between objects on the same lattice, so nothing is resampled; where the two overlap, the
+    /// one being joined wins.
+    /// </summary>
+    public bool JoinInto(int sourceId, int targetId)
+    {
+        if (JoinProblem(sourceId, targetId) is not null
+            || Scene.Find(sourceId) is not { } source
+            || Scene.Find(targetId) is not { } target
+            || LatticeMap.Between(source.Transform, target.Transform, out _) is not { } map)
+        {
+            return false;
+        }
+
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var command = new JoinCommand(Scene, source, target, map);
+        command.Redo();
+        History.Push(command);
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     // ---- Lights --------------------------------------------------------------------------------
 
     /// <summary>

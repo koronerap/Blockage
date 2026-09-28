@@ -50,6 +50,49 @@ public static class ObjectMenu
         }
     }
 
+    /// <summary>Pastes as a new object and hands it to the Transform tool, the same as a duplicate.</summary>
+    public static void Paste(EditorSession session, FlyCamera camera)
+    {
+        if (session.Paste(camera.Right) is not null)
+        {
+            session.ActiveTool = EditorTool.Transform;
+            session.TransformMode = TransformMode.Move;
+        }
+    }
+
+    /// <summary>
+    /// "Join into", listing every other object. The ones it cannot join are shown but greyed, with
+    /// the reason on hover — a missing entry would leave the user guessing why.
+    /// </summary>
+    public static void DrawJoinMenu(EditorSession session, VoxelObject source)
+    {
+        if (!ImGui.BeginMenu("Join Into", session.Scene.Objects.Count > 1))
+        {
+            return;
+        }
+
+        foreach (VoxelObject target in session.Scene.Objects)
+        {
+            if (target.Id == source.Id)
+            {
+                continue;
+            }
+
+            string? problem = session.JoinProblem(source.Id, target.Id);
+            if (ImGui.MenuItem($"{target.Name}##join-{target.Id}", null, false, problem is null))
+            {
+                session.JoinInto(source.Id, target.Id);
+            }
+
+            if (problem is not null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            {
+                ImGui.SetTooltip(problem);
+            }
+        }
+
+        ImGui.EndMenu();
+    }
+
     /// <summary>The items themselves, for whichever menu or popup is open around them.</summary>
     public static void DrawItems(EditorSession session, FlyCamera camera)
     {
@@ -82,6 +125,11 @@ public static class ObjectMenu
         if (ImGui.MenuItem("Delete", "Del", false, scene.Objects.Count > 1))
         {
             session.DeleteObject(scene.FocusId);
+        }
+
+        if (scene.Focus is { } joined)
+        {
+            DrawJoinMenu(session, joined);
         }
 
         ImGui.Separator();

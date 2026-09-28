@@ -93,6 +93,27 @@ public static class MainMenu
                 session.Redo();
             }
 
+            ImGui.Separator();
+
+            // What a copy takes is worth saying before it is taken: the selection, or everything.
+            string what = session.CopiesSelection ? "Selection" : "Object";
+
+            if (ImGui.MenuItem($"Copy {what}", "Ctrl+C", false, session.Scene.Focus is { IsEmpty: false }))
+            {
+                session.Copy();
+            }
+
+            if (ImGui.MenuItem($"Cut {what}", "Ctrl+X", false, session.Scene.Focus is { IsEmpty: false }))
+            {
+                session.Cut();
+            }
+
+            string paste = session.Clipboard is { } clipboard ? $"Paste {clipboard.Grid.SolidCount:N0} voxels" : "Paste";
+            if (ImGui.MenuItem(paste, "Ctrl+V", false, session.Clipboard is not null))
+            {
+                ObjectMenu.Paste(session, view.Camera);
+            }
+
             ImGui.EndMenu();
         }
 

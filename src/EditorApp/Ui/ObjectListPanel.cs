@@ -286,6 +286,8 @@ public static class ObjectListPanel
             session.SetObjectVisible(o.Id, !o.Visible);
         }
 
+        ObjectMenu.DrawJoinMenu(session, o);
+
         ImGui.Separator();
 
         // Refused for the last object: with no Place tool, an empty scene is a dead end.
