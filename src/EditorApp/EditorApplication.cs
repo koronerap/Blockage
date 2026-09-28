@@ -1041,9 +1041,18 @@ public sealed class EditorApplication : IDisposable
                 _extrude.PendingOperation == SelectionOperation.Subtract ? EditorOverlays.SelectionSubtract : EditorOverlays.SelectionAdd);
         }
 
+        // Over the model, not into it: a plane through the middle of the model is mostly inside it.
+        EditorOverlays.AddMirrorPlanes(gizmos, _session);
+
+        if (_session.ActiveTool == EditorTool.Extrude)
+        {
+            EditorOverlays.AddMirroredSelection(lines, _session, _session.Selection);
+        }
+
         if (_hover is { } hit)
         {
             lines.AddVoxelFace(hit.Voxel, hit.Face, EditorOverlays.Highlight, width: EditorOverlays.SelectionWidth);
+            EditorOverlays.AddMirroredHover(lines, _session, hit.Voxel, hit.Face);
 
             if (_session.ActiveTool == EditorTool.Paint)
             {

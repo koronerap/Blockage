@@ -1,3 +1,4 @@
+using EditorApp.Core.Editing;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Commands;
@@ -27,6 +28,13 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
 
     public int RetainedCells => _changes.Count;
 
+    /// <summary>
+    /// Where every write is repeated, for live symmetry. Empty for an ordinary edit. Repeated here,
+    /// where the writes happen, rather than in each operation: brush, bucket, pattern, shapes and
+    /// extrude all mirror the same way, and the images land in this same undo step.
+    /// </summary>
+    public IReadOnlyList<MirrorImage> Mirrors { get; init; } = [];
+
     public bool IsEmpty => _changes.Count == 0;
 
     /// <summary>
@@ -48,6 +56,59 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
     /// </summary>
     public bool Apply(Int3 position, byte paletteIndex)
     {
+        bool changed = WriteVoxelKeepingFaces(position, paletteIndex);
+
+        foreach (MirrorImage image in Mirrors)
+        {
+            Int3 mirrored = image.Cell(position);
+            if (mirrored != position)
+            {
+                WriteVoxelKeepingFaces(mirrored, paletteIndex);
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Writing a voxel forgets what was painted on its faces, so those are saved first, here, for
+    /// every write — a push-in that removes a painted voxel, a mirrored write the operation never
+    /// saw. Undo then brings the voxel back painted rather than bare.
+    /// </summary>
+    private bool WriteVoxelKeepingFaces(Int3 position, byte paletteIndex)
+    {
+        if (Target.GetVoxel(position) != paletteIndex)
+        {
+            RecordFacesLost(position, paletteIndex);
+        }
+
+        return WriteVoxel(position, paletteIndex);
+    }
+
+    /// <summary>
+    /// Paints a single face. Returns false when nothing changed.
+    /// </summary>
+    public bool ApplyFace(Int3 position, Face face, byte paletteIndex)
+    {
+        bool changed = WriteFace(position, face, paletteIndex);
+
+        foreach (MirrorImage image in Mirrors)
+        {
+            Int3 mirrored = image.Cell(position);
+            Face turned = image.Face(face);
+
+            // A cell on the plane is its own image, but its faces across the plane are not.
+            if (mirrored != position || turned != face)
+            {
+                WriteFace(mirrored, turned, paletteIndex);
+            }
+        }
+
+        return changed;
+    }
+
+    private bool WriteVoxel(Int3 position, byte paletteIndex)
+    {
         byte before = Target.GetVoxel(position);
         if (before == paletteIndex || !Target.SetVoxel(position, paletteIndex))
         {
@@ -58,10 +119,7 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
         return true;
     }
 
-    /// <summary>
-    /// Paints a single face. Returns false when nothing changed.
-    /// </summary>
-    public bool ApplyFace(Int3 position, Face face, byte paletteIndex)
+    private bool WriteFace(Int3 position, Face face, byte paletteIndex)
     {
         byte before = Target.GetFaceColor(position, face);
         if (before == paletteIndex || !Target.SetFaceColor(position, face, paletteIndex))
@@ -71,6 +129,25 @@ public sealed class VoxelEditCommand(string name, VoxelWorld target) : ICommand
 
         Record(position, face, before, paletteIndex);
         return true;
+    }
+
+    /// <summary>Saves every face painted differently from its voxel, ahead of a write that recolours the voxel.</summary>
+    private void RecordFacesLost(Int3 position, byte after)
+    {
+        byte under = Target.GetVoxel(position);
+        if (under == Palette.EmptyIndex)
+        {
+            return;
+        }
+
+        for (int f = 0; f < FaceInfo.Count; f++)
+        {
+            byte painted = Target.GetFaceColor(position, (Face)f);
+            if (painted != under)
+            {
+                RecordFaceLost(position, (Face)f, painted, after);
+            }
+        }
     }
 
     /// <summary>

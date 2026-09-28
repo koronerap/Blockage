@@ -139,6 +139,16 @@ public sealed class EditorSession
 
     public bool IsStrokeActive => _stroke is not null;
 
+    /// <summary>Mirror planes Paint and Extrude repeat their writes across. Off until switched on.</summary>
+    public Symmetry Symmetry { get; } = new();
+
+    /// <summary>
+    /// A new voxel edit on the focused object, repeated across the mirror planes when symmetry is on.
+    /// Only for the tools symmetry is for: a loop cut or a turn is never mirrored.
+    /// </summary>
+    private VoxelEditCommand NewMirroredEdit(string name) =>
+        new(name, World) { Mirrors = Symmetry.ImagesFor(Scene.Focus) };
+
     // ---- Strokes -----------------------------------------------------------------------------
 
     /// <summary>
@@ -149,7 +159,7 @@ public sealed class EditorSession
     {
         // Bound to the focused grid here, once: focus is locked for the rest of the gesture, and
         // undo has to reach this object even if focus has moved on by then.
-        _stroke ??= new VoxelEditCommand(ActiveTool.ToString(), World);
+        _stroke ??= NewMirroredEdit(ActiveTool.ToString());
     }
 
     public void EndStroke()
@@ -183,8 +193,12 @@ public sealed class EditorSession
     {
         EndStroke();
 
-        var command = new VoxelEditCommand(name, World);
-        if (operation(command) == 0 || command.IsEmpty)
+        VoxelEditCommand command = NewMirroredEdit(name);
+
+        // Judged by what was written, not by the count the operation reports: with symmetry on, the
+        // side the cursor is on can already be done while its mirror image still changes.
+        operation(command);
+        if (command.IsEmpty)
         {
             return false;
         }
@@ -254,7 +268,7 @@ public sealed class EditorSession
             return;
         }
 
-        var preview = new VoxelEditCommand($"Extrude {steps:+0;-0}", World);
+        VoxelEditCommand preview = NewMirroredEdit($"Extrude {steps:+0;-0}");
         ExtrudeOperation.Apply(selection, steps, preview);
         _extrudePreview = preview.IsEmpty ? null : preview;
     }
@@ -1147,6 +1161,7 @@ public sealed class EditorSession
 
         Scene = scene;
         SelectedLightId = 0;
+        Symmetry.Forget();
         if (Scene.Objects.Count == 0)
         {
             EnsureFocus();

@@ -96,6 +96,8 @@ public static class ToolOptions
         }
 
         ImGui.SameLine(0f, 18f);
+        DrawSymmetry(session);
+        ImGui.SameLine(0f, 18f);
 
         bool creates = session.ExtrudeCreatesObject;
         if (ImGui.Checkbox("New object (X)", ref creates))
@@ -125,6 +127,66 @@ public static class ToolOptions
         }
     }
 
+    /// <summary>
+    /// Three switches, one per axis, lit in the axis's colour when on. The planes go through the
+    /// middle of the object when symmetry comes on and stay there; Recentre moves them to the middle
+    /// of what is there now.
+    /// </summary>
+    private static void DrawSymmetry(EditorSession session)
+    {
+        float size = ImGui.GetFrameHeight();
+        Symmetry symmetry = session.Symmetry;
+
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled("Mirror");
+
+        foreach ((Core.Voxels.Axis axis, string label, System.Numerics.Vector4 colour) in new[]
+                 {
+                     (Core.Voxels.Axis.X, "X", Theme.AxisX),
+                     (Core.Voxels.Axis.Y, "Y", Theme.AxisY),
+                     (Core.Voxels.Axis.Z, "Z", Theme.AxisZ),
+                 })
+        {
+            ImGui.SameLine(0f, 4f);
+            bool on = symmetry[axis];
+
+            if (on)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, colour with { W = 0.55f });
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colour with { W = 0.75f });
+            }
+
+            if (ImGui.Button($"{label}##mirror-{label}", new System.Numerics.Vector2(size, size)))
+            {
+                symmetry[axis] = !on;
+            }
+
+            if (on)
+            {
+                ImGui.PopStyleColor(2);
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip($"Mirror across {label}: every edit is repeated on the other side of the {label} plane.");
+            }
+        }
+
+        if (symmetry.IsOn && session.Scene.Focus is { } focus)
+        {
+            ImGui.SameLine(0f, 4f);
+            if (ImGui.Button("Recentre##mirror"))
+            {
+                symmetry.Recentre(focus);
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Move the planes to the middle of the object as it is now.");
+            }
+        }
+    }
+
     private static void DrawPaint(EditorSession session)
     {
         IconButton.Choice(
@@ -135,6 +197,8 @@ public static class ToolOptions
             ImGui.GetFrameHeight(),
             value => session.PaintMode = (PaintMode)value);
 
+        ImGui.SameLine(0f, 18f);
+        DrawSymmetry(session);
         ImGui.SameLine(0f, 18f);
 
         if (session.PaintMode == PaintMode.Bucket)

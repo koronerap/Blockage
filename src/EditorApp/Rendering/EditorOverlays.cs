@@ -86,6 +86,101 @@ public static class EditorOverlays
         lines.AddCone(end, coneBase, coneLength * 0.42f, color);
     }
 
+    /// <summary>Where a mirrored write lands, drawn fainter than the thing itself.</summary>
+    public static readonly Color32 MirrorEcho = new(200, 200, 210);
+
+    /// <summary>
+    /// The symmetry planes, in the focused object's own space: a frame a little larger than the
+    /// object, in the colour of the axis it mirrors across, with a cross through it so it reads as a
+    /// surface. Only while a tool that mirrors is in hand.
+    /// </summary>
+    public static void AddMirrorPlanes(LineGeometry lines, EditorSession session)
+    {
+        if (!session.Symmetry.IsOn
+            || session.ActiveTool is not (EditorTool.Paint or EditorTool.Extrude)
+            || session.Scene.Focus is not { } focus
+            || !focus.TryGetLocalBounds(out Vector3 min, out Vector3 max))
+        {
+            return;
+        }
+
+        Vector3 planes = session.Symmetry.PlanesFor(focus);
+        min -= Vector3.One;
+        max += Vector3.One;
+
+        foreach (Axis axis in new[] { Axis.X, Axis.Y, Axis.Z })
+        {
+            if (!session.Symmetry[axis])
+            {
+                continue;
+            }
+
+            int a = (int)axis;
+            int u = (a + 1) % 3;
+            int v = (a + 2) % 3;
+
+            Vector3 Corner(float cu, float cv)
+            {
+                var point = new Vector3();
+                point[a] = planes[a];
+                point[u] = cu;
+                point[v] = cv;
+                return point;
+            }
+
+            Color32 colour = axis switch
+            {
+                Axis.X => AxisX,
+                Axis.Y => AxisY,
+                _ => AxisZ,
+            };
+
+            Vector3 p00 = Corner(min[u], min[v]);
+            Vector3 p10 = Corner(max[u], min[v]);
+            Vector3 p11 = Corner(max[u], max[v]);
+            Vector3 p01 = Corner(min[u], max[v]);
+
+            lines.AddThickLine(p00, p10, colour, SelectionWidth);
+            lines.AddThickLine(p10, p11, colour, SelectionWidth);
+            lines.AddThickLine(p11, p01, colour, SelectionWidth);
+            lines.AddThickLine(p01, p00, colour, SelectionWidth);
+            lines.AddLine(Corner((min[u] + max[u]) * 0.5f, min[v]), Corner((min[u] + max[u]) * 0.5f, max[v]), colour);
+            lines.AddLine(Corner(min[u], (min[v] + max[v]) * 0.5f), Corner(max[u], (min[v] + max[v]) * 0.5f), colour);
+        }
+    }
+
+    /// <summary>The faces a selection's mirror images would extrude, in the focused object's space.</summary>
+    public static void AddMirroredSelection(LineGeometry lines, EditorSession session, FaceSelection? selection)
+    {
+        if (selection is not { IsEmpty: false } || selection.Count > MaxOutlinedFaces)
+        {
+            return;
+        }
+
+        foreach (MirrorImage image in session.Symmetry.ImagesFor(session.Scene.Focus))
+        {
+            Face face = image.Face(selection.Direction);
+            foreach (Int3 voxel in selection.Voxels)
+            {
+                lines.AddVoxelFace(image.Cell(voxel), face, MirrorEcho, offset: 0.02f, width: SelectionWidth);
+            }
+        }
+    }
+
+    /// <summary>The mirror images of the face under the cursor.</summary>
+    public static void AddMirroredHover(LineGeometry lines, EditorSession session, Int3 voxel, Face face)
+    {
+        if (session.ActiveTool is not (EditorTool.Paint or EditorTool.Extrude))
+        {
+            return;
+        }
+
+        foreach (MirrorImage image in session.Symmetry.ImagesFor(session.Scene.Focus))
+        {
+            lines.AddVoxelFace(image.Cell(voxel), image.Face(face), MirrorEcho, width: SelectionWidth);
+        }
+    }
+
     public static void AddSelectionOutline(LineGeometry lines, FaceSelection? selection, Color32 color)
     {
         if (selection is not { IsEmpty: false })
