@@ -94,6 +94,56 @@ public sealed class LevelManifest
         public float? VoxelSize { get; set; }
     }
 
+    /// <summary>
+    /// The level's lights. Absent in files written before lights were saved, which get the sun the
+    /// viewport always had; an empty list is a level someone chose to leave unlit.
+    /// </summary>
+    [JsonPropertyName("lights")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public LightEntry[]? Lights { get; set; }
+
+    /// <summary>The ambient floor, 0 to 1. Absent where lights are.</summary>
+    [JsonPropertyName("ambient")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public float? Ambient { get; set; }
+
+    /// <summary>One light in the manifest. Never exported, only kept.</summary>
+    public sealed class LightEntry
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "Light";
+
+        /// <summary>"directional", "point" or "spot".</summary>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = "point";
+
+        [JsonPropertyName("position")]
+        public float[] Position { get; set; } = [0f, 0f, 0f];
+
+        /// <summary>Quaternion as [x, y, z, w]. The light shines along its own -Y.</summary>
+        [JsonPropertyName("rotation")]
+        public float[] Rotation { get; set; } = [0f, 0f, 0f, 1f];
+
+        /// <summary><c>#RRGGBB</c>.</summary>
+        [JsonPropertyName("colour")]
+        public string Colour { get; set; } = "#FFFFFF";
+
+        [JsonPropertyName("intensity")]
+        public float Intensity { get; set; } = 1f;
+
+        [JsonPropertyName("range")]
+        public float Range { get; set; } = 15f;
+
+        [JsonPropertyName("spotAngle")]
+        public float SpotAngle { get; set; } = 45f;
+
+        [JsonPropertyName("spotBlend")]
+        public float SpotBlend { get; set; } = 0.15f;
+
+        [JsonPropertyName("visible")]
+        public bool Visible { get; set; } = true;
+    }
+
     [JsonPropertyName("savedUtc")]
     public string SavedUtc { get; set; } = string.Empty;
 

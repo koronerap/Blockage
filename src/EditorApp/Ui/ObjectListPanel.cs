@@ -7,13 +7,14 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// The outliner: every object in the level, one row each. Loop Cut, Extrude's Create sub-mode and
-/// Duplicate all produce objects, so without a list the level can quietly grow pieces the designer
-/// never sees named anywhere.
+/// The outliner: every object in the level, then every light, one row each. Loop Cut, Extrude's
+/// Create sub-mode and Duplicate all produce objects, so without a list the level can quietly grow
+/// pieces the designer never sees named anywhere.
 ///
-/// A row is an eye, a name and a voxel count. Click to focus, double-click or F2 to rename, right-click
-/// for the rest. Hovering a row outlines its object in the viewport, so a name can be matched to a
-/// shape without guessing.
+/// An object's row is an eye, a name and a voxel count; a light's is a switch, a name and its kind.
+/// Click to focus an object or pick a light, double-click or F2 to rename, right-click for the rest.
+/// Hovering an object's row outlines it in the viewport, and a light's lights up its icon, so a name
+/// can be matched to a shape without guessing.
 /// </summary>
 public static class ObjectListPanel
 {
@@ -27,8 +28,9 @@ public static class ObjectListPanel
     private static string _renameBuffer = string.Empty;
     private static bool _renameJustStarted;
     private static int _lastFocusId;
+    private static int _lastLightId;
 
-    /// <summary>The object whose row the mouse is over, for the viewport to outline. 0 for none.</summary>
+    /// <summary>The object or light whose row the mouse is over, for the viewport to mark. 0 for none.</summary>
     public static int HoveredId { get; private set; }
 
     /// <summary>
@@ -37,10 +39,14 @@ public static class ObjectListPanel
     /// </summary>
     public static bool WantsToBeOpen => _renameJustStarted;
 
-    public static void StartRename(VoxelObject o)
+    public static void StartRename(VoxelObject o) => StartRename(o.Id, o.Name);
+
+    public static void StartRename(SceneLight light) => StartRename(light.Id, light.Name);
+
+    private static void StartRename(int id, string name)
     {
-        _renamingId = o.Id;
-        _renameBuffer = o.Name;
+        _renamingId = id;
+        _renameBuffer = name;
         _renameJustStarted = true;
     }
 
@@ -50,12 +56,14 @@ public static class ObjectListPanel
         VoxelScene scene = session.Scene;
 
         float row = ImGui.GetFrameHeight();
-        int rows = Math.Clamp(scene.Objects.Count, 1, MaxVisibleRows);
+        int rows = Math.Clamp(scene.Objects.Count + scene.Lights.Count, 1, MaxVisibleRows);
 
-        // Focus changed from elsewhere — a click in the viewport, a duplicate — so the list follows
-        // it to wherever the row is.
+        // Focus or the picked light changed from elsewhere — a click in the viewport, a duplicate —
+        // so the list follows it to wherever the row is.
         bool focusMoved = scene.FocusId != _lastFocusId;
+        bool lightMoved = session.SelectedLightId != _lastLightId;
         _lastFocusId = scene.FocusId;
+        _lastLightId = session.SelectedLightId;
 
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4f, RowGap));
 
@@ -64,7 +72,14 @@ public static class ObjectListPanel
             foreach (VoxelObject o in scene.Objects.ToArray())
             {
                 ImGui.PushID(o.Id);
-                DrawRow(session, camera, o, row, focusMoved);
+                DrawObjectRow(session, camera, o, row, focusMoved);
+                ImGui.PopID();
+            }
+
+            foreach (SceneLight light in scene.Lights.ToArray())
+            {
+                ImGui.PushID(light.Id);
+                DrawLightRow(session, camera, light, row, lightMoved);
                 ImGui.PopID();
             }
         }
@@ -75,29 +90,29 @@ public static class ObjectListPanel
         DrawFooter(session);
     }
 
-    private static void DrawRow(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved)
+    private static void DrawObjectRow(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved)
     {
         bool focused = o.Id == session.Scene.FocusId;
 
-        DrawEye(session, o, row);
+        // While a light is picked, the focused object is only the one the voxel tools would act on,
+        // so it keeps its mark but gives up the accent to the light.
+        bool emphasised = focused && session.SelectedLightId == 0;
+
+        DrawEye(o.Visible, row, o.Visible ? "Hide  (H)" : "Show  (H)", out bool toggled);
+        if (toggled)
+        {
+            session.SetObjectVisible(o.Id, !o.Visible);
+        }
+
         ImGui.SameLine();
 
         if (_renamingId == o.Id)
         {
-            DrawRenameField(session, o);
+            DrawRenameField(session, o.Id);
             return;
         }
 
-        if (focused)
-        {
-            // The focused object is the one every tool acts on, so it is the one thing in the
-            // interface that earns the accent.
-            ImGui.PushStyleColor(ImGuiCol.Header, Theme.Accent);
-        }
-
-        // The label is drawn by hand after the selectable, so the voxel count can sit at the right
-        // edge and the name can dim when the object is hidden.
-        if (ImGui.Selectable("##name", focused, ImGuiSelectableFlags.AllowDoubleClick, new Vector2(0f, row)))
+        if (DrawSelectable(focused, emphasised, row))
         {
             session.ChooseObject(o.Id);
 
@@ -107,14 +122,9 @@ public static class ObjectListPanel
             }
         }
 
-        if (focused)
+        if (emphasised && focusMoved)
         {
-            ImGui.PopStyleColor();
-
-            if (focusMoved)
-            {
-                ImGui.SetScrollHereY(0.5f);
-            }
+            ImGui.SetScrollHereY(0.5f);
         }
 
         if (ImGui.IsItemHovered())
@@ -125,8 +135,73 @@ public static class ObjectListPanel
                 : "Hidden - not drawn, picked or exported.");
         }
 
-        DrawLabel(o, focused);
-        DrawContextMenu(session, camera, o);
+        DrawLabel(o.Name, o.Visible, emphasised, $"{o.Grid.SolidCount:N0}", null);
+        DrawObjectMenu(session, camera, o);
+    }
+
+    private static void DrawLightRow(EditorSession session, FlyCamera camera, SceneLight light, float row, bool lightMoved)
+    {
+        bool picked = light.Id == session.SelectedLightId;
+
+        DrawEye(light.Visible, row, light.Visible ? "Switch off  (H)" : "Switch on  (H)", out bool toggled);
+        if (toggled)
+        {
+            session.SetLightVisible(light.Id, !light.Visible);
+        }
+
+        ImGui.SameLine();
+
+        if (_renamingId == light.Id)
+        {
+            DrawRenameField(session, light.Id);
+            return;
+        }
+
+        if (DrawSelectable(picked, picked, row))
+        {
+            session.SelectLight(light.Id);
+
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                StartRename(light);
+            }
+        }
+
+        if (picked && lightMoved)
+        {
+            ImGui.SetScrollHereY(0.5f);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            HoveredId = light.Id;
+            ImGui.SetTooltip(light.Visible
+                ? "A light - move and aim it with the Transform tool."
+                : "Switched off - lights nothing.");
+        }
+
+        DrawLabel(light.Name, light.Visible, picked, null, Icons.For(light.Kind));
+        DrawLightMenu(session, camera, light);
+    }
+
+    private static bool DrawSelectable(bool selected, bool emphasised, float row)
+    {
+        // The accent is for the one thing the tools act on; anything else selected gets the plain mark.
+        if (emphasised)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Header, Theme.Accent);
+        }
+
+        // The label is drawn by hand after the selectable, so what sits at the right edge can be a
+        // number or an icon and the name can dim when switched off.
+        bool clicked = ImGui.Selectable("##name", selected, ImGuiSelectableFlags.AllowDoubleClick, new Vector2(0f, row));
+
+        if (emphasised)
+        {
+            ImGui.PopStyleColor();
+        }
+
+        return clicked;
     }
 
     /// <summary>
@@ -134,9 +209,9 @@ public static class ObjectListPanel
     /// rather than as a property of each row. An invisible button with the icon painted on, too,
     /// because a framed button lowers the text line it sits on, and the whole row grows by that much.
     /// </summary>
-    private static void DrawEye(EditorSession session, VoxelObject o, float row)
+    private static void DrawEye(bool open, float row, string tooltip, out bool clicked)
     {
-        bool clicked = ImGui.InvisibleButton("##eye", new Vector2(row));
+        clicked = ImGui.InvisibleButton("##eye", new Vector2(row));
         bool hovered = ImGui.IsItemHovered();
 
         Vector2 min = ImGui.GetItemRectMin();
@@ -147,46 +222,48 @@ public static class ObjectListPanel
             drawList.AddRectFilled(min, min + new Vector2(row), ImGui.GetColorU32(ImGuiCol.ButtonHovered), 4f);
         }
 
-        Vector4 tint = hovered ? Theme.Text : o.Visible ? Theme.TextDim : Theme.TextDim with { W = 0.5f };
-        Icons.Painter icon = o.Visible ? Icons.Eye : Icons.EyeClosed;
+        Vector4 tint = hovered ? Theme.Text : open ? Theme.TextDim : Theme.TextDim with { W = 0.5f };
+        Icons.Painter icon = open ? Icons.Eye : Icons.EyeClosed;
         icon(new ImGuiIconCanvas(drawList, ImGui.ColorConvertFloat4ToU32(tint), 1.4f), min + new Vector2(row * 0.5f), row * 0.3f);
 
         if (hovered)
         {
-            ImGui.SetTooltip(o.Visible ? "Hide  (H)" : "Show  (H)");
-        }
-
-        if (clicked)
-        {
-            session.SetObjectVisible(o.Id, !o.Visible);
+            ImGui.SetTooltip(tooltip);
         }
     }
 
-    private static void DrawLabel(VoxelObject o, bool focused)
+    private static void DrawLabel(string name, bool visible, bool emphasised, string? count, Icons.Painter? icon)
     {
         Vector2 min = ImGui.GetItemRectMin();
         Vector2 max = ImGui.GetItemRectMax();
         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-        float y = min.Y + ((max.Y - min.Y - ImGui.GetTextLineHeight()) * 0.5f);
-
-        Vector4 nameColour = !o.Visible ? Theme.TextDim with { W = 0.6f } : focused ? Theme.Text : Theme.Text with { W = 0.9f };
-        string count = $"{o.Grid.SolidCount:N0}";
-        float countWidth = ImGui.CalcTextSize(count).X;
-
-        // Clipped short of the count, so a long name runs under nothing rather than over the number.
+        float height = max.Y - min.Y;
+        float y = min.Y + ((height - ImGui.GetTextLineHeight()) * 0.5f);
         float padding = ImGui.GetStyle().FramePadding.X;
-        Vector2 clipMax = new(max.X - countWidth - (padding * 3f), max.Y);
+
+        Vector4 nameColour = !visible ? Theme.TextDim with { W = 0.6f } : emphasised ? Theme.Text : Theme.Text with { W = 0.9f };
+        uint trailing = ImGui.ColorConvertFloat4ToU32(Theme.TextDim with { W = emphasised ? 0.9f : 0.6f });
+
+        float trailingWidth = count is not null ? ImGui.CalcTextSize(count).X : height * 0.7f;
+
+        // Clipped short of what trails it, so a long name runs under nothing rather than over it.
+        var clipMax = new Vector2(max.X - trailingWidth - (padding * 3f), max.Y);
         drawList.PushClipRect(min, clipMax, true);
-        drawList.AddText(new Vector2(min.X + padding, y), ImGui.ColorConvertFloat4ToU32(nameColour), o.Name);
+        drawList.AddText(new Vector2(min.X + padding, y), ImGui.ColorConvertFloat4ToU32(nameColour), name);
         drawList.PopClipRect();
 
-        drawList.AddText(
-            new Vector2(max.X - countWidth - padding, y),
-            ImGui.ColorConvertFloat4ToU32(Theme.TextDim with { W = focused ? 0.9f : 0.6f }),
-            count);
+        if (count is not null)
+        {
+            drawList.AddText(new Vector2(max.X - trailingWidth - padding, y), trailing, count);
+        }
+        else if (icon is not null)
+        {
+            var centre = new Vector2(max.X - padding - (trailingWidth * 0.5f), min.Y + (height * 0.5f));
+            icon(new ImGuiIconCanvas(drawList, trailing, 1.2f), centre, height * 0.28f);
+        }
     }
 
-    private static void DrawContextMenu(EditorSession session, FlyCamera camera, VoxelObject o)
+    private static void DrawObjectMenu(EditorSession session, FlyCamera camera, VoxelObject o)
     {
         if (!ImGui.BeginPopupContextItem("##object-menu"))
         {
@@ -226,7 +303,39 @@ public static class ObjectListPanel
         ImGui.EndPopup();
     }
 
-    private static void DrawRenameField(EditorSession session, VoxelObject o)
+    private static void DrawLightMenu(EditorSession session, FlyCamera camera, SceneLight light)
+    {
+        if (!ImGui.BeginPopupContextItem("##light-menu"))
+        {
+            return;
+        }
+
+        if (ImGui.MenuItem("Rename", "F2"))
+        {
+            StartRename(light);
+        }
+
+        if (ImGui.MenuItem("Duplicate", "Shift+D"))
+        {
+            LightMenu.Duplicate(session, camera, light);
+        }
+
+        if (ImGui.MenuItem(light.Visible ? "Switch off" : "Switch on", "H"))
+        {
+            session.SetLightVisible(light.Id, !light.Visible);
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Delete", "Del"))
+        {
+            session.DeleteLight(light.Id);
+        }
+
+        ImGui.EndPopup();
+    }
+
+    private static void DrawRenameField(EditorSession session, int id)
     {
         ImGui.SetNextItemWidth(-1f);
 
@@ -247,7 +356,14 @@ public static class ObjectListPanel
         {
             if (!ImGui.IsKeyPressed(ImGuiKey.Escape))
             {
-                session.RenameObject(o.Id, _renameBuffer);
+                if (session.Scene.FindLight(id) is not null)
+                {
+                    session.RenameLight(id, _renameBuffer);
+                }
+                else
+                {
+                    session.RenameObject(id, _renameBuffer);
+                }
             }
 
             _renamingId = 0;

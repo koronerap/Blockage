@@ -1,21 +1,25 @@
 using System.Numerics;
+using EditorApp.Core.Editing;
+using EditorApp.Core.Scene;
 using EditorApp.Rendering;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
 
 /// <summary>
-/// Where the viewport's one directional light points. The mode switch itself lives in the header
-/// beside the other viewport toggles; this is the detail behind it.
+/// How the level is lit: the viewport's Lit / Unlit switch, the level's ambient floor, and adding
+/// lights. The lights themselves are in the outliner, each with its own settings.
 ///
-/// There is no way to add a second light, and that is the point: this exists to preview how a shape
-/// catches light, not to light a scene. Anything more would be a lighting tool inside a level
-/// editor, and the light is not saved with the level either way.
+/// Lights used to be one direction set here, and not part of the level. They are things in the level
+/// now — saved with it, several of them, sun and point and spot — and still never exported.
 /// </summary>
 public static class LightingPanel
 {
-    public static void DrawContent(SceneLighting lighting)
+    public static void DrawContent(ShellContext context)
     {
+        EditorSession session = context.Session;
+        SceneLighting lighting = context.View.Lighting;
+
         bool lit = lighting.IsLit;
         int mode = lit ? 0 : 1;
 
@@ -31,79 +35,53 @@ public static class LightingPanel
             ImGui.TextDisabled("This is how the exported mesh looks.");
         }
 
-        ImGui.Spacing();
         ImGui.BeginDisabled(!lit);
 
-        float azimuth = lighting.Azimuth;
-        float elevation = lighting.Elevation;
-        float intensity = lighting.Intensity;
-        float ambient = lighting.Ambient;
-
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.SliderFloat("##azimuth", ref azimuth, 0f, 360f, "Direction  %.0f deg"))
-        {
-            lighting.Azimuth = azimuth;
-        }
-
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.SliderFloat("##elevation", ref elevation, -20f, 90f, "Height  %.0f deg"))
-        {
-            // Slightly below the horizon is allowed: it is the quickest way to see which faces are
-            // being carried entirely by the ambient floor.
-            lighting.Elevation = elevation;
-        }
-
-        ImGui.SetNextItemWidth(-1f);
-        if (ImGui.SliderFloat("##intensity", ref intensity, 0f, 1f, "Intensity  %.2f"))
-        {
-            lighting.Intensity = intensity;
-        }
-
+        float ambient = session.Scene.Ambient;
         ImGui.SetNextItemWidth(-1f);
         if (ImGui.SliderFloat("##ambient", ref ambient, 0f, 1f, "Ambient  %.2f"))
         {
-            lighting.Ambient = ambient;
+            session.SetAmbient(ambient);
         }
 
-        DrawDirectionPreview(lighting);
-
-        if (ImGui.Button("Reset light", new Vector2(-1f, 0f)))
+        if (ImGui.IsItemHovered())
         {
-            lighting.ResetAngles();
+            ImGui.SetTooltip("Light every face gets whichever way it points.\nWithout it, faces no light reaches go black.");
+        }
+
+        IReadOnlyList<SceneLight> lights = session.Scene.Lights;
+        int off = lights.Count(l => !l.Visible);
+        ImGui.TextDisabled(lights.Count == 0
+            ? "No lights - only the ambient."
+            : $"{lights.Count} light(s){(off > 0 ? $", {off} off" : string.Empty)}");
+
+        if (context.Renderer.DroppedLights > 0)
+        {
+            ImGui.TextColored(
+                Theme.Highlight,
+                $"{context.Renderer.DroppedLights} not drawn - {LightUniforms.MaxLights} at most at once.");
         }
 
         ImGui.EndDisabled();
+
+        DrawAddButtons(session);
+        ImGui.TextDisabled("Saved with the level, never exported.");
     }
 
-    /// <summary>
-    /// A compass showing where the light comes from, seen from above. Two angles are hard to hold in
-    /// your head at once; a dot on a circle is not.
-    /// </summary>
-    private static void DrawDirectionPreview(SceneLighting lighting)
+    private static void DrawAddButtons(EditorSession session)
     {
-        float size = ImGui.GetFrameHeight() * 2.6f;
-        Vector2 topLeft = ImGui.GetCursorScreenPos();
+        float button = ImGui.GetFrameHeight();
 
-        // Reserved through a dummy so the layout accounts for something drawn by hand.
-        ImGui.Dummy(new Vector2(size, size));
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled("Add");
 
-        ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-        Vector2 centre = topLeft + new Vector2(size * 0.5f);
-        float radius = size * 0.42f;
-
-        uint ring = ImGui.GetColorU32(Theme.Sunken);
-        uint mark = ImGui.GetColorU32(lighting.IsLit ? Theme.Highlight : Theme.TextDisabled);
-
-        drawList.AddCircleFilled(centre, radius, ring);
-        drawList.AddCircle(centre, radius, ImGui.GetColorU32(ImGuiCol.Border));
-
-        // The horizontal part of a unit direction is already shortened by the elevation, so using it
-        // as-is pulls the dot towards the middle as the light rises — and puts it dead centre for a
-        // light directly overhead, which is what being overhead looks like from above.
-        Vector3 direction = lighting.Direction;
-        Vector2 dot = centre + (new Vector2(direction.X, -direction.Z) * radius);
-
-        drawList.AddLine(centre, dot, mark);
-        drawList.AddCircleFilled(dot, 3.5f, mark);
+        foreach ((LightKind kind, string label) in LightMenu.Kinds)
+        {
+            ImGui.SameLine();
+            if (IconButton.Draw($"add-{kind}", Icons.For(kind), active: false, $"Add a {label.ToLowerInvariant()}", button))
+            {
+                LightMenu.Add(session, kind);
+            }
+        }
     }
 }

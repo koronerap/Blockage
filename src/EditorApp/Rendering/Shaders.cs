@@ -5,7 +5,7 @@ namespace EditorApp.Rendering;
 /// ground grid.
 ///
 /// The voxel shader has two shading modes. Unlit is EditorApp.md §5 unchanged — vertex colour times
-/// a constant per-normal shade, no lighting math. Lit adds one fixed directional light so the way a
+/// a constant per-normal shade, no lighting math. Lit uses the level's own lights, so the way a
 /// level catches light can be judged in the editor. Neither reaches the exported file, which stays
 /// flat by design (§10.4).
 /// </summary>
@@ -19,9 +19,59 @@ public static class Shaders
 
         uniform mat4 uViewProjection;
 
-        // Each object carries its own place in the world; the voxel grid itself is always axis
-        // aligned in its own space.
+        // Each object carries its own place in the world and its own voxel size; the voxel grid
+        // itself is always axis aligned in its own space.
         uniform mat4 uModel;
+
+        // Per-face lookup tables, uploaded once from FaceInfo rather than written out again here,
+        // so there is only one place the constants can be wrong.
+        uniform vec3 uFaceNormal[6];
+        uniform float uFaceShade[6];
+
+        out vec4 vColor;
+        out vec3 vNormal;
+        out vec3 vWorldPosition;
+
+        // The unlit mode's flat shade for this face, carried along so the fragment stage can choose.
+        out float vFaceShade;
+
+        void main()
+        {
+            int face = int(aFace + 0.5);
+            vec4 world = uModel * vec4(aPosition, 1.0);
+
+            // Rotated into the world, or turning an object would leave its shading behind. The voxel
+            // size is a uniform scale, which normalising takes straight back out.
+            vNormal = normalize(mat3(uModel) * uFaceNormal[face]);
+            vWorldPosition = world.xyz;
+            vFaceShade = uFaceShade[face];
+            vColor = aColor;
+
+            gl_Position = uViewProjection * world;
+        }
+        """;
+
+    /// <summary>
+    /// The level's lights, worked out per pixel: a point or spot light's reach and cone can end
+    /// halfway across a face, which a per-corner value would smear into a gradient that is not there.
+    /// Every kind is the same formula — see <see cref="LightUniforms"/>.
+    /// </summary>
+    public static readonly string VoxelFragment = $$"""
+        #version 330 core
+        in vec4 vColor;
+        in vec3 vNormal;
+        in vec3 vWorldPosition;
+        in float vFaceShade;
+
+        // 0 = lit, 1 = unlit.
+        uniform int uUnlit;
+        uniform float uAmbient;
+
+        uniform int uLightCount;
+        uniform vec4 uLightPosition[{{LightUniforms.MaxLights}}];
+        uniform vec3 uLightDirection[{{LightUniforms.MaxLights}}];
+        uniform vec3 uLightColor[{{LightUniforms.MaxLights}}];
+        uniform vec4 uLightShape[{{LightUniforms.MaxLights}}];
 
         // 0 for a background object, 1 for the one being edited. Eased on the CPU so focus moves
         // as a fade rather than a jump.
@@ -32,60 +82,52 @@ public static class Shaders
         // rather than a value of uFocus that happens to mean nothing.
         uniform float uFocusStrength;
 
-        // Per-face lookup tables, uploaded once from FaceInfo rather than written out again here,
-        // so there is only one place the constants can be wrong.
-        uniform vec3 uFaceNormal[6];
-        uniform float uFaceShade[6];
+        out vec4 fragColor;
 
-        // 0 = lit, 1 = unlit.
-        uniform int uUnlit;
+        vec3 lightArriving(vec3 normal)
+        {
+            vec3 total = vec3(uAmbient);
 
-        // Points towards the light, world space, unit length.
-        uniform vec3 uLightDirection;
-        uniform float uLightIntensity;
-        uniform float uAmbient;
+            for (int i = 0; i < uLightCount; i++)
+            {
+                vec3 towards;
+                float strength = 1.0;
 
-        out vec4 vColor;
+                if (uLightPosition[i].w == 0.0)
+                {
+                    towards = uLightPosition[i].xyz;
+                }
+                else
+                {
+                    vec3 offset = uLightPosition[i].xyz - vWorldPosition;
+                    float dist = length(offset);
+                    towards = offset / max(dist, 0.0001);
+
+                    // Full strength at the light, nothing at its range, and no hard ring between.
+                    float range = uLightShape[i].x;
+                    float reach = clamp(1.0 - (dist * dist) / (range * range), 0.0, 1.0);
+                    strength = reach * reach;
+
+                    strength *= smoothstep(uLightShape[i].y, uLightShape[i].z, dot(-towards, uLightDirection[i]));
+                }
+
+                total += uLightColor[i] * (max(dot(normal, towards), 0.0) * strength);
+            }
+
+            return total;
+        }
 
         void main()
         {
-            int face = int(aFace + 0.5);
-            float shade;
-
-            if (uUnlit != 0)
-            {
-                shade = uFaceShade[face];
-            }
-            else
-            {
-                // Rotated into the world, or turning an object would leave its shading behind.
-                vec3 normal = normalize(mat3(uModel) * uFaceNormal[face]);
-
-                // Computed per vertex, which costs nothing and loses nothing: a face normal is
-                // constant across a quad, so interpolating this gives the same value everywhere.
-                shade = uAmbient + uLightIntensity * max(dot(normal, uLightDirection), 0.0);
-            }
-
-            vec3 lit = aColor.rgb * shade;
+            vec3 light = uUnlit != 0 ? vec3(vFaceShade) : lightArriving(normalize(vNormal));
+            vec3 lit = vColor.rgb * light;
 
             // Lift towards white rather than scaling: multiplying leaves an already-white model
             // exactly as it was, which is the one case that has to read as focused.
             vec3 highlighted = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
             lit = mix(lit, highlighted, uFocusStrength);
 
-            vColor = vec4(clamp(lit, 0.0, 1.0), aColor.a);
-            gl_Position = uViewProjection * uModel * vec4(aPosition, 1.0);
-        }
-        """;
-
-    public const string VoxelFragment = """
-        #version 330 core
-        in vec4 vColor;
-        out vec4 fragColor;
-
-        void main()
-        {
-            fragColor = vColor;
+            fragColor = vec4(clamp(lit, 0.0, 1.0), vColor.a);
         }
         """;
 

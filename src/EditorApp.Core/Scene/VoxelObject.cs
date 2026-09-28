@@ -11,7 +11,7 @@ namespace EditorApp.Core.Scene;
 /// is what keeps meshing, picking and greedy export working on a plain integer lattice however the
 /// object is turned.
 /// </summary>
-public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transform, string name)
+public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transform, string name) : IPlaceable
 {
     public int Id { get; } = id;
 

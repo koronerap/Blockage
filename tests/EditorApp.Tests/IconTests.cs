@@ -113,6 +113,9 @@ public class IconTests
         { nameof(Icons.MouseWheel), Icons.MouseWheel },
         { nameof(Icons.Eye), Icons.Eye },
         { nameof(Icons.EyeClosed), Icons.EyeClosed },
+        { nameof(Icons.LightSun), Icons.LightSun },
+        { nameof(Icons.LightPoint), Icons.LightPoint },
+        { nameof(Icons.LightSpot), Icons.LightSpot },
     };
 
     [Theory]

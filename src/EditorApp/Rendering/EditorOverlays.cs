@@ -122,6 +122,100 @@ public static class EditorOverlays
         AddArrow(lines, arrow.Start, arrow.End, Arrow, ArrowWidth);
     }
 
+    /// <summary>A light that is switched off: still there to be picked, but grey.</summary>
+    public static readonly Color32 LightOff = new(130, 130, 130);
+
+    private const float LightWidth = 1.2f;
+
+    /// <summary>
+    /// Where a light is and which way it shines, in world space, sized by its distance from the
+    /// camera so its icon reads the same near and far. A bulb that faces the camera for every kind;
+    /// rays for the sun, with its direction; a cone for a spot, as wide as its beam.
+    /// </summary>
+    public static void AddLight(LineGeometry lines, SceneLight light, FlyCamera camera, bool highlighted)
+    {
+        Vector3 at = light.Position;
+        float size = MathF.Max(Vector3.Distance(camera.Position, at) * 0.022f, 0.02f);
+        Vector3 right = camera.Right * size;
+        Vector3 up = camera.Up * size;
+
+        // The light's own colour, lifted towards white so a deep blue one can still be seen.
+        Color32 colour = highlighted
+            ? GizmoActive
+            : light.Visible
+                ? Color32.FromVector4(new Vector4(Vector3.Lerp(light.Colour, Vector3.One, 0.35f), 1f))
+                : LightOff;
+
+        AddBillboardCircle(lines, at, right, up, 1f, colour);
+
+        switch (light.Kind)
+        {
+            case LightKind.Directional:
+                for (int i = 0; i < 8; i++)
+                {
+                    float angle = i * (MathF.PI / 4f);
+                    Vector3 ray = (right * MathF.Cos(angle)) + (up * MathF.Sin(angle));
+                    lines.AddThickLine(at + (ray * 1.5f), at + (ray * 2.2f), colour, LightWidth);
+                }
+
+                // Parallel rays have no source to point from, so the direction is the whole message.
+                AddArrow(lines, at, at + (light.Direction * size * 9f), colour, LightWidth);
+                break;
+
+            case LightKind.Point:
+                AddBillboardCircle(lines, at, right, up, 0.45f, colour);
+                break;
+
+            default:
+                AddSpotCone(lines, light, size, colour);
+                break;
+        }
+    }
+
+    private static void AddBillboardCircle(LineGeometry lines, Vector3 centre, Vector3 right, Vector3 up, float radius, Color32 colour)
+    {
+        const int Segments = 16;
+        Vector3 previous = centre + (right * radius);
+
+        for (int i = 1; i <= Segments; i++)
+        {
+            float angle = i * (MathF.Tau / Segments);
+            Vector3 point = centre + (((right * MathF.Cos(angle)) + (up * MathF.Sin(angle))) * radius);
+            lines.AddThickLine(previous, point, colour, LightWidth);
+            previous = point;
+        }
+    }
+
+    /// <summary>The beam drawn out to its range, or a dozen icon-sizes if that is nearer: far enough to aim by.</summary>
+    private static void AddSpotCone(LineGeometry lines, SceneLight light, float size, Color32 colour)
+    {
+        const int Segments = 20;
+
+        Vector3 direction = light.Direction;
+        float length = MathF.Min(light.Range, size * 12f);
+        float radius = length * MathF.Tan(light.SpotAngle * 0.5f * (MathF.PI / 180f));
+        Vector3 mouth = light.Position + (direction * length);
+
+        Vector3 reference = MathF.Abs(direction.Y) > 0.9f ? Vector3.UnitX : Vector3.UnitY;
+        Vector3 u = Vector3.Normalize(Vector3.Cross(direction, reference)) * radius;
+        Vector3 v = Vector3.Normalize(Vector3.Cross(direction, u)) * radius;
+
+        Vector3 previous = mouth + u;
+        for (int i = 1; i <= Segments; i++)
+        {
+            float angle = i * (MathF.Tau / Segments);
+            Vector3 point = mouth + (u * MathF.Cos(angle)) + (v * MathF.Sin(angle));
+            lines.AddThickLine(previous, point, colour, LightWidth);
+
+            if (i % 5 == 0)
+            {
+                lines.AddThickLine(light.Position, point, colour, LightWidth);
+            }
+
+            previous = point;
+        }
+    }
+
     /// <summary>Draws the move arrows, the box edges and the rotate rings, in world space.</summary>
     public static void AddTransformGizmo(
         LineGeometry lines,

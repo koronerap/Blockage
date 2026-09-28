@@ -52,7 +52,14 @@ public static class StatusBar
             ImGui.TextDisabled($"· {selection.Count:N0} faces");
         }
 
-        if (session.Scene.Focus is { } focus)
+        if (session.SelectedLight is { } light)
+        {
+            ImGui.SameLine(0f, 20f);
+            ImGui.TextColored(Theme.Highlight, light.Name);
+            ImGui.SameLine(0f, 8f);
+            ImGui.TextDisabled($"· {light.Kind} light{(light.Visible ? string.Empty : ", off")}");
+        }
+        else if (session.Scene.Focus is { } focus)
         {
             ImGui.SameLine(0f, 20f);
             ImGui.TextColored(Theme.Highlight, focus.Name);

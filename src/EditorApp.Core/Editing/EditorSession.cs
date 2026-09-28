@@ -393,14 +393,14 @@ public sealed class EditorSession
     /// The target is explicit rather than "whatever has focus": a drag that passed over another
     /// object used to start moving that one instead, mid-gesture.
     /// </summary>
-    public void ApplyTransform(VoxelObject target, ObjectTransform transform)
+    public void ApplyTransform(IPlaceable target, ObjectTransform transform)
     {
         target.Transform = transform;
         HasUnsavedChanges = true;
     }
 
     /// <summary>Records a finished gizmo drag as one undo step.</summary>
-    public bool PushTransformEdit(VoxelObject target, ObjectTransform before, string name)
+    public bool PushTransformEdit(IPlaceable target, ObjectTransform before, string name)
     {
         if (before == target.Transform)
         {
@@ -464,7 +464,178 @@ public sealed class EditorSession
             ClearSelection();
         }
 
+        // Choosing an object is choosing it over a light, too.
+        SelectedLightId = 0;
         return TryFocus(objectId);
+    }
+
+    // ---- Lights --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The light picked in the outliner or the viewport, or 0. While one is picked, the Transform
+    /// tool moves and aims it instead of the focused object. The tools that edit voxels still work
+    /// on the focused object, since a light has none.
+    /// </summary>
+    public int SelectedLightId { get; private set; }
+
+    /// <summary>The picked light, or null, including when it has since been deleted or undone away.</summary>
+    public SceneLight? SelectedLight => SelectedLightId == 0 ? null : Scene.FindLight(SelectedLightId);
+
+    /// <summary>What the Transform tool works on: the picked light if there is one, else the focused object.</summary>
+    public IPlaceable? TransformTarget => (IPlaceable?)SelectedLight ?? Scene.Focus;
+
+    public bool SelectLight(int lightId)
+    {
+        if (Scene.FindLight(lightId) is null)
+        {
+            return false;
+        }
+
+        SelectedLightId = lightId;
+        return true;
+    }
+
+    public void ClearLightSelection() => SelectedLightId = 0;
+
+    /// <summary>
+    /// Adds a light, picks it, and records it as one undo step. Named after its kind, numbered the
+    /// way copies are when the name is taken.
+    /// </summary>
+    public SceneLight AddLight(LightKind kind, Vector3 position, Vector3 shining)
+    {
+        string name = kind switch
+        {
+            LightKind.Directional => "Sun",
+            LightKind.Point => "Point",
+            _ => "Spot",
+        };
+
+        if (Scene.Lights.Any(l => l.Name == name))
+        {
+            name = DuplicateName(name, Scene.Lights.Select(l => l.Name));
+        }
+
+        SceneLight light = Scene.CreateLight(kind, name);
+        light.Transform = new ObjectTransform(position, SceneLight.Aiming(shining));
+
+        if (kind == LightKind.Directional)
+        {
+            light.Intensity = SceneLight.SunIntensity;
+        }
+
+        var command = new AddLightCommand(Scene, light, $"Add {name}");
+        command.Redo();
+        History.Push(command);
+
+        SelectedLightId = light.Id;
+        HasUnsavedChanges = true;
+        return light;
+    }
+
+    /// <summary>A copy of a light beside it, picked. One undo step.</summary>
+    public SceneLight? DuplicateLight(int lightId, Vector3 offset)
+    {
+        if (Scene.FindLight(lightId) is not { } source)
+        {
+            return null;
+        }
+
+        SceneLight copy = Scene.CreateLight(source.Kind, source.Name);
+        copy.Apply(source.State with
+        {
+            Name = DuplicateName(source.Name, Scene.Lights.Select(l => l.Name)),
+            Transform = source.Transform.Translated(offset),
+        });
+
+        var command = new AddLightCommand(Scene, copy, $"Duplicate {source.Name}");
+        command.Redo();
+        History.Push(command);
+
+        SelectedLightId = copy.Id;
+        HasUnsavedChanges = true;
+        return copy;
+    }
+
+    /// <summary>
+    /// Takes a light out. Unlike objects, the last one can go: a level lit by nothing but its
+    /// ambient floor is a strange choice, not a dead end.
+    /// </summary>
+    public bool DeleteLight(int lightId)
+    {
+        if (Scene.FindLight(lightId) is not { } light)
+        {
+            return false;
+        }
+
+        var command = new DeleteLightCommand(Scene, light);
+        command.Redo();
+        History.Push(command);
+
+        if (SelectedLightId == lightId)
+        {
+            SelectedLightId = 0;
+        }
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>Records a finished edit of a light's settings as one undo step.</summary>
+    public bool PushLightEdit(SceneLight light, LightState before, string name)
+    {
+        if (before == light.State)
+        {
+            return false;
+        }
+
+        History.Push(new LightEditCommand(light, before, light.State, name));
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>Switches a light on or off. Like hiding an object: saved, but outside undo.</summary>
+    public bool SetLightVisible(int lightId, bool visible)
+    {
+        if (Scene.FindLight(lightId) is not { } light || light.Visible == visible)
+        {
+            return false;
+        }
+
+        light.Visible = visible;
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    public bool RenameLight(int lightId, string name)
+    {
+        string trimmed = name.Trim();
+        if (trimmed.Length == 0 || Scene.FindLight(lightId) is not { } light)
+        {
+            return false;
+        }
+
+        if (light.Name != trimmed)
+        {
+            light.Name = trimmed;
+            HasUnsavedChanges = true;
+        }
+
+        return true;
+    }
+
+    /// <summary>The ambient floor. Saved with the level; outside undo, like the lights' switches.</summary>
+    public bool SetAmbient(float ambient)
+    {
+        float before = Scene.Ambient;
+        Scene.Ambient = ambient;
+
+        if (Scene.Ambient == before)
+        {
+            return false;
+        }
+
+        HasUnsavedChanges = true;
+        return true;
     }
 
     /// <summary>
@@ -956,11 +1127,13 @@ public sealed class EditorSession
     }
 
     /// <summary>Replaces the level with a single-object scene — New, or opening a v1 project.</summary>
+    /// <summary>A new level around one grid, and the sun every new level starts with.</summary>
     public void ReplaceWorld(VoxelWorld world, string? projectPath)
     {
         var scene = new VoxelScene();
         scene.ReplacePalette(world.Palette);
         scene.Add(world, ObjectTransform.Identity, "Object 1");
+        scene.AddDefaultSun();
         ReplaceScene(scene, projectPath);
     }
 
@@ -973,6 +1146,7 @@ public sealed class EditorSession
         Selection = null;
 
         Scene = scene;
+        SelectedLightId = 0;
         if (Scene.Objects.Count == 0)
         {
             EnsureFocus();

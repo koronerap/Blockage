@@ -27,7 +27,7 @@ public static class VxLevelFile
 {
     /// <summary>
     /// 1: a single grid. 2: objects with transforms. 3: per-face colours. 4: voxel size.
-    /// 5: hidden objects. 6: voxel size per object, positions in world units.
+    /// 5: hidden objects. 6: voxel size per object, positions in world units; lights and ambient.
     ///
     /// Version 4 is a bump for a field an older build would simply not see. That is exactly why it
     /// is one: it sets the scale of everything exported from the file, so a build that ignored it
@@ -116,6 +116,8 @@ public static class VxLevelFile
             ChunkSize = Chunk.Size,
             Palette = LevelManifest.EncodePalette(scene.Palette),
             SavedCustomSlots = [.. scene.Palette.SavedCustomSlots()],
+            Lights = [.. scene.Lights.Select(WriteLight)],
+            Ambient = scene.Ambient,
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
 
@@ -317,8 +319,91 @@ public static class VxLevelFile
                 "Object 1");
         }
 
+        // After the objects, so a sun added for an older file can be placed clear of them.
+        if (manifest.Lights is { } lights)
+        {
+            foreach (LevelManifest.LightEntry entry in lights)
+            {
+                ReadLight(scene, entry);
+            }
+        }
+        else
+        {
+            scene.AddDefaultSun();
+        }
+
+        scene.Ambient = manifest.Ambient ?? VoxelScene.DefaultAmbient;
+
         scene.MarkAllDirty();
         return scene;
+    }
+
+    private static LevelManifest.LightEntry WriteLight(SceneLight light)
+    {
+        Vector3 colour = light.Colour * 255f;
+
+        return new LevelManifest.LightEntry
+        {
+            Name = light.Name,
+            Kind = light.Kind.ToString().ToLowerInvariant(),
+            Position = [light.Position.X, light.Position.Y, light.Position.Z],
+            Rotation =
+            [
+                light.Transform.Rotation.X,
+                light.Transform.Rotation.Y,
+                light.Transform.Rotation.Z,
+                light.Transform.Rotation.W,
+            ],
+            Colour = $"#{(int)MathF.Round(colour.X):X2}{(int)MathF.Round(colour.Y):X2}{(int)MathF.Round(colour.Z):X2}",
+            Intensity = light.Intensity,
+            Range = light.Range,
+            SpotAngle = light.SpotAngle,
+            SpotBlend = light.SpotBlend,
+            Visible = light.Visible,
+        };
+    }
+
+    private static void ReadLight(VoxelScene scene, LevelManifest.LightEntry entry)
+    {
+        LightKind kind = entry.Kind.ToLowerInvariant() switch
+        {
+            "directional" => LightKind.Directional,
+            "spot" => LightKind.Spot,
+            "point" => LightKind.Point,
+            _ => throw new VxLevelFormatException($"Light '{entry.Name}' is of an unknown kind '{entry.Kind}'."),
+        };
+
+        if (entry.Position.Length != 3 || entry.Rotation.Length != 4)
+        {
+            throw new VxLevelFormatException($"Light '{entry.Name}' has a malformed placement.");
+        }
+
+        var rotation = new Quaternion(entry.Rotation[0], entry.Rotation[1], entry.Rotation[2], entry.Rotation[3]);
+        rotation = rotation.LengthSquared() < 1e-6f ? Quaternion.Identity : Quaternion.Normalize(rotation);
+
+        SceneLight light = scene.AddLight(kind, entry.Name);
+        light.Apply(light.State with
+        {
+            Transform = new ObjectTransform(new Vector3(entry.Position[0], entry.Position[1], entry.Position[2]), rotation),
+            Colour = ParseLightColour(entry),
+            Intensity = entry.Intensity,
+            Range = entry.Range,
+            SpotAngle = entry.SpotAngle,
+            SpotBlend = entry.SpotBlend,
+            Visible = entry.Visible,
+        });
+    }
+
+    private static Vector3 ParseLightColour(LevelManifest.LightEntry entry)
+    {
+        ReadOnlySpan<char> digits = entry.Colour.AsSpan().TrimStart('#');
+        if (digits.Length != 6
+            || !int.TryParse(digits, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int rgb))
+        {
+            throw new VxLevelFormatException($"Light '{entry.Name}' has a colour that is not #RRGGBB: '{entry.Colour}'.");
+        }
+
+        return new Vector3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255f;
     }
 
     private static ObjectTransform ReadTransform(LevelManifest.ObjectEntry entry)

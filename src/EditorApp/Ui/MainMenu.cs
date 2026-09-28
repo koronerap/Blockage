@@ -102,6 +102,13 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
+        // Lights are the only thing there is to add: voxels come from extruding what is already there.
+        if (ImGui.BeginMenu("Add"))
+        {
+            LightMenu.DrawItems(session);
+            ImGui.EndMenu();
+        }
+
         DrawStatus(project);
 
         float height = ImGui.GetWindowSize().Y;

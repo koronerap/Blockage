@@ -471,9 +471,18 @@ public sealed class EditorApplication : IDisposable
     {
         _transform!.UpdateHover(mouse, viewport, _camera);
 
-        if (pressed)
+        if (pressed && !_transform.OnPress(mouse, viewport, _camera))
         {
-            _transform.OnPress(mouse, viewport, _camera);
+            // Not a handle: a light's icon picks the light, and anywhere else lets go of one, so the
+            // gizmo goes back to the focused object.
+            if (LightUnder(mouse, viewport) is { } light)
+            {
+                _session.SelectLight(light.Id);
+            }
+            else
+            {
+                _session.ClearLightSelection();
+            }
         }
         else if (leftDown && _transform.IsDragging)
         {
@@ -663,8 +672,18 @@ public sealed class EditorApplication : IDisposable
 
             // Blender's object keys: Shift+D duplicates, H hides, Alt+H shows everything again,
             // Delete deletes, F2 renames. Before plain D, which is the measurements.
+            // With a light picked, they act on the light.
             case Key.D when shift && !control:
-                if (!IsDragging())
+                if (IsDragging())
+                {
+                    break;
+                }
+
+                if (_session.SelectedLight is { } copied)
+                {
+                    LightMenu.Duplicate(_session, _camera, copied);
+                }
+                else
                 {
                     ObjectMenu.Duplicate(_session, _camera);
                 }
@@ -673,10 +692,24 @@ public sealed class EditorApplication : IDisposable
 
             case Key.H when alt:
                 _session.ShowAllObjects();
+                foreach (SceneLight light in _session.Scene.Lights)
+                {
+                    _session.SetLightVisible(light.Id, true);
+                }
+
                 break;
 
             case Key.H when !control:
-                if (!IsDragging())
+                if (IsDragging())
+                {
+                    break;
+                }
+
+                if (_session.SelectedLight is { } dimmed)
+                {
+                    _session.SetLightVisible(dimmed.Id, !dimmed.Visible);
+                }
+                else
                 {
                     _session.SetObjectVisible(_session.Scene.FocusId, false);
                 }
@@ -684,7 +717,16 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case Key.Delete:
-                if (!IsDragging())
+                if (IsDragging())
+                {
+                    break;
+                }
+
+                if (_session.SelectedLight is { } removed)
+                {
+                    _session.DeleteLight(removed.Id);
+                }
+                else
                 {
                     _session.DeleteObject(_session.Scene.FocusId);
                 }
@@ -692,7 +734,11 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case Key.F2:
-                if (_session.Scene.Focus is { } renamed)
+                if (_session.SelectedLight is { } renamedLight)
+                {
+                    ObjectListPanel.StartRename(renamedLight);
+                }
+                else if (_session.Scene.Focus is { } renamed)
                 {
                     ObjectListPanel.StartRename(renamed);
                 }
@@ -755,11 +801,43 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>Esc cancels a drag if one is running, otherwise it returns to Transform.</summary>
+    /// <summary>The light whose icon is under the cursor, nearest the camera first, if any.</summary>
+    private SceneLight? LightUnder(Vector2 mouse, Vector2 viewport)
+    {
+        const float Reach = 14f;
+        SceneLight? found = null;
+        float nearest = float.MaxValue;
+
+        foreach (SceneLight light in _session.Scene.Lights)
+        {
+            if (!_camera.TryProjectToScreen(light.Position, viewport, out Vector2 screen)
+                || Vector2.Distance(screen, mouse) > Reach)
+            {
+                continue;
+            }
+
+            float distance = Vector3.Distance(_camera.Position, light.Position);
+            if (distance < nearest)
+            {
+                nearest = distance;
+                found = light;
+            }
+        }
+
+        return found;
+    }
+
     private void OnEscape()
     {
         if (_transform!.IsDragging)
         {
             _transform.Cancel();
+            return;
+        }
+
+        if (_session.SelectedLightId != 0)
+        {
+            _session.ClearLightSelection();
             return;
         }
 
@@ -927,6 +1005,13 @@ public sealed class EditorApplication : IDisposable
                 GroundGrid.WorldUnitsPerCell(_session.Scene.Focus?.VoxelSize ?? 1f),
                 EditorOverlays.GridMinor,
                 EditorOverlays.GridMajor);
+        }
+
+        // The lights, over everything: an icon hidden inside a wall could not be picked.
+        foreach (SceneLight light in _session.Scene.Lights)
+        {
+            bool marked = light.Id == _session.SelectedLightId || light.Id == ObjectListPanel.HoveredId;
+            EditorOverlays.AddLight(gizmos, light, _camera, marked);
         }
 
         // The object whose row the mouse is over in the outliner, so a name can be matched to a shape.

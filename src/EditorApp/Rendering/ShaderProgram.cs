@@ -131,6 +131,20 @@ public sealed class ShaderProgram : IDisposable
         }
     }
 
+    public unsafe void SetVector4Array(string name, ReadOnlySpan<Vector4> values)
+    {
+        int location = Location(name);
+        if (location < 0)
+        {
+            return;
+        }
+
+        fixed (Vector4* first = values)
+        {
+            _gl.Uniform4(location, (uint)values.Length, (float*)first);
+        }
+    }
+
     public unsafe void SetVector3Array(string name, ReadOnlySpan<Vector3> values)
     {
         int location = Location(name);

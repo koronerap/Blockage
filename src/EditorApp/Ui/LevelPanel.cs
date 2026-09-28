@@ -48,6 +48,15 @@ public static class ObjectPropertiesPanel
 
     public static void DrawContent(EditorSession session)
     {
+        // A picked light has settings of its own, and they are what this space is for while it is.
+        if (session.SelectedLight is { } light)
+        {
+            LightPropertiesPanel.DrawContent(session, light);
+            return;
+        }
+
+        LightPropertiesPanel.Flush(session);
+
         if (session.Scene.Focus is not { } focus)
         {
             return;

@@ -76,7 +76,13 @@ public sealed class GlRenderer : IDisposable
     public Color32 BackgroundTopColor { get; set; } = new(52, 56, 62);
 
     /// <summary>How the viewport shades faces. A way of looking at the level, not part of it.</summary>
+    /// <summary>The Lit / Unlit switch. The lights themselves are the level's.</summary>
     public SceneLighting Lighting { get; } = new();
+
+    private readonly LightUniforms _lights = new();
+
+    /// <summary>Lights switched on beyond what the shader has room for, left out of the last frame.</summary>
+    public int DroppedLights { get; private set; }
 
     public GlRenderer(GL gl)
     {
@@ -299,9 +305,7 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.Use();
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
         _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : 1);
-        _voxelShader.SetVector3("uLightDirection", Lighting.Direction);
-        _voxelShader.SetFloat("uLightIntensity", Lighting.Intensity);
-        _voxelShader.SetFloat("uAmbient", Lighting.Ambient);
+        UploadLights(scene);
         _voxelShader.SetFloat("uFocusStrength", FocusHighlight ? 1f : 0f);
 
         VisibleChunks = 0;
@@ -323,6 +327,20 @@ public sealed class GlRenderer : IDisposable
         DrawOverlays(viewProjection);
 
         _gl.BindVertexArray(0);
+    }
+
+    /// <summary>The level's own lights and ambient floor. Whether they are used at all is the Lit switch.</summary>
+    private void UploadLights(VoxelScene scene)
+    {
+        _lights.Pack(scene.Lights);
+        DroppedLights = _lights.Dropped;
+
+        _voxelShader.SetFloat("uAmbient", scene.Ambient);
+        _voxelShader.SetInt("uLightCount", _lights.Count);
+        _voxelShader.SetVector4Array("uLightPosition", _lights.Positions);
+        _voxelShader.SetVector3Array("uLightDirection", _lights.Directions);
+        _voxelShader.SetVector3Array("uLightColor", _lights.Colours);
+        _voxelShader.SetVector4Array("uLightShape", _lights.Shapes);
     }
 
     /// <summary>

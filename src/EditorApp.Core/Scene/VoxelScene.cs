@@ -22,7 +22,13 @@ public sealed class VoxelScene
 
     public const float MaxVoxelSize = ObjectTransform.MaxVoxelSize;
 
+    /// <summary>The ambient floor a new level starts with: the viewport's before lights were in the level.</summary>
+    public const float DefaultAmbient = 0.32f;
+
     private readonly List<VoxelObject> _objects = [];
+    private readonly List<SceneLight> _lights = [];
+
+    // One counter for objects and lights alike, so an id names one thing in the level and nothing else.
     private int _nextId = 1;
 
     public VoxelScene()
@@ -61,6 +67,21 @@ public sealed class VoxelScene
     }
 
     public IReadOnlyList<VoxelObject> Objects => _objects;
+
+    /// <summary>The level's lights, in the order the outliner lists them. Never exported.</summary>
+    public IReadOnlyList<SceneLight> Lights => _lights;
+
+    /// <summary>
+    /// How much light every face gets whichever way it points — without it, faces turned away from
+    /// every light go black and their colour cannot be judged at all. Saved with the level.
+    /// </summary>
+    public float Ambient
+    {
+        get => _ambient;
+        set => _ambient = float.IsFinite(value) ? Math.Clamp(value, 0f, 1f) : _ambient;
+    }
+
+    private float _ambient = DefaultAmbient;
 
     /// <summary>Id of the object the tools act on. 0 when the scene is empty.</summary>
     public int FocusId { get; private set; }
@@ -123,6 +144,62 @@ public sealed class VoxelScene
     /// <summary>The object with this id, or null.</summary>
     public VoxelObject? Find(int id) => _objects.Find(o => o.Id == id);
 
+    // ---- Lights --------------------------------------------------------------------------------
+
+    /// <summary>A new light with a fresh id, not yet in the level — an add command puts it there.</summary>
+    public SceneLight CreateLight(LightKind kind, string name) => new(_nextId++, kind, name);
+
+    public SceneLight AddLight(LightKind kind, string name, int? insertAt = null)
+    {
+        SceneLight light = CreateLight(kind, name);
+        RestoreLight(light, insertAt);
+        return light;
+    }
+
+    /// <summary>Puts a light (back) into the level, keeping its identity. Adding one already there does nothing.</summary>
+    public void RestoreLight(SceneLight light, int? insertAt = null)
+    {
+        if (_lights.Any(l => l.Id == light.Id))
+        {
+            return;
+        }
+
+        if (insertAt is { } at)
+        {
+            _lights.Insert(Math.Clamp(at, 0, _lights.Count), light);
+        }
+        else
+        {
+            _lights.Add(light);
+        }
+
+        _nextId = Math.Max(_nextId, light.Id + 1);
+    }
+
+    public bool RemoveLight(int id) => _lights.RemoveAll(l => l.Id == id) > 0;
+
+    public SceneLight? FindLight(int id) => _lights.Find(l => l.Id == id);
+
+    public int IndexOfLight(int id) => _lights.FindIndex(l => l.Id == id);
+
+    /// <summary>
+    /// The sun a new level starts with, and a level from before lights were saved gets: the light
+    /// the viewport always had, from the same bearing and height, so nothing looks different.
+    /// </summary>
+    public SceneLight AddDefaultSun()
+    {
+        SceneLight sun = AddLight(LightKind.Directional, "Sun");
+        Vector3 direction = SceneLight.ShiningFrom(SceneLight.SunAzimuth, SceneLight.SunElevation);
+
+        // Placed up the way the light comes from, where its icon is out of the way of the model.
+        Vector3 above = TryGetWorldBounds(out Vector3 min, out Vector3 max) ? (min + max) * 0.5f : Vector3.Zero;
+        float lift = MathF.Max((max - min).Length(), 8f);
+
+        sun.Transform = new ObjectTransform(above - (direction * lift), SceneLight.Aiming(direction));
+        sun.Intensity = SceneLight.SunIntensity;
+        return sun;
+    }
+
     /// <summary>Where the object sits in the list, or -1.</summary>
     public int IndexOf(int id) => _objects.FindIndex(o => o.Id == id);
 
@@ -148,6 +225,7 @@ public sealed class VoxelScene
         var copy = new VoxelScene
         {
             _nextId = _nextId,
+            _ambient = _ambient,
             FocusId = FocusId,
             Palette = Palette.Clone(),
         };
@@ -157,6 +235,11 @@ public sealed class VoxelScene
             VoxelWorld grid = o.Grid.Copy();
             grid.ReplacePalette(copy.Palette);
             copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name) { Visible = o.Visible });
+        }
+
+        foreach (SceneLight light in _lights)
+        {
+            copy._lights.Add(light.Copy(light.Id));
         }
 
         return copy;
@@ -225,6 +308,7 @@ public sealed class VoxelScene
     public void Clear()
     {
         _objects.Clear();
+        _lights.Clear();
         FocusId = 0;
         _nextId = 1;
     }
@@ -343,11 +427,12 @@ public sealed class VoxelScene
     private static ulong Mix(ulong hash, long value) =>
         (hash ^ (ulong)value) * 0x9E3779B97F4A7C15UL;
 
-    /// <summary>A scene holding one 8³ white cube — what New starts from.</summary>
+    /// <summary>A scene holding one 8³ white cube and the sun — what New starts from.</summary>
     public static VoxelScene CreateStarter(byte paletteIndex = Palette.WhiteIndex)
     {
         var scene = new VoxelScene();
         scene.Add(Editing.EditorSession.CreateStarterWorld(paletteIndex), ObjectTransform.Identity, "Object 1");
+        scene.AddDefaultSun();
         return scene;
     }
 }

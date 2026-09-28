@@ -156,6 +156,16 @@ public sealed class GlProgram : IDisposable
         }
     }
 
+    /// <summary>Fills a <c>vec4[n]</c> uniform from tightly packed x, y, z, w quadruples.</summary>
+    public void SetVector4Array(string name, float[] values)
+    {
+        int location = Location(name);
+        if (location >= 0)
+        {
+            GLES30.GlUniform4fv(location, values.Length / 4, values, 0);
+        }
+    }
+
     /// <summary>Fills a <c>vec3[n]</c> uniform from tightly packed x, y, z triples.</summary>
     public void SetVector3Array(string name, float[] values)
     {

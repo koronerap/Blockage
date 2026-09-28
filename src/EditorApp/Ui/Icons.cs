@@ -388,6 +388,52 @@ public static class Icons
         canvas.Line(lens - new Vector2(0f, r * 0.26f), lens + new Vector2(0f, r * 0.26f), 0.8f);
     }
 
+    // ---- Lights --------------------------------------------------------------------------------
+
+    /// <summary>A sun: a disc with rays all the way round — a source, where Lit's rays on one side are light arriving.</summary>
+    public static void LightSun(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre, r * 0.36f);
+
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = i * (MathF.PI / 4f);
+            var direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+            canvas.Line(centre + (direction * r * 0.6f), centre + (direction * r * 0.95f), 0.9f);
+        }
+    }
+
+    /// <summary>A point light: a bulb and its base.</summary>
+    public static void LightPoint(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre - new Vector2(0f, r * 0.22f), r * 0.5f);
+        canvas.Line(centre + new Vector2(-r * 0.22f, r * 0.42f), centre + new Vector2(-r * 0.22f, r * 0.62f), 0.9f);
+        canvas.Line(centre + new Vector2(r * 0.22f, r * 0.42f), centre + new Vector2(r * 0.22f, r * 0.62f), 0.9f);
+        canvas.Line(centre + new Vector2(-r * 0.26f, r * 0.8f), centre + new Vector2(r * 0.26f, r * 0.8f), 0.9f);
+    }
+
+    /// <summary>A spot light: a cone opening downwards from where it hangs.</summary>
+    public static void LightSpot(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 apex = centre - new Vector2(0f, r * 0.85f);
+        Vector2 left = centre + new Vector2(-r * 0.7f, r * 0.5f);
+        Vector2 right = centre + new Vector2(r * 0.7f, r * 0.5f);
+
+        canvas.Line(apex, left);
+        canvas.Line(apex, right);
+
+        // The mouth, seen a little from above.
+        Arc(canvas, centre + new Vector2(0f, r * 0.5f), r * 0.7f, new Vector2(1f, 0.32f), 0f, MathF.Tau, 16);
+    }
+
+    /// <summary>The icon for a kind of light.</summary>
+    public static Painter For(Core.Scene.LightKind kind) => kind switch
+    {
+        Core.Scene.LightKind.Directional => LightSun,
+        Core.Scene.LightKind.Point => LightPoint,
+        _ => LightSpot,
+    };
+
     // ---- Outliner ------------------------------------------------------------------------------
 
     /// <summary>Visible: an open eye.</summary>

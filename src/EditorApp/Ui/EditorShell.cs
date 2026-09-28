@@ -149,7 +149,7 @@ public sealed class EditorShell
         SceneLighting lighting = context.View.Lighting;
         if (IconButton.Toggle(
                 "shading",
-                (Icons.Lit, "Lit  -  one directional light"),
+                (Icons.Lit, "Lit  -  by the level's own lights"),
                 (Icons.Unlit, "Unlit  -  flat per-face shade, as exported"),
                 !lighting.IsLit,
                 string.Empty,
@@ -227,7 +227,7 @@ public sealed class EditorShell
             ImGui.SetNextItemOpen(true);
         }
 
-        if (ImGui.CollapsingHeader("Objects", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader("Outliner", ImGuiTreeNodeFlags.DefaultOpen))
         {
             ObjectListPanel.Draw(context.Session, context.Camera);
             ImGui.Separator();
@@ -239,9 +239,9 @@ public sealed class EditorShell
             context.Palette.DrawContent(context.Session);
         }
 
-        if (ImGui.CollapsingHeader("Shading"))
+        if (ImGui.CollapsingHeader("Lighting"))
         {
-            LightingPanel.DrawContent(context.View.Lighting);
+            LightingPanel.DrawContent(context);
         }
 
         if (ImGui.CollapsingHeader("Reference model"))

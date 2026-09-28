@@ -53,6 +53,8 @@ public sealed class MobileRenderer : IDisposable
     /// </summary>
     public SceneLighting Lighting { get; set; } = new();
 
+    private readonly LightUniforms _lights = new();
+
     public int VisibleChunks { get; private set; }
 
     public int DrawnTriangles { get; private set; }
@@ -93,6 +95,20 @@ public sealed class MobileRenderer : IDisposable
             flat[i * 3] = vectors[i].X;
             flat[(i * 3) + 1] = vectors[i].Y;
             flat[(i * 3) + 2] = vectors[i].Z;
+        }
+
+        return flat;
+    }
+
+    private static float[] Flatten(ReadOnlySpan<Vector4> vectors)
+    {
+        float[] flat = new float[vectors.Length * 4];
+        for (int i = 0; i < vectors.Length; i++)
+        {
+            flat[i * 4] = vectors[i].X;
+            flat[(i * 4) + 1] = vectors[i].Y;
+            flat[(i * 4) + 2] = vectors[i].Z;
+            flat[(i * 4) + 3] = vectors[i].W;
         }
 
         return flat;
@@ -236,9 +252,16 @@ public sealed class MobileRenderer : IDisposable
         _voxelShader.Use();
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
         _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : 1);
-        _voxelShader.SetVector3("uLightDirection", Lighting.Direction);
-        _voxelShader.SetFloat("uLightIntensity", Lighting.Intensity);
+
+        // The phone still lights with its one viewing light rather than the level's own: the shader
+        // is shared, so that light goes in as the only entry of the same arrays.
+        _lights.PackSingle(Lighting.Direction, Lighting.Intensity);
         _voxelShader.SetFloat("uAmbient", Lighting.Ambient);
+        _voxelShader.SetInt("uLightCount", _lights.Count);
+        _voxelShader.SetVector4Array("uLightPosition", Flatten(_lights.Positions));
+        _voxelShader.SetVector3Array("uLightDirection", Flatten(_lights.Directions));
+        _voxelShader.SetVector3Array("uLightColor", Flatten(_lights.Colours));
+        _voxelShader.SetVector4Array("uLightShape", Flatten(_lights.Shapes));
 
         // No focus highlight yet. With one object on screen and no object list to switch between,
         // dimming everything else has nothing to say.

@@ -48,7 +48,7 @@ public sealed class TransformInteraction(EditorSession session)
 
     private const int RingSegments = 48;
 
-    private VoxelObject? _target;
+    private IPlaceable? _target;
     private ObjectTransform _startTransform;
     private GizmoHandle _grabbed;
     private Vector2 _pressPosition;
@@ -69,10 +69,12 @@ public sealed class TransformInteraction(EditorSession session)
     /// The handles on offer right now. Move shows arrows plus the bounding-box edges; Rotate shows
     /// three rings. The hinge stays available in Move because it is a different motion from the
     /// rings, not a duplicate of them.
+    ///
+    /// On a light there is no box and so no hinge: arrows to move it and rings to aim it.
     /// </summary>
     public IEnumerable<GizmoHandle> Handles(FlyCamera camera)
     {
-        if (session.Scene.Focus is not { } focus || focus.IsEmpty)
+        if (session.TransformTarget is not { } focus || focus is VoxelObject { IsEmpty: true })
         {
             yield break;
         }
@@ -95,15 +97,18 @@ public sealed class TransformInteraction(EditorSession session)
             yield return new GizmoHandle(GizmoKind.MoveAxis, axis, centre, AxisDirection(focus, axis, local), centre);
         }
 
-        foreach (GizmoHandle edge in EdgeHandles(focus))
+        if (focus is VoxelObject voxels)
         {
-            yield return edge;
+            foreach (GizmoHandle edge in EdgeHandles(voxels))
+            {
+                yield return edge;
+            }
         }
 
         _ = camera;
     }
 
-    private static Vector3 AxisDirection(VoxelObject focus, int axis, bool local)
+    private static Vector3 AxisDirection(IPlaceable focus, int axis, bool local)
     {
         Vector3 world = axis switch
         {
@@ -304,7 +309,7 @@ public sealed class TransformInteraction(EditorSession session)
 
     public bool OnPress(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
-        if (session.Scene.Focus is not { } focus || Pick(mouse, viewport, camera) is not { } handle)
+        if (session.TransformTarget is not { } focus || Pick(mouse, viewport, camera) is not { } handle)
         {
             return false;
         }
@@ -423,7 +428,8 @@ public sealed class TransformInteraction(EditorSession session)
     {
         if (_target is { } target)
         {
-            string name = _grabbed.Kind == GizmoKind.MoveAxis ? "Move object" : "Rotate object";
+            string what = target is SceneLight ? "light" : "object";
+            string name = _grabbed.Kind == GizmoKind.MoveAxis ? $"Move {what}" : $"Rotate {what}";
             session.PushTransformEdit(target, _startTransform, name);
         }
 
