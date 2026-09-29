@@ -87,6 +87,9 @@ public enum EditorAction
     ToggleQuadView,
     WalkMode,
     UndoHistory,
+    ShadingPie,
+    ViewPie,
+    QuickFavorites,
     ToggleWireframe,
 
     // Render
@@ -190,6 +193,9 @@ public static class EditorActions
         new(EditorAction.ToggleQuadView, "view.quad", "Quad view", View),
         new(EditorAction.WalkMode, "view.walk", "Walk through the level", View),
         new(EditorAction.UndoHistory, "edit.history", "Undo history", Edit),
+        new(EditorAction.ShadingPie, "view.shadingpie", "Shading pie", View),
+        new(EditorAction.ViewPie, "view.viewpie", "View pie", View),
+        new(EditorAction.QuickFavorites, "edit.favorites", "Quick favorites", Edit),
         new(EditorAction.ToggleWireframe, "view.wireframe", "Wireframe, and back", View),
 
         new(EditorAction.RenderImage, "view.render", "Render an image of the level", View),

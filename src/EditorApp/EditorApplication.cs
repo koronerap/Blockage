@@ -307,6 +307,7 @@ public sealed class EditorApplication : IDisposable
 
 
 
+
         // Not in a smoke or screenshot run: those must neither write the user's recovery folder nor
         // stop at a question about what is already in it.
         if (_smokeFrames <= 0)
@@ -505,8 +506,8 @@ public sealed class EditorApplication : IDisposable
         _autosave?.Tick(deltaSeconds);
         UpdateCamera((float)deltaSeconds);
 
-        // While walking, and until the click that ended it is let go, the tools stand aside.
-        if (_walk is not null || WalkClickStillHeld())
+        // While walking or a pie is open, and until the click that ended one is let go, the tools stand aside.
+        if (_walk is not null || WalkClickStillHeld() || PieMenu.IsOpen)
         {
             return;
         }
@@ -1211,8 +1212,13 @@ public sealed class EditorApplication : IDisposable
         _input is { Keyboards.Count: > 0 }
         && (_input.Keyboards[0].IsKeyPressed(Key.ControlLeft) || _input.Keyboards[0].IsKeyPressed(Key.ControlRight));
 
+    /// <summary>The key the last shortcut was pressed with: a pie watches it to know when it is let go.</summary>
+    private Key _lastKey;
+
     private void OnKeyDown(IKeyboard keyboard, Key key, int _)
     {
+        _lastKey = key;
+
         // Walking has the keyboard: Esc goes back, Enter stays, Tab flies; the rest are its movement.
         if (_walk is not null)
         {
@@ -1429,6 +1435,15 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToggleQuadView: View.Quad = !View.Quad; break;
             case EditorAction.WalkMode: BeginWalk(); break;
             case EditorAction.UndoHistory: HistoryWindow.Toggle(); break;
+            case EditorAction.ShadingPie when _input is { Mice.Count: > 0 } pieMouse:
+                PieMenu.Open("Shading", ShadingSlices(), pieMouse.Mice[0].Position, _lastKey, _clock);
+                break;
+            case EditorAction.ViewPie when _input is { Mice.Count: > 0 } viewMouse:
+                PieMenu.Open("View", ViewSlices(), viewMouse.Mice[0].Position, _lastKey, _clock);
+                break;
+            case EditorAction.QuickFavorites when _input is { Mice.Count: > 0 } favouritesMouse:
+                QuickFavorites.Open(favouritesMouse.Mice[0].Position);
+                break;
             case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
             case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
 
@@ -2132,6 +2147,18 @@ public sealed class EditorApplication : IDisposable
         _library?.Draw(_session);
         ScatterWindow.Draw(_session);
         HistoryWindow.Draw(_session);
+        QuickFavorites.Draw(_preferences, Run, SavePreferences);
+        if (_input is { Mice.Count: > 0, Keyboards.Count: > 0 } pieInput)
+        {
+            bool wasOpen = PieMenu.IsOpen;
+            PieMenu.Draw(pieInput.Keyboards[0], pieInput.Mice[0], _clock);
+
+            // The click that took a choice is not a click on the level too.
+            if (wasOpen && !PieMenu.IsOpen)
+            {
+                _walkClickHeld = true;
+            }
+        }
         AppendDialog.Draw(_session);
         PlaceLibraryProps();
         ViewportShotBrowser.Draw();
@@ -2383,6 +2410,32 @@ public sealed class EditorApplication : IDisposable
 
         return _walkClickHeld;
     }
+
+    /// <summary>Blender's Z pie: the four shadings, and the switches most turned on and off.</summary>
+    private PieSlice[] ShadingSlices() =>
+    [
+        new("Wireframe", () => View.Shading = ShadingMode.Wireframe, View.Shading == ShadingMode.Wireframe),
+        new("Rendered", () => View.Shading = ShadingMode.Rendered, View.Shading == ShadingMode.Rendered),
+        new("Solid", () => View.Shading = ShadingMode.Unlit, View.Shading == ShadingMode.Unlit),
+        new("Lit", () => View.Shading = ShadingMode.Lit, View.Shading == ShadingMode.Lit),
+        new("X-Ray", () => View.XRay = !View.XRay, View.XRay),
+        new("Shadows", () => View.Shadows = !View.Shadows, View.Shadows),
+        new("Overlays", () => View.Overlays = !View.Overlays, View.Overlays),
+        new("Ambient Occlusion", () => View.AmbientOcclusion = !View.AmbientOcclusion, View.AmbientOcclusion),
+    ];
+
+    /// <summary>Blender's ~ pie: the six views along the axes, the camera, and the selection framed.</summary>
+    private PieSlice[] ViewSlices() =>
+    [
+        new("Left", () => _camera.Align(AlignedView.Left)),
+        new("Right", () => _camera.Align(AlignedView.Right)),
+        new("Bottom", () => _camera.Align(AlignedView.Bottom)),
+        new("Top", () => _camera.Align(AlignedView.Top)),
+        new("Front", () => _camera.Align(AlignedView.Front)),
+        new("Back", () => _camera.Align(AlignedView.Back)),
+        new("Camera", ToggleCameraView),
+        new("Frame Selected", FrameFocused),
+    ];
 
     /// <summary>What walking is, and how to stop, along the bottom of the view.</summary>
     private void DrawWalkHint()

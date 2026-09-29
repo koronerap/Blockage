@@ -100,6 +100,9 @@ public sealed class Preferences
 
     private float _flySpeed = 1f;
 
+    /// <summary>The commands Shift+Q offers, by their ids (Fullreleaseplan 7.7).</summary>
+    public string[] Favorites { get; set; } = [.. QuickFavorites.Defaults];
+
     /// <summary>How the walker is built and moves, and how many voxels make a metre (Fullreleaseplan 7.5).</summary>
     public EditorApp.Core.Editing.WalkSettings Walk { get; set; } = new();
 

@@ -226,6 +226,12 @@ public sealed class Keymap
             // Blender's undo history.
             [EditorAction.UndoHistory] = [KeyChord.CtrlAlt(Key.Z)],
 
+            // Blender's pies: Z for shading, the key under Esc for the view. Blender's Q is a tool's
+            // here, so the favourites go a Shift up.
+            [EditorAction.ShadingPie] = [new(Key.Z)],
+            [EditorAction.ViewPie] = [new(Key.GraveAccent)],
+            [EditorAction.QuickFavorites] = [KeyChord.ShiftOf(Key.Q)],
+
             // Blender's Alt+D: a copy that shares its voxels with the original.
             [EditorAction.DuplicateLinked] = [KeyChord.AltOf(Key.D)],
 
