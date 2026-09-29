@@ -160,6 +160,11 @@ sideloadable APK; `-Run` also installs it on the connected device or emulator an
 Levels are saved as `.vxlevel`: a zip holding a JSON manifest and run-length-encoded chunks of 32³
 voxels, described in [docs/vxlevel-format.md](docs/vxlevel-format.md).
 
+## Manual
+
+The [manual](https://koronerap.github.io/Blockage/) covers everything the editor does, a page a
+subject, with every key. Its source is in [`docs/`](docs/).
+
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). What each

@@ -44,6 +44,44 @@ public static class ShortcutSheet
     ];
 
     /// <summary>
+    /// The sheet as a page of the manual (docs/shortcuts.md): every group a table, for the keymap
+    /// that is active. Written by <c>--write-shortcuts</c>, so the page lists the keys the editor has.
+    /// </summary>
+    public static string Markdown()
+    {
+        var page = new System.Text.StringBuilder();
+        page.AppendLine("---");
+        page.AppendLine("title: Keyboard shortcuts");
+        page.AppendLine("nav_order: 8");
+        page.AppendLine("---");
+        page.AppendLine();
+        page.AppendLine("# Keyboard shortcuts");
+        page.AppendLine();
+        page.AppendLine($"The keys of the {Keymap.Active.Preset} keymap, and what the mouse does. **Preferences › Keymap** changes any");
+        page.AppendLine("key, or switches to the *Mimic Busters* preset. F1 in Blockage shows the keys as they are set.");
+        page.AppendLine("On a Mac, Command works wherever this says Ctrl.");
+        page.AppendLine();
+        page.AppendLine("<!-- Written by Blockage --write-shortcuts=docs/shortcuts.md; change the keymap, not this page. -->");
+
+        foreach ((string group, (string Keys, string Does)[] entries) in Groups)
+        {
+            page.AppendLine();
+            page.AppendLine($"## {group}");
+            page.AppendLine();
+            page.AppendLine("| Keys | Does |");
+            page.AppendLine("|---|---|");
+            foreach ((string keys, string does) in entries)
+            {
+                page.AppendLine($"| {Cell(keys)} | {Cell(does)} |");
+            }
+        }
+
+        return page.ToString();
+
+        static string Cell(string text) => text.Replace("|", "\\|", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The sheet's groups as they stand: the keymap's categories with the keys bound in it, and the
     /// gestures. Tools, editing and Extrude down the left; the camera, the long one, on the right.
     /// </summary>

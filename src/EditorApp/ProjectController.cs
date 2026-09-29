@@ -98,6 +98,14 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         Report($"New level - {LevelTemplates.DescriptionOf(template)}.", isError: false);
     });
 
+    /// <summary>One of the sample levels, as a new level named after it until it is saved.</summary>
+    public void OpenSample(LevelSample sample) => Guarded("open a sample level", () =>
+    {
+        EditorSession target = Place(LevelSamples.Build(sample), projectPath: null);
+        target.UntitledName = LevelSamples.NameOf(sample);
+        Report($"The {LevelSamples.NameOf(sample)} sample - {LevelSamples.DescriptionOf(sample)}. Save it to keep it.", isError: false);
+    });
+
     public void OpenProject() => Guarded("open another level", () =>
         _browser.Show(
             FileBrowserMode.Open,

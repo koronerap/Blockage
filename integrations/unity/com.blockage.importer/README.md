@@ -51,8 +51,8 @@ https://github.com/koronerap/Blockage.git?path=/integrations/unity/com.blockage.
 To install from a copy of the repository instead, choose **+ › Add package from disk…** and pick
 `integrations/unity/com.blockage.importer/package.json`.
 
-It needs Unity 2021.3 or later. It reads `.vxlevel` files up to version 6, the version Blockage
-0.8 saves. A newer file says it wants a newer package.
+It needs Unity 2021.3 or later. It reads `.vxlevel` files up to version 7, the format of Blockage
+1.0, which Blockage saves from 0.9 on. A newer file says it wants a newer package.
 
 ## Checking it
 

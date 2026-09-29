@@ -1,0 +1,16 @@
+# The manual, published by GitHub Pages from this folder (Settings › Pages › Deploy from a branch:
+# main, /docs).
+title: Blockage
+description: A voxel level editor with Blender's habits.
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+url: https://koronerap.github.io
+baseurl: /Blockage
+color_scheme: dark
+search_enabled: true
+aux_links:
+  "Blockage on GitHub": https://github.com/koronerap/Blockage
+  "Download": https://github.com/koronerap/Blockage/releases
+aux_links_new_tab: true
+back_to_top: true

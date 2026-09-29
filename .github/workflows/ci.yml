@@ -34,7 +34,7 @@ jobs:
         run: dotnet test tests/EditorApp.Tests -c Release
 
   performance:
-    name: Large level measurement
+    name: Large level measurement and the manual's keys
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,3 +53,15 @@ jobs:
           Write-Output $report
           $fence = '```'
           "## Large level measurement`n`n$fence`n$report$fence" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      # docs/shortcuts.md is written from the keymap; a key changed without writing it again shows here.
+      - name: The manual's keys are the keymap's
+        shell: pwsh
+        run: |
+          $page = Join-Path $env:RUNNER_TEMP 'shortcuts.md'
+          & src/EditorApp/bin/Release/net10.0/Blockage.exe "--write-shortcuts=$page" | Out-Null
+          $written = (Get-Content $page -Raw) -replace "`r`n", "`n"
+          $kept = (Get-Content docs/shortcuts.md -Raw) -replace "`r`n", "`n"
+          if ($written -ne $kept) {
+            Write-Output '::error file=docs/shortcuts.md::Out of date with the keymap: run Blockage --write-shortcuts=docs/shortcuts.md'
+            exit 1
+          }

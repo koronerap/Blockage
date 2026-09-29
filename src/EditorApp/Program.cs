@@ -34,6 +34,7 @@ string? exportDirectory = null;
 string? levelPath = null;
 string? screenshotPath = null;
 string? iconPath = null;
+string? shortcutsPath = null;
 bool startUnlit = false;
 EditorApp.Rendering.AlignedView? startView = null;
 
@@ -87,6 +88,19 @@ foreach (string argument in args)
     {
         iconPath = argument["--write-icon=".Length..];
     }
+    else if (argument.StartsWith("--write-shortcuts=", StringComparison.Ordinal))
+    {
+        shortcutsPath = argument["--write-shortcuts=".Length..];
+    }
+}
+
+if (shortcutsPath is not null)
+{
+    // The manual's page of keys, from the Default keymap: see ShortcutSheet.Markdown.
+    EditorApp.Input.Keymap.Active = EditorApp.Input.Keymap.For(EditorApp.Input.KeymapPreset.Default);
+    File.WriteAllText(shortcutsPath, EditorApp.Ui.ShortcutSheet.Markdown());
+    Console.WriteLine($"Wrote {shortcutsPath}.");
+    return 0;
 }
 
 if (iconPath is not null)

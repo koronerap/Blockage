@@ -210,7 +210,7 @@ public static class MainMenu
 
             if (ImGui.BeginMenu("Export"))
             {
-                if (ImGui.MenuItem("Mesh (OBJ, glTF)...", Shortcut.Of(EditorAction.Export)))
+                if (ImGui.MenuItem("Mesh (OBJ, glTF, FBX)...", Shortcut.Of(EditorAction.Export)))
                 {
                     export.Show();
                 }
@@ -397,6 +397,16 @@ public static class MainMenu
             if (ImGui.MenuItem("Keyboard Shortcuts", Shortcut.Of(EditorAction.ShortcutSheet), ShortcutSheet.IsOpen))
             {
                 ShortcutSheet.Toggle();
+            }
+
+            if (ImGui.MenuItem("Take the Tour"))
+            {
+                Tour.Request();
+            }
+
+            if (ImGui.MenuItem("Manual"))
+            {
+                Links.Open(Links.Manual);
             }
 
             ImGui.EndMenu();

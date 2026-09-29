@@ -2256,6 +2256,16 @@ public sealed class EditorApplication : IDisposable
         DrawQuadLabels();
         DrawWalkHint();
 
+        if (Tour.TakeRequest())
+        {
+            _afterUi = StartTour;
+        }
+
+        if (Tour.IsActive)
+        {
+            Tour.Draw(_viewport.Position, _viewport.Size, ReadTourState());
+        }
+
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
 
@@ -2881,6 +2891,8 @@ public sealed class EditorApplication : IDisposable
     private WelcomeActions CreateWelcomeActions() => new()
     {
         New = template => _project!.NewProject(template),
+        OpenSample = sample => _project!.OpenSample(sample),
+        StartTour = StartTour,
         Open = () => _project!.OpenProject(),
         Recent = () => _project!.Recent.Paths,
         OpenRecent = path => _project!.OpenRecent(path),
@@ -2899,18 +2911,26 @@ public sealed class EditorApplication : IDisposable
         Preferences = _preferences,
     };
 
-    /// <summary>Opens a web page in the default browser, saying so in the status bar if it cannot.</summary>
-    private static void OpenUrl(string url)
+    private static void OpenUrl(string url) => Links.Open(url);
+
+    /// <summary>The tour, on a fresh cube of its own.</summary>
+    private void StartTour()
     {
-        try
-        {
-            using var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
-        {
-            ReportLog.Shared.Post($"Could not open {url}: {exception.Message}", ReportKind.Error);
-        }
+        _project!.NewProject(LevelTemplate.Cube);
+        Tour.Start(ReadTourState(), _session.Scene.Objects.FirstOrDefault()?.Id);
     }
+
+    private TourState ReadTourState() => new(
+        _camera.Yaw,
+        _camera.Pitch,
+        _session.Scene.Objects.Sum(o => (long)o.Grid.SolidCount),
+        _session.Scene.Objects.Count,
+        _session.Scene.Focus?.Id,
+        _session.SelectedCount,
+        _session.ActiveTool,
+        _session.History.UndoCount,
+        _session.History.RedoCount,
+        _session.ProjectPath is not null && !_session.HasUnsavedChanges);
 
     private ViewActions CreateViewActions() => new()
     {

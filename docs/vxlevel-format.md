@@ -1,3 +1,8 @@
+---
+title: The .vxlevel format
+nav_order: 9
+---
+
 # The `.vxlevel` format
 
 A Blockage level is one `.vxlevel` file. This page describes version 7, the format of Blockage 1.0,

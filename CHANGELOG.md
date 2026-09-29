@@ -19,6 +19,16 @@ Performance, platforms and the road to 1.0.
   ID is set up it is signed with that and notarized. On a Mac, Command works wherever Blockage says
   Ctrl.
 - This changelog, notes for contributors, and templates for issues and pull requests.
+- Samples on the welcome screen: an island, a village and a cave, made from the generators and
+  props, to look round and take apart.
+- A tour, from the welcome screen or **Help › Take the Tour**: seven steps on a fresh cube, each
+  passed as soon as it is done, naming the keys as the keymap has them.
+- A manual, published from `docs/` by GitHub Pages and linked from the welcome screen and the Help
+  menu. Its page of keys is written by `--write-shortcuts` from the Default keymap.
+
+### Fixed
+- The welcome screen said the project's page asked to sign in; it is public.
+- **File › Export** named OBJ and glTF but not FBX.
 
 ### Changed
 - Large levels are much faster. On a 512 × 128 × 512 level of hills and caves, every part is ready

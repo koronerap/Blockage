@@ -11,6 +11,10 @@ public sealed class WelcomeActions
 {
     public required Action<LevelTemplate> New { get; init; }
 
+    public required Action<LevelSample> OpenSample { get; init; }
+
+    public required Action StartTour { get; init; }
+
     public required Action Open { get; init; }
 
     public required Func<IReadOnlyList<string>> Recent { get; init; }
@@ -37,15 +41,14 @@ public sealed class WelcomeActions
 
 /// <summary>
 /// Blender's splash screen: what the editor opens on. A picture across the top with the name and the
-/// version; below it the templates a new level can start from, Open and the recoveries on the left,
-/// the recent files on the right; and along the bottom the project's page and the keyboard sheet.
+/// version; below it the templates a new level can start from, Open, the tour and the recoveries on
+/// the left, the recent files and the samples on the right; and along the bottom the project's page,
+/// the manual and the keyboard sheet.
 /// Anything chosen closes it, and so do Esc and a click outside it. Help > Welcome Screen brings it
 /// back.
 /// </summary>
 public static class WelcomeScreen
 {
-    public const string RepositoryUrl = "https://github.com/koronerap/Blockage";
-
     /// <summary>More than this and the list stops being a glance.</summary>
     public const int RecentShown = 8;
 
@@ -193,6 +196,11 @@ public static class WelcomeScreen
             chosen = actions.Open;
         }
 
+        if (Item("tour", Icons.MouseLeft, "Take the Tour", string.Empty, null, "Seven steps on a fresh cube: turning the view, pulling a face out,\npainting, adding a shape, selecting, undoing and saving."))
+        {
+            chosen = actions.StartTour;
+        }
+
         LastSessionInfo? last = actions.LastSession();
         string lastTip = last is null
             ? "Nothing kept yet. The level is kept each time Blockage closes,\nwhatever the answer to saving it was."
@@ -214,7 +222,7 @@ public static class WelcomeScreen
         return chosen;
     }
 
-    /// <summary>The right column: the files opened last, newest first.</summary>
+    /// <summary>The right column: the files opened last, newest first, and the samples under them.</summary>
     private static Action? DrawRecent(WelcomeActions actions)
     {
         Action? chosen = null;
@@ -224,7 +232,6 @@ public static class WelcomeScreen
         if (recent.Count == 0)
         {
             ImGui.TextDisabled("Nothing opened yet.");
-            return null;
         }
 
         foreach (string path in recent.Take(RecentShown))
@@ -238,6 +245,16 @@ public static class WelcomeScreen
             }
         }
 
+        ImGui.Spacing();
+        Heading("Samples");
+        foreach (LevelSample sample in LevelSamples.All)
+        {
+            if (Item($"sample-{sample}".ToLowerInvariant(), IconFor(sample), LevelSamples.NameOf(sample), string.Empty, null, "A finished little level to look round and take apart: " + LevelSamples.DescriptionOf(sample) + "."))
+            {
+                chosen = () => actions.OpenSample(sample);
+            }
+        }
+
         return chosen;
     }
 
@@ -246,9 +263,15 @@ public static class WelcomeScreen
     {
         Action? chosen = null;
 
-        if (Link("github", Icons.Repository, "GitHub", $"{RepositoryUrl}\nThe project's page. Private for now: it asks to sign in."))
+        if (Link("github", Icons.Repository, "GitHub", $"{Links.Repository}\nThe project's page: its code, its releases, and where to report a problem."))
         {
-            chosen = () => actions.OpenUrl(RepositoryUrl);
+            chosen = () => actions.OpenUrl(Links.Repository);
+        }
+
+        ImGui.SameLine(0f, margin * 0.5f);
+        if (Link("manual", Icons.Document, "Manual", $"{Links.Manual}\nHow everything in Blockage works."))
+        {
+            chosen = () => actions.OpenUrl(Links.Manual);
         }
 
         ImGui.SameLine(0f, margin * 0.5f);
@@ -348,6 +371,13 @@ public static class WelcomeScreen
             drawList.AddText(new Vector2(max.X - keyWidth, y), dim, shortcut);
         }
     }
+
+    public static Icons.Painter IconFor(LevelSample sample) => sample switch
+    {
+        LevelSample.Island => Icons.PropTree,
+        LevelSample.Village => Icons.PropCrate,
+        _ => Icons.ShapeArch,
+    };
 
     public static Icons.Painter IconFor(LevelTemplate template) => template switch
     {

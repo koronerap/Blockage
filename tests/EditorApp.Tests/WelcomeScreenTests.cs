@@ -27,6 +27,8 @@ public sealed class WelcomeScreenTests : IDisposable
         _actions = new WelcomeActions
         {
             New = template => _done.Add($"new {template}"),
+            OpenSample = sample => _done.Add($"sample {sample}"),
+            StartTour = () => _done.Add("tour"),
             Open = () => _done.Add("open"),
             Recent = () => _recent,
             OpenRecent = path => _done.Add($"recent {Path.GetFileName(path)}"),
@@ -157,8 +159,38 @@ public sealed class WelcomeScreenTests : IDisposable
         Open();
         Click("github");
 
-        Assert.Equal([$"url {WelcomeScreen.RepositoryUrl}"], _done);
-        Assert.StartsWith("https://github.com/", WelcomeScreen.RepositoryUrl, StringComparison.Ordinal);
+        Assert.Equal([$"url {Links.Repository}"], _done);
+        Assert.StartsWith("https://github.com/", Links.Repository, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheManualIsALinkAway()
+    {
+        Open();
+        Click("manual");
+
+        Assert.Equal([$"url {Links.Manual}"], _done);
+    }
+
+    [Theory]
+    [InlineData("sample-island", "sample Island")]
+    [InlineData("sample-village", "sample Village")]
+    [InlineData("sample-cave", "sample Cave")]
+    public void EverySampleOpensFromIt(string id, string done)
+    {
+        Open();
+        Click(id);
+
+        Assert.Equal([done], _done);
+    }
+
+    [Fact]
+    public void TheTourStartsFromIt()
+    {
+        Open();
+        Click("tour");
+
+        Assert.Equal(["tour"], _done);
     }
 
     [Fact]
