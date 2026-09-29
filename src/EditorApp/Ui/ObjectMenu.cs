@@ -193,6 +193,14 @@ public static class ObjectMenu
 
         ImGui.Separator();
 
+        DrawTurns(session);
+    }
+
+    /// <summary>The quarter turns and the mirrors of the focused object's voxels.</summary>
+    public static void DrawTurns(EditorSession session)
+    {
+        bool hasVoxels = session.Scene.Focus is { IsEmpty: false };
+
         foreach ((string label, RotateDirection direction) in Turns)
         {
             if (ImGui.MenuItem(label, null, false, hasVoxels))

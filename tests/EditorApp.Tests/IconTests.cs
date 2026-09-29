@@ -146,6 +146,20 @@ public class IconTests
         { nameof(Icons.TemplateVoxel), Icons.TemplateVoxel },
         { nameof(Icons.TemplateGround), Icons.TemplateGround },
         { nameof(Icons.TemplateRoom), Icons.TemplateRoom },
+        { nameof(Icons.ShapeWall), Icons.ShapeWall },
+        { nameof(Icons.ShapeSphere), Icons.ShapeSphere },
+        { nameof(Icons.ShapeCylinder), Icons.ShapeCylinder },
+        { nameof(Icons.ShapeCone), Icons.ShapeCone },
+        { nameof(Icons.ShapePyramid), Icons.ShapePyramid },
+        { nameof(Icons.ShapeTorus), Icons.ShapeTorus },
+        { nameof(Icons.ShapeStairs), Icons.ShapeStairs },
+        { nameof(Icons.ShapeArch), Icons.ShapeArch },
+        { nameof(Icons.PropCrate), Icons.PropCrate },
+        { nameof(Icons.PropBarrel), Icons.PropBarrel },
+        { nameof(Icons.PropTable), Icons.PropTable },
+        { nameof(Icons.PropChair), Icons.PropChair },
+        { nameof(Icons.PropTree), Icons.PropTree },
+        { nameof(Icons.PropFence), Icons.PropFence },
     };
 
     [Theory]

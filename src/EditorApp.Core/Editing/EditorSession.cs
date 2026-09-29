@@ -656,6 +656,76 @@ public sealed class EditorSession
         return true;
     }
 
+    // ---- Adding --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The shape just added, and how it was made — what Blender's Adjust Last Operation works on — for
+    /// as long as nothing has been done since, and it has not been locked. Null otherwise.
+    /// </summary>
+    public AddedShape? LastShape =>
+        _lastShape is { } shape
+        && ReferenceEquals(History.LastDone, shape.Command)
+        && Scene.Find(shape.Object.Id) is { Locked: false }
+            ? shape
+            : null;
+
+    private AddedShape? _lastShape;
+
+    /// <summary>
+    /// A new object made of <paramref name="grid"/>, set against the surface at <paramref name="point"/>
+    /// facing <paramref name="normal"/> (see <see cref="Placement.Against"/>) with voxels of
+    /// <paramref name="voxelSize"/>. Named <paramref name="name"/>, or the next free name after it.
+    /// Focused; one undo step.
+    /// </summary>
+    public VoxelObject AddObject(VoxelWorld grid, string name, Vector3 point, Vector3 normal, float voxelSize)
+    {
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+        SelectedLightId = 0;
+
+        float size = ObjectTransform.ValidVoxelSize(voxelSize) ?? 1f;
+        string unique = Scene.Objects.Any(o => o.Name == name) ? DuplicateName(name, Scene.Objects.Select(o => o.Name)) : name;
+
+        var command = new CreateObjectCommand(Scene, grid, Placement.Against(grid, point, normal, size), unique, $"Add {name}");
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        return command.Created!;
+    }
+
+    /// <summary>A shape, in the colour in hand, added as <see cref="AddObject"/> adds — and kept for adjusting.</summary>
+    public VoxelObject AddShape(ShapeSettings settings, Vector3 point, Vector3 normal, float voxelSize)
+    {
+        byte colour = ActiveColorIndex == Palette.EmptyIndex ? Palette.WhiteIndex : ActiveColorIndex;
+        VoxelObject added = AddObject(Shapes.Build(settings, colour), Shapes.NameOf(settings.Kind), point, normal, voxelSize);
+
+        _lastShape = new AddedShape(added, settings, colour, point, normal, History.LastDone!);
+        return added;
+    }
+
+    /// <summary>
+    /// Makes the shape just added again with other settings, in place: the same object, set against
+    /// the same point, and still the one undo step it was added in. False when something has been done
+    /// since, or for another kind of shape.
+    /// </summary>
+    public bool ReshapeLast(ShapeSettings settings)
+    {
+        if (LastShape is not { } last || last.Settings.Kind != settings.Kind)
+        {
+            return false;
+        }
+
+        VoxelWorld grid = Shapes.Build(settings, last.Colour);
+        last.Object.Grid.ReplaceWith(grid);
+        last.Object.Transform = Placement.Against(grid, last.Point, last.Normal, last.Object.VoxelSize);
+
+        _lastShape = last with { Settings = settings };
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     // ---- Parents -------------------------------------------------------------------------------
 
     /// <summary>Why one thing cannot be put under another, or null when it can. 0 is no parent, which always can.</summary>

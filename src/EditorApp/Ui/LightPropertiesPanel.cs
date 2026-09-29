@@ -240,15 +240,34 @@ public static class LightMenu
         (LightKind.Spot, "Spot light"),
     ];
 
-    public static void DrawItems(EditorSession session)
+    /// <summary>
+    /// Adds a light over a point on a surface, picked and handed to the Transform tool: a point light
+    /// a little off it, a spot further off and aimed at it, a sun out along its own direction.
+    /// </summary>
+    public static SceneLight AddAt(EditorSession session, LightKind kind, Vector3 point, Vector3 normal)
     {
-        foreach ((LightKind kind, string label) in Kinds)
+        SceneLight light;
+        switch (kind)
         {
-            if (ImGui.MenuItem(label))
-            {
-                Add(session, kind);
-            }
+            case LightKind.Directional:
+                Vector3 shining = SceneLight.ShiningFrom(SceneLight.SunAzimuth, SceneLight.SunElevation);
+                light = session.AddLight(kind, point - (shining * 10f), shining);
+                light.Intensity = SceneLight.SunIntensity;
+                break;
+
+            case LightKind.Point:
+                light = session.AddLight(kind, point + (normal * 3f), -normal);
+                light.Range = 10f;
+                break;
+
+            default:
+                light = session.AddLight(kind, point + (normal * 6f), -normal);
+                light.Range = 14f;
+                break;
         }
+
+        session.ActiveTool = EditorTool.Transform;
+        return light;
     }
 
     /// <summary>Adds a light, picks it, and hands it to the Transform tool to be put where it goes.</summary>

@@ -305,6 +305,8 @@ public sealed class CommandSearchTests : IDisposable
 }
 
 /// <summary>The editor's own list: every action of the keymap, and what only menus offer.</summary>
+/// <remarks>With the ImGui tests, which share the Add menu's waiting pick with it.</remarks>
+[Collection(nameof(ImGuiCollection))]
 public class SearchCommandsTests
 {
     private readonly EditorSession _session = new();
@@ -395,9 +397,10 @@ public class SearchCommandsTests
         commands.Single(c => c.Name == "A colour per object").Run();
         Assert.Equal(ColourMode.Random, _viewport.Colour);
 
-        int lights = _session.Scene.Lights.Count;
+        // Handed to the application as the Add menu hands it, to be set down where the view looks.
+        AddMenu.TakePending();
         commands.Single(c => c.Name == "Point light").Run();
-        Assert.Equal(lights + 1, _session.Scene.Lights.Count);
+        Assert.Equal(LightKind.Point, AddMenu.TakePending()?.Choice.Light);
 
         commands.Single(c => c.Name == "Relationship lines").Run();
         Assert.False(_viewport.RelationshipLines);

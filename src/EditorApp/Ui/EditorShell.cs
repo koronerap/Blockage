@@ -88,7 +88,14 @@ public sealed class EditorShell(LayoutSettings layout)
         {
             _navigation.Draw(context.Camera, viewport, context.View.FrameLevel);
         }
-        DrawStatistics(context, viewport);
+
+        float statistics = DrawStatistics(context, viewport);
+
+        // Blender's Adjust Last Operation, in the same corner, over the statistics when they are shown.
+        AdjustPanel.Draw(
+            context.Session,
+            viewport.Position + new Vector2(12f, 0f),
+            viewport.Position.Y + viewport.Size.Y - 12f - (statistics > 0f ? statistics + 8f : 0f));
 
         return viewport;
     }
@@ -250,18 +257,21 @@ public sealed class EditorShell(LayoutSettings layout)
     /// The frame and mesh counters, over the bottom-left of the viewport where Blender puts its own —
     /// numbers to glance at while working, not a section to scroll to.
     /// </summary>
-    private static void DrawStatistics(ShellContext context, ViewportRect viewport)
+    /// <summary>The counters at the viewport's bottom left. Returns how tall they were drawn; zero when hidden.</summary>
+    private static float DrawStatistics(ShellContext context, ViewportRect viewport)
     {
         if (!context.View.StatisticsVisible())
         {
-            return;
+            return 0f;
         }
 
         ImGui.SetNextWindowPos(viewport.Position + new Vector2(12f, viewport.Size.Y - 12f), ImGuiCond.Always, new Vector2(0f, 1f));
         ImGui.SetNextWindowBgAlpha(0.72f);
         ImGui.Begin("##statistics", PanelFlags | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoInputs);
         context.Stats.DrawContent(context.Renderer, context.Camera, context.Session);
+        float height = ImGui.GetWindowHeight();
         ImGui.End();
+        return height;
     }
 
     private static void DrawStatusBar(ShellContext context, Vector2 position, Vector2 size)

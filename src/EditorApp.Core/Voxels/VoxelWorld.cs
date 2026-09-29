@@ -237,6 +237,32 @@ public sealed class VoxelWorld
     }
 
     /// <summary>
+    /// Takes on another grid's voxels and painted faces, in place — for an object remade where it
+    /// stands, which whatever holds this grid sees at once. Keeps its own palette. Every chunk either
+    /// grid had is marked to be meshed again.
+    /// </summary>
+    public void ReplaceWith(VoxelWorld other)
+    {
+        Clear();
+
+        foreach ((ChunkCoord coord, Chunk chunk) in other._chunks)
+        {
+            if (chunk.IsEmpty)
+            {
+                continue;
+            }
+
+            Chunk target = GetOrCreateChunk(coord);
+            target.LoadIndices(chunk.Indices);
+
+            foreach ((int linear, Face face, byte index) in chunk.FaceOverrides())
+            {
+                target.LoadFaceOverride(linear, face, index);
+            }
+        }
+    }
+
+    /// <summary>
     /// A deep copy: every voxel and every painted face, sharing only the palette — which every grid
     /// in a scene shares anyway. Chunks are copied whole rather than cell by cell, so even a large
     /// object costs one memory copy per chunk.

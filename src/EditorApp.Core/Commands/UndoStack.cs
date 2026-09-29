@@ -27,6 +27,9 @@ public sealed class UndoStack
 
     public string? NextUndoName => _undo.Count > 0 ? _undo[^1].Name : null;
 
+    /// <summary>The step Undo would take back, or null — for asking whether anything has been done since a given one.</summary>
+    public ICommand? LastDone => _undo.Count > 0 ? _undo[^1] : null;
+
     public string? NextRedoName => _redo.Count > 0 ? _redo[^1].Name : null;
 
     /// <summary>

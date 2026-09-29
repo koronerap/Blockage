@@ -66,6 +66,11 @@ public static class ParentMenu
             ImGui.CloseCurrentPopup();
         }
 
+        if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+        {
+            ImGui.CloseCurrentPopup();
+        }
+
         ImGui.EndPopup();
     }
 

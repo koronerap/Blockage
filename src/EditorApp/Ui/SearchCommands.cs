@@ -210,7 +210,23 @@ public static class SearchCommands
         // ---- Add
         foreach ((string name, LightKind kind) in Lights)
         {
-            commands.Add(new($"add.light.{kind}".ToLowerInvariant(), name, "Add", () => LightMenu.Add(session, kind)) { Keywords = "lamp light" });
+            commands.Add(new($"add.light.{kind}".ToLowerInvariant(), name, "Add", () => AddMenu.Choose(new AddChoice(Light: kind), null)) { Keywords = "lamp light new" });
+        }
+
+        foreach (ShapeKind shape in Shapes.All)
+        {
+            commands.Add(new($"add.shape.{shape}".ToLowerInvariant(), Shapes.NameOf(shape), "Add", () => AddMenu.Choose(new AddChoice(Shape: shape), null))
+            {
+                Keywords = "mesh shape primitive new object",
+            });
+        }
+
+        foreach (PropKind prop in PropPresets.All)
+        {
+            commands.Add(new($"add.prop.{prop}".ToLowerInvariant(), PropPresets.NameOf(prop), "Add", () => AddMenu.Choose(new AddChoice(Prop: prop), null))
+            {
+                Keywords = "prop preset new object",
+            });
         }
 
         // ---- Tools and their modes

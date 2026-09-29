@@ -397,7 +397,7 @@ public static class ObjectListPanel
         }
 
         ImGui.SameLine();
-        if (IconButton.Draw("add-light", Icons.Plus, active: false, "Add a light", button, hasAlternatives: true))
+        if (IconButton.Draw("add", Icons.Plus, active: false, $"Add a shape, prop or light{AddMenu.Hint}", button, hasAlternatives: true))
         {
             ImGui.OpenPopup("##outliner-add");
         }
@@ -407,7 +407,7 @@ public static class ObjectListPanel
 
         if (ImGui.BeginPopup("##outliner-add"))
         {
-            LightMenu.DrawItems(session);
+            AddMenu.DrawItems(at: null);
             ImGui.EndPopup();
         }
 

@@ -139,6 +139,39 @@ public sealed class Palette
         }
     }
 
+    /// <summary>
+    /// The index whose colour is nearest to <paramref name="color"/>, ignoring alpha — the colour
+    /// itself when the palette holds it. Green counts for most and blue for least, as they do to the
+    /// eye, so a brown finds a brown rather than a grey of the same brightness.
+    /// </summary>
+    public byte Nearest(Color32 color)
+    {
+        byte best = WhiteIndex;
+        long bestDistance = long.MaxValue;
+
+        for (int i = 1; i < Size; i++)
+        {
+            Color32 candidate = _colors[i];
+            if (candidate.A == 0)
+            {
+                continue;
+            }
+
+            long r = candidate.R - color.R;
+            long g = candidate.G - color.G;
+            long b = candidate.B - color.B;
+            long distance = (3 * r * r) + (4 * g * g) + (2 * b * b);
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = (byte)i;
+            }
+        }
+
+        return best;
+    }
+
     /// <summary>The index holding exactly this colour, ignoring alpha, or null.</summary>
     public byte? FindExact(Color32 color)
     {

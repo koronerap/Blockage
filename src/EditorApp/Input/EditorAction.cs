@@ -36,6 +36,7 @@ public enum EditorAction
     SetParent,
     ClearParent,
     Search,
+    AddMenu,
     KeepExtrude,
     Cancel,
 
@@ -118,6 +119,7 @@ public static class EditorActions
         new(EditorAction.SetParent, "edit.setparent", "Parent to...", Edit),
         new(EditorAction.ClearParent, "edit.clearparent", "Clear parent", Edit),
         new(EditorAction.Search, "edit.search", "Search for a command", Edit),
+        new(EditorAction.AddMenu, "edit.add", "Add a shape, prop or light", Edit),
         new(EditorAction.KeepExtrude, "edit.keepextrude", "Keep an extrude", Edit),
         new(EditorAction.Cancel, "edit.cancel", "Cancel, or let go", Edit),
 

@@ -1076,6 +1076,184 @@ public static class Icons
         canvas.Polyline([left + down, front + down, right + down]);
     }
 
+    // ---- The Add menu: shapes and props -------------------------------------------------------------
+
+    /// <summary>A wall: courses of bricks, each joint half a brick along from the one under it.</summary>
+    public static void ShapeWall(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.9f, -r * 0.6f), centre + new Vector2(r * 0.9f, r * 0.6f));
+        canvas.Line(centre + new Vector2(-r * 0.9f, -r * 0.2f), centre + new Vector2(r * 0.9f, -r * 0.2f), 0.8f);
+        canvas.Line(centre + new Vector2(-r * 0.9f, r * 0.2f), centre + new Vector2(r * 0.9f, r * 0.2f), 0.8f);
+
+        foreach (float x in new[] { -0.3f, 0.3f })
+        {
+            canvas.Line(centre + new Vector2(r * x, -r * 0.6f), centre + new Vector2(r * x, -r * 0.2f), 0.8f);
+            canvas.Line(centre + new Vector2(r * x, r * 0.2f), centre + new Vector2(r * x, r * 0.6f), 0.8f);
+        }
+
+        canvas.Line(centre + new Vector2(0f, -r * 0.2f), centre + new Vector2(0f, r * 0.2f), 0.8f);
+    }
+
+    /// <summary>A sphere: its outline, and the near half of its equator.</summary>
+    public static void ShapeSphere(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre, r * 0.85f);
+        Arc(canvas, centre, r * 0.85f, new Vector2(1f, 0.32f), 0f, MathF.PI, 16);
+    }
+
+    /// <summary>A cylinder: its top whole, its sides, and the near half of its bottom.</summary>
+    public static void ShapeCylinder(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 top = centre + new Vector2(0f, -r * 0.55f);
+        Vector2 bottom = centre + new Vector2(0f, r * 0.55f);
+        var squash = new Vector2(1f, 0.34f);
+
+        Arc(canvas, top, r * 0.72f, squash, 0f, MathF.Tau, 20);
+        Arc(canvas, bottom, r * 0.72f, squash, 0f, MathF.PI, 12);
+        canvas.Line(top - new Vector2(r * 0.72f, 0f), bottom - new Vector2(r * 0.72f, 0f));
+        canvas.Line(top + new Vector2(r * 0.72f, 0f), bottom + new Vector2(r * 0.72f, 0f));
+    }
+
+    /// <summary>A cone: two sides meeting at its point, over the near half of its base.</summary>
+    public static void ShapeCone(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 point = centre + new Vector2(0f, -r * 0.85f);
+        Vector2 base_ = centre + new Vector2(0f, r * 0.55f);
+
+        Arc(canvas, base_, r * 0.78f, new Vector2(1f, 0.34f), 0f, MathF.PI, 12);
+        canvas.Line(point, base_ - new Vector2(r * 0.78f, 0f));
+        canvas.Line(point, base_ + new Vector2(r * 0.78f, 0f));
+    }
+
+    /// <summary>A stepped pyramid, from the side.</summary>
+    public static void ShapePyramid(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.9f, r * 0.7f),
+            centre + new Vector2(-r * 0.9f, r * 0.3f),
+            centre + new Vector2(-r * 0.6f, r * 0.3f),
+            centre + new Vector2(-r * 0.6f, -r * 0.1f),
+            centre + new Vector2(-r * 0.3f, -r * 0.1f),
+            centre + new Vector2(-r * 0.3f, -r * 0.5f),
+            centre + new Vector2(r * 0.3f, -r * 0.5f),
+            centre + new Vector2(r * 0.3f, -r * 0.1f),
+            centre + new Vector2(r * 0.6f, -r * 0.1f),
+            centre + new Vector2(r * 0.6f, r * 0.3f),
+            centre + new Vector2(r * 0.9f, r * 0.3f),
+            centre + new Vector2(r * 0.9f, r * 0.7f),
+            centre + new Vector2(-r * 0.9f, r * 0.7f),
+        ]);
+    }
+
+    /// <summary>A ring seen from above and to the side: its outline and its hole.</summary>
+    public static void ShapeTorus(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Arc(canvas, centre, r * 0.92f, new Vector2(1f, 0.55f), 0f, MathF.Tau, 24);
+        Arc(canvas, centre, r * 0.36f, new Vector2(1f, 0.45f), 0f, MathF.Tau, 14);
+    }
+
+    /// <summary>Stairs, from the side, rising to the right.</summary>
+    public static void ShapeStairs(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.85f, r * 0.75f),
+            centre + new Vector2(-r * 0.85f, r * 0.35f),
+            centre + new Vector2(-r * 0.43f, r * 0.35f),
+            centre + new Vector2(-r * 0.43f, -r * 0.05f),
+            centre + new Vector2(0f, -r * 0.05f),
+            centre + new Vector2(0f, -r * 0.45f),
+            centre + new Vector2(r * 0.43f, -r * 0.45f),
+            centre + new Vector2(r * 0.43f, -r * 0.85f),
+            centre + new Vector2(r * 0.85f, -r * 0.85f),
+            centre + new Vector2(r * 0.85f, r * 0.75f),
+            centre + new Vector2(-r * 0.85f, r * 0.75f),
+        ]);
+    }
+
+    /// <summary>An arch: a wall with a round-topped way through it.</summary>
+    public static void ShapeArch(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Span<Vector2> points = stackalloc Vector2[16];
+        points[0] = centre + new Vector2(r * 0.4f, r * 0.8f);
+        points[1] = centre + new Vector2(r * 0.4f, -r * 0.05f);
+
+        // Over the top of the opening, right to left.
+        for (int i = 0; i <= 12; i++)
+        {
+            float angle = -MathF.PI * i / 12f;
+            points[2 + i] = centre + new Vector2(MathF.Cos(angle) * r * 0.4f, (MathF.Sin(angle) * r * 0.4f) - (r * 0.05f));
+        }
+
+        points[15] = centre + new Vector2(-r * 0.4f, r * 0.8f);
+        canvas.Polyline(points);
+
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.4f, r * 0.8f),
+            centre + new Vector2(-r * 0.85f, r * 0.8f),
+            centre + new Vector2(-r * 0.85f, -r * 0.8f),
+            centre + new Vector2(r * 0.85f, -r * 0.8f),
+            centre + new Vector2(r * 0.85f, r * 0.8f),
+            centre + new Vector2(r * 0.4f, r * 0.8f),
+        ]);
+    }
+
+    /// <summary>A crate: a frame, and the brace across it.</summary>
+    public static void PropCrate(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r * 0.8f), centre + new Vector2(r * 0.8f));
+        canvas.Rect(centre - new Vector2(r * 0.55f), centre + new Vector2(r * 0.55f), 0f, 0.7f);
+        canvas.Line(centre + new Vector2(-r * 0.55f, r * 0.55f), centre + new Vector2(r * 0.55f, -r * 0.55f));
+    }
+
+    /// <summary>A barrel: rounded at its ends, two hoops round it.</summary>
+    public static void PropBarrel(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.62f, -r * 0.85f), centre + new Vector2(r * 0.62f, r * 0.85f), r * 0.32f);
+        canvas.Line(centre + new Vector2(-r * 0.62f, -r * 0.4f), centre + new Vector2(r * 0.62f, -r * 0.4f), 0.8f);
+        canvas.Line(centre + new Vector2(-r * 0.62f, r * 0.4f), centre + new Vector2(r * 0.62f, r * 0.4f), 0.8f);
+    }
+
+    /// <summary>A table, from the side: its top and two legs.</summary>
+    public static void PropTable(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.9f, -r * 0.4f), centre + new Vector2(r * 0.9f, -r * 0.2f));
+        canvas.Line(centre + new Vector2(-r * 0.65f, -r * 0.2f), centre + new Vector2(-r * 0.65f, r * 0.75f));
+        canvas.Line(centre + new Vector2(r * 0.65f, -r * 0.2f), centre + new Vector2(r * 0.65f, r * 0.75f));
+    }
+
+    /// <summary>A chair, from the side: back, seat and legs.</summary>
+    public static void PropChair(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 seatBack = centre + new Vector2(-r * 0.45f, r * 0.1f);
+        Vector2 seatFront = centre + new Vector2(r * 0.45f, r * 0.1f);
+
+        canvas.Line(seatBack + new Vector2(0f, -r * 0.95f), seatBack + new Vector2(0f, r * 0.75f));
+        canvas.Line(seatBack, seatFront);
+        canvas.Line(seatFront, seatFront + new Vector2(0f, r * 0.75f));
+    }
+
+    /// <summary>A tree: a round crown on a trunk.</summary>
+    public static void PropTree(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre + new Vector2(0f, -r * 0.3f), r * 0.58f);
+        canvas.Line(centre + new Vector2(0f, r * 0.28f), centre + new Vector2(0f, r * 0.9f));
+    }
+
+    /// <summary>A fence: three posts and the two rails between them.</summary>
+    public static void PropFence(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        foreach (float x in new[] { -0.75f, 0f, 0.75f })
+        {
+            canvas.Line(centre + new Vector2(r * x, -r * 0.7f), centre + new Vector2(r * x, r * 0.8f));
+        }
+
+        canvas.Line(centre + new Vector2(-r * 0.95f, -r * 0.25f), centre + new Vector2(r * 0.95f, -r * 0.25f), 0.8f);
+        canvas.Line(centre + new Vector2(-r * 0.95f, r * 0.35f), centre + new Vector2(r * 0.95f, r * 0.35f), 0.8f);
+    }
+
     /// <summary>A chevron, for anything that opens and closes.</summary>
     public static void ChevronUp(IIconCanvas canvas, Vector2 centre, float r) =>
         Chevron(canvas, centre, r, up: true);

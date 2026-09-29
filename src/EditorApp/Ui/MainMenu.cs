@@ -167,10 +167,11 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
-        // Lights are the only thing there is to add: voxels come from extruding what is already there.
+        // Shapes, props and lights: set down where the view is looking. Shift+A opens the same list
+        // at the mouse, and sets what is picked down there.
         if (ImGui.BeginMenu("Add"))
         {
-            LightMenu.DrawItems(session);
+            AddMenu.DrawItems(at: null);
             ImGui.EndMenu();
         }
 

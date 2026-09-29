@@ -54,6 +54,15 @@ public sealed class EditorApplication : IDisposable
 
     private Vector2 _previousMousePosition;
     private bool _looking;
+
+    /// <summary>Tells a right click, which opens the viewport's menu, from a right drag, which looks round.</summary>
+    private readonly RightClick _rightClick = new();
+
+    /// <summary>What was under the cursor as the right button went down, and which way the view faced then.</summary>
+    private (int ObjectId, int LightId, float Yaw, float Pitch) _rightPress;
+
+    /// <summary>Seconds since the editor started, for timing a click.</summary>
+    private double _clock;
     private MiddleDrag _middleDrag;
     private bool _middleWasDown;
     private bool _confirmedClose;
@@ -404,6 +413,7 @@ public sealed class EditorApplication : IDisposable
     private void OnUpdate(double deltaSeconds)
     {
         _lastDelta = (float)deltaSeconds;
+        _clock += deltaSeconds;
         _autosave?.Tick(deltaSeconds);
         UpdateCamera((float)deltaSeconds);
         UpdateHover();
@@ -426,20 +436,30 @@ public sealed class EditorApplication : IDisposable
         _previousMousePosition = mousePosition;
 
         bool rightDown = mouse.IsButtonPressed(MouseButton.Right);
+        bool pressedNow = false;
         if (rightDown && !_looking && !io.WantCaptureMouse)
         {
             _looking = true;
+            pressedNow = true;
+            PressRight(mousePosition);
             mouse.Cursor.CursorMode = CursorMode.Disabled;
         }
         else if (!rightDown && _looking)
         {
             _looking = false;
             mouse.Cursor.CursorMode = CursorMode.Normal;
+            ReleaseRight();
         }
 
         if (_looking)
         {
             _camera.Look(mouseDelta);
+
+            // The press's own frame carries the movement from before it.
+            if (!pressedNow)
+            {
+                _rightClick.Moved(mouseDelta);
+            }
         }
 
         UpdateMiddleDrag(mouse, keyboard, mouseDelta, io);
@@ -472,6 +492,107 @@ public sealed class EditorApplication : IDisposable
 
         float multiplier = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight) ? 4f : 1f;
         _camera.Move(movement, deltaSeconds, multiplier);
+
+        if (movement != Vector3.Zero)
+        {
+            _rightClick.Flew();
+        }
+    }
+
+    /// <summary>
+    /// The right button going down: it starts a look, and might yet be a click. What is under the
+    /// cursor now is what a click's menu will be about — a light's icon first, then an object.
+    /// </summary>
+    private void PressRight(Vector2 at)
+    {
+        bool counts = _viewport.Contains(at) && !IsDragging() && !_leftButtonWasDown;
+        SceneLight? light = counts && ShowLightIcons ? LightUnder(_viewport.ToLocal(at), _viewport.Size) : null;
+        int objectId = counts && light is null && _pick is { } pick ? pick.Object.Id : 0;
+
+        _rightPress = (objectId, light?.Id ?? 0, _camera.Yaw, _camera.Pitch);
+        _rightClick.Press(at, _clock, counts);
+    }
+
+    /// <summary>The right button let go: after a click, the view as it was and the menu for what was clicked.</summary>
+    private void ReleaseRight()
+    {
+        if (_rightClick.Release(_clock) is not { } at)
+        {
+            return;
+        }
+
+        _camera.Yaw = _rightPress.Yaw;
+        _camera.Pitch = _rightPress.Pitch;
+
+        if (_rightPress.LightId != 0)
+        {
+            _session.SelectLight(_rightPress.LightId);
+        }
+        else if (_rightPress.ObjectId != 0)
+        {
+            _session.ChooseObject(_rightPress.ObjectId);
+        }
+
+        ViewportMenu.Open(at, _rightPress.ObjectId, _rightPress.LightId);
+    }
+
+    /// <summary>
+    /// Where a spot on screen falls on the level, and which way the surface there faces: an object's
+    /// face, locked ones included — a floor is often locked — else the ground, else straight ahead
+    /// at the pivot's distance. The middle of the view when there is no spot, or it is off the view.
+    /// </summary>
+    private (Vector3 Point, Vector3 Normal) SurfaceUnder(Vector2? at)
+    {
+        Vector2 screen = at is { } spot && _viewport.Contains(spot) ? spot : _viewport.Position + (_viewport.Size * 0.5f);
+        Ray ray = _camera.ScreenPointToRay(_viewport.ToLocal(screen), _viewport.Size);
+
+        if (Snapping.TrySurface(_session.Scene, ray, new SnapSettings { ExcludeLocked = false }, _ => false, out Vector3 point, out Vector3 normal, out _))
+        {
+            return (point, normal);
+        }
+
+        if (ray.Direction.Y < -1e-4f && -ray.Origin.Y / ray.Direction.Y is > 0f and var distance)
+        {
+            return (ray.PointAt(distance), Vector3.UnitY);
+        }
+
+        return (ray.PointAt(_camera.PivotDistance), Vector3.UnitY);
+    }
+
+    /// <summary>
+    /// Makes what the Add menu picked, set down on the level under <paramref name="at"/> — or where
+    /// the view looks — in voxels the size of the object being worked on, and hands it to the
+    /// Transform tool to be moved where it goes, as a duplicate is.
+    /// </summary>
+    private void AddChosen(AddChoice choice, Vector2? at)
+    {
+        if (IsDragging())
+        {
+            return;
+        }
+
+        (Vector3 point, Vector3 normal) = SurfaceUnder(at);
+        float voxelSize = _session.Scene.Focus?.VoxelSize ?? 1f;
+
+        if (choice.Light is { } kind)
+        {
+            LightMenu.AddAt(_session, kind, point, normal);
+            return;
+        }
+
+        if (choice.Shape is { } shape)
+        {
+            _session.AddShape(Shapes.Defaults(shape), point, normal, voxelSize);
+        }
+        else if (choice.Prop is { } prop)
+        {
+            _session.AddObject(PropPresets.Build(prop, _session.Scene.Palette), PropPresets.NameOf(prop), point, normal, voxelSize);
+        }
+
+        if (SwitchTool(EditorTool.Transform))
+        {
+            _session.TransformMode = TransformMode.Move;
+        }
     }
 
     /// <summary>
@@ -831,6 +952,12 @@ public sealed class EditorApplication : IDisposable
         {
             WelcomeScreen.Dismiss();
         }
+        else if (ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+        {
+            // Any other menu or list open over the editor has the keys: Esc closes it, and nothing
+            // behind it fires meanwhile.
+            return;
+        }
 
         // While the look button is held, the letter keys are flying the camera, not picking tools.
         if (_looking && !control)
@@ -994,6 +1121,11 @@ public sealed class EditorApplication : IDisposable
 
             case EditorAction.Search when !IsDragging(): CommandSearch.Open(); break;
 
+            // At the mouse, where what is picked will be set down.
+            case EditorAction.AddMenu when !IsDragging() && _input is { Mice.Count: > 0 } input:
+                AddMenu.Open(input.Mice[0].Position);
+                break;
+
             case EditorAction.ClearParent when !IsDragging():
                 if ((_session.SelectedLight as IPlaceable ?? _session.Scene.Focus) is { } freed)
                 {
@@ -1111,7 +1243,6 @@ public sealed class EditorApplication : IDisposable
         return true;
     }
 
-    /// <summary>Esc cancels a drag if one is running, otherwise it returns to Transform.</summary>
     /// <summary>The light whose icon is under the cursor, nearest the camera first, if any.</summary>
     private SceneLight? LightUnder(Vector2 mouse, Vector2 viewport)
     {
@@ -1139,6 +1270,7 @@ public sealed class EditorApplication : IDisposable
         return found;
     }
 
+    /// <summary>Esc cancels a drag if one is running, otherwise it returns to Transform.</summary>
     private void OnEscape()
     {
         if (ShortcutSheet.IsOpen)
@@ -1542,6 +1674,15 @@ public sealed class EditorApplication : IDisposable
             }),
             _preferences.RecentCommands);
         ParentMenu.DrawPopup(_session);
+        AddMenu.DrawPopup();
+        ViewportMenu.Draw(new ViewportMenuActions { Session = _session, Run = Run, Viewport = View });
+
+        // What the Add menu picked, wherever it was open — Shift+A, the menu bar, the Outliner, a
+        // right click — made once every menu has been drawn.
+        if (AddMenu.TakePending() is { } added)
+        {
+            AddChosen(added.Choice, added.At);
+        }
 
         // The asterisk in the title is the only always-visible unsaved-changes indicator.
         string title = _project.WindowTitle;
