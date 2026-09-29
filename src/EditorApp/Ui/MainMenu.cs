@@ -380,6 +380,16 @@ public static class MainMenu
 
         ImGui.Separator();
 
+        if (ImGui.MenuItem("Walk", Shortcut.Of(EditorAction.WalkMode)))
+        {
+            view.Walk();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Walk through the level at the size of a player: W A S D, Space to jump, Shift to run, Tab to fly. Enter keeps the view there, Esc goes back.");
+        }
+
         if (ImGui.MenuItem("Quad View", Shortcut.Of(EditorAction.ToggleQuadView), view.Viewport.Quad))
         {
             view.Viewport.Quad = !view.Viewport.Quad;

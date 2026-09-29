@@ -85,6 +85,7 @@ public enum EditorAction
     ToggleXRay,
     ToggleSection,
     ToggleQuadView,
+    WalkMode,
     ToggleWireframe,
 
     // Render
@@ -186,6 +187,7 @@ public static class EditorActions
         new(EditorAction.ToggleXRay, "view.xray", "X-Ray", View),
         new(EditorAction.ToggleSection, "view.section", "Section box", View),
         new(EditorAction.ToggleQuadView, "view.quad", "Quad view", View),
+        new(EditorAction.WalkMode, "view.walk", "Walk through the level", View),
         new(EditorAction.ToggleWireframe, "view.wireframe", "Wireframe, and back", View),
 
         new(EditorAction.RenderImage, "view.render", "Render an image of the level", View),

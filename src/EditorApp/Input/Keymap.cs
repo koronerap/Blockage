@@ -220,6 +220,9 @@ public sealed class Keymap
             // Blender's quad view.
             [EditorAction.ToggleQuadView] = [KeyChord.CtrlAlt(Key.Q)],
 
+            // Blender's walk navigation.
+            [EditorAction.WalkMode] = [KeyChord.ShiftOf(Key.GraveAccent)],
+
             // Blender's Alt+D: a copy that shares its voxels with the original.
             [EditorAction.DuplicateLinked] = [KeyChord.AltOf(Key.D)],
 

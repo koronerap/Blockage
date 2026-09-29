@@ -253,9 +253,79 @@ public static class PreferencesWindow
         return changed;
     }
 
+    /// <summary>
+    /// The walker's build, in metres, and how many voxels make a metre — the game's scale, which the
+    /// editor does not assume.
+    /// </summary>
+    private static bool DrawWalk(Preferences p)
+    {
+        if (!Props.Section("Walk", openByDefault: false))
+        {
+            return false;
+        }
+
+        EditorApp.Core.Editing.WalkSettings walk = p.Walk;
+        EditorApp.Core.Editing.WalkSettings edited = walk;
+
+        float perMetre = walk.VoxelsPerMetre;
+        if (Props.Float("Voxels a metre", "walk-scale", ref perMetre, 0.1f, 0.01f, 1000f, "%.2f"))
+        {
+            edited = edited with { VoxelsPerMetre = perMetre };
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("How many voxels (of size 1) make a metre in the game the level is for. Everything below is in metres.");
+        }
+
+        float height = walk.Height;
+        if (Props.Float("Height", "walk-height", ref height, 0.01f, 0.1f, 100f, "%.2f m"))
+        {
+            edited = edited with { Height = height };
+        }
+
+        float radius = walk.Radius;
+        if (Props.Float("Radius", "walk-radius", ref radius, 0.01f, 0.05f, 50f, "%.2f m"))
+        {
+            edited = edited with { Radius = radius };
+        }
+
+        float step = walk.Step;
+        if (Props.Float("Step", "walk-step", ref step, 0.01f, 0f, 50f, "%.2f m"))
+        {
+            edited = edited with { Step = step };
+        }
+
+        float speed = walk.Speed;
+        if (Props.Float("Speed", "walk-speed", ref speed, 0.05f, 0.1f, 500f, "%.1f m/s"))
+        {
+            edited = edited with { Speed = speed };
+        }
+
+        float jump = walk.Jump;
+        if (Props.Float("Jump", "walk-jump", ref jump, 0.01f, 0f, 100f, "%.2f m"))
+        {
+            edited = edited with { Jump = jump };
+        }
+
+        float gravity = walk.Gravity;
+        if (Props.Float("Gravity", "walk-gravity", ref gravity, 0.05f, 0f, 1000f, "%.2f m/s²"))
+        {
+            edited = edited with { Gravity = gravity };
+        }
+
+        if (edited == walk)
+        {
+            return false;
+        }
+
+        p.Walk = edited.Clamped();
+        return true;
+    }
+
     private static bool DrawViewport(Preferences p)
     {
-        bool changed = false;
+        bool changed = DrawWalk(p);
 
         if (Props.Section("View"))
         {

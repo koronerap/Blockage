@@ -68,6 +68,15 @@ public sealed class EditorApplication : IDisposable
     private Vector2 _previousMousePosition;
     private bool _looking;
 
+    /// <summary>The walker, while walking (Fullreleaseplan 7.5); null otherwise.</summary>
+    private WalkBody? _walk;
+
+    /// <summary>A click that ended walking is not a click on the level: the tools wait for the button to come up.</summary>
+    private bool _walkClickHeld;
+
+    /// <summary>Where the view was before walking, to go back to.</summary>
+    private (Vector3 Position, float Yaw, float Pitch, float PivotDistance, bool Orthographic) _walkStart;
+
     /// <summary>Tells a right click, which opens the viewport's menu, from a right drag, which looks round.</summary>
     private readonly RightClick _rightClick = new();
 
@@ -296,6 +305,7 @@ public sealed class EditorApplication : IDisposable
             _camera.Align(view);
         }
 
+
         // Not in a smoke or screenshot run: those must neither write the user's recovery folder nor
         // stop at a question about what is already in it.
         if (_smokeFrames <= 0)
@@ -493,6 +503,13 @@ public sealed class EditorApplication : IDisposable
         _clock += deltaSeconds;
         _autosave?.Tick(deltaSeconds);
         UpdateCamera((float)deltaSeconds);
+
+        // While walking, and until the click that ended it is let go, the tools stand aside.
+        if (_walk is not null || WalkClickStillHeld())
+        {
+            return;
+        }
+
         UpdateHover();
         UpdateTools();
     }
@@ -511,6 +528,12 @@ public sealed class EditorApplication : IDisposable
         Vector2 mousePosition = mouse.Position;
         Vector2 mouseDelta = mousePosition - _previousMousePosition;
         _previousMousePosition = mousePosition;
+
+        if (_walk is not null)
+        {
+            UpdateWalk(mouse, keyboard, mouseDelta, deltaSeconds);
+            return;
+        }
 
         bool rightDown = mouse.IsButtonPressed(MouseButton.Right);
         bool pressedNow = false;
@@ -1189,6 +1212,25 @@ public sealed class EditorApplication : IDisposable
 
     private void OnKeyDown(IKeyboard keyboard, Key key, int _)
     {
+        // Walking has the keyboard: Esc goes back, Enter stays, Tab flies; the rest are its movement.
+        if (_walk is not null)
+        {
+            switch (key)
+            {
+                case Key.Escape:
+                    EndWalk(keep: false);
+                    break;
+                case Key.Enter or Key.KeypadEnter:
+                    EndWalk(keep: true);
+                    break;
+                case Key.Tab:
+                    _walk.Flying = !_walk.Flying;
+                    break;
+            }
+
+            return;
+        }
+
         bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
         bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
         bool alt = keyboard.IsKeyPressed(Key.AltLeft) || keyboard.IsKeyPressed(Key.AltRight);
@@ -1384,6 +1426,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToggleXRay: View.XRay = !View.XRay; break;
             case EditorAction.ToggleSection: ToggleSection(); break;
             case EditorAction.ToggleQuadView: View.Quad = !View.Quad; break;
+            case EditorAction.WalkMode: BeginWalk(); break;
             case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
             case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
 
@@ -2049,6 +2092,7 @@ public sealed class EditorApplication : IDisposable
         DrawEmptyHint();
         DrawCameraFrame();
         DrawQuadLabels();
+        DrawWalkHint();
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -2228,6 +2272,135 @@ public sealed class EditorApplication : IDisposable
         Vector2 middle = _viewportArea.Position + new Vector2(MathF.Floor(_viewportArea.Size.X * 0.5f), MathF.Floor(_viewportArea.Size.Y * 0.5f));
         draw.AddLine(new Vector2(middle.X + 0.5f, _viewportArea.Position.Y), new Vector2(middle.X + 0.5f, _viewportArea.Position.Y + _viewportArea.Size.Y), line, 1f);
         draw.AddLine(new Vector2(_viewportArea.Position.X, middle.Y + 0.5f), new Vector2(_viewportArea.Position.X + _viewportArea.Size.X, middle.Y + 0.5f), line, 1f);
+    }
+
+    /// <summary>
+    /// Shift+`: walking, from where the view stands, set down on whatever is under it — at the
+    /// player's size the preferences give, in the game's own metres.
+    /// </summary>
+    private void BeginWalk()
+    {
+        if (_walk is not null || _input is not { Mice.Count: > 0 } input)
+        {
+            return;
+        }
+
+        if (IsDragging())
+        {
+            return;
+        }
+
+        _walkStart = (_camera.Position, _camera.Yaw, _camera.Pitch, _camera.PivotDistance, _camera.Orthographic);
+        _walk = new WalkBody(_session.Scene, _preferences.Walk);
+        _walk.PlaceBelow(_camera.Position);
+        _camera.Orthographic = false;
+        _camera.Pitch = Math.Clamp(_camera.Pitch, -0.5f, 0.5f);
+        _camera.Position = _walk.Eye;
+        input.Mice[0].Cursor.CursorMode = CursorMode.Disabled;
+    }
+
+    /// <summary>Stops walking: the view kept where the walker stands, or put back where it was.</summary>
+    private void EndWalk(bool keep)
+    {
+        if (_walk is null)
+        {
+            return;
+        }
+
+        _walk = null;
+        if (!keep)
+        {
+            _camera.Position = _walkStart.Position;
+            _camera.Yaw = _walkStart.Yaw;
+            _camera.Pitch = _walkStart.Pitch;
+            _camera.PivotDistance = _walkStart.PivotDistance;
+            _camera.Orthographic = _walkStart.Orthographic;
+        }
+        else
+        {
+            // Orbiting from here turns about a point a few steps ahead.
+            _camera.PivotDistance = _preferences.Walk.Unit * 3f;
+        }
+
+        if (_input is { Mice.Count: > 0 } input)
+        {
+            input.Mice[0].Cursor.CursorMode = CursorMode.Normal;
+        }
+    }
+
+    private void UpdateWalk(IMouse mouse, IKeyboard keyboard, Vector2 mouseDelta, float deltaSeconds)
+    {
+        WalkBody walk = _walk!;
+        _camera.Look(mouseDelta);
+
+        if (mouse.IsButtonPressed(MouseButton.Left))
+        {
+            _walkClickHeld = true;
+            EndWalk(keep: true);
+            return;
+        }
+
+        if (mouse.IsButtonPressed(MouseButton.Right))
+        {
+            _walkClickHeld = true;
+            EndWalk(keep: false);
+            return;
+        }
+
+        // Where the view faces, flat on the ground, and to its right.
+        Vector3 ahead = _camera.Forward with { Y = 0f };
+        ahead = ahead.LengthSquared() > 1e-6f ? Vector3.Normalize(ahead) : Vector3.UnitZ;
+        Vector3 right = Vector3.Normalize(Vector3.Cross(ahead, Vector3.UnitY));
+
+        Vector3 wish = Vector3.Zero;
+        if (keyboard.IsKeyPressed(Key.W)) wish += ahead;
+        if (keyboard.IsKeyPressed(Key.S)) wish -= ahead;
+        if (keyboard.IsKeyPressed(Key.D)) wish += right;
+        if (keyboard.IsKeyPressed(Key.A)) wish -= right;
+        if (wish.LengthSquared() > 1e-6f)
+        {
+            wish = Vector3.Normalize(wish);
+        }
+
+        bool running = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
+        float pace = running ? walk.Settings.Run : 1f;
+        float rise = (keyboard.IsKeyPressed(Key.Space) ? 1f : 0f) - (keyboard.IsKeyPressed(Key.C) ? 1f : 0f);
+
+        walk.Advance(new Vector2(wish.X, wish.Z) * pace, keyboard.IsKeyPressed(Key.Space), rise * pace, deltaSeconds);
+        _camera.Position = walk.Eye;
+    }
+
+    private bool WalkClickStillHeld()
+    {
+        if (_walkClickHeld && _input is { Mice.Count: > 0 } input
+            && !input.Mice[0].IsButtonPressed(MouseButton.Left) && !input.Mice[0].IsButtonPressed(MouseButton.Right))
+        {
+            _walkClickHeld = false;
+        }
+
+        return _walkClickHeld;
+    }
+
+    /// <summary>What walking is, and how to stop, along the bottom of the view.</summary>
+    private void DrawWalkHint()
+    {
+        if (_walk is not { } walk)
+        {
+            return;
+        }
+
+        string text = $"Walking{(walk.Flying ? " (flying)" : string.Empty)}  -  W A S D  ·  Space {(walk.Flying ? "up, C down" : "jumps")}  ·  Shift runs  ·  Tab {(walk.Flying ? "walks" : "flies")}  ·  Enter or click stays here  ·  Esc goes back";
+        Vector2 size = ImGui.CalcTextSize(text);
+        Vector2 at = _viewport.Position + new Vector2((_viewport.Size.X - size.X) * 0.5f, _viewport.Size.Y - size.Y - 18f);
+        ImDrawListPtr draw = ImGui.GetForegroundDrawList();
+        draw.AddRectFilled(at - new Vector2(10f, 6f), at + size + new Vector2(10f, 6f), ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.55f)), 6f);
+        draw.AddText(at, ImGui.GetColorU32(Theme.Text), text);
+
+        // A small cross in the middle, where the view is facing.
+        Vector2 middle = _viewport.Position + (_viewport.Size * 0.5f);
+        uint cross = ImGui.GetColorU32(Theme.Text with { W = 0.7f });
+        draw.AddLine(middle - new Vector2(6f, 0f), middle + new Vector2(6f, 0f), cross, 1.5f);
+        draw.AddLine(middle - new Vector2(0f, 6f), middle + new Vector2(0f, 6f), cross, 1.5f);
     }
 
     /// <summary>What Render Image is seen from: the camera renders are seen from, or the view when there is none.</summary>
@@ -2520,6 +2693,7 @@ public sealed class EditorApplication : IDisposable
         FrameFocused = FrameFocused,
         RenderImage = () => _renderWindow?.Start(_session, RenderImageCamera()),
         ViewCamera = ToggleCameraView,
+        Walk = BeginWalk,
         RenderOutputs = () => _outputsWindow?.Open(),
         CameraToView = CameraToView,
         SaveViewportImage = () => ViewportShotBrowser.Show(FileBrowserMode.Save, "Save the viewport as an image", ".png", null, _session.ProjectName, path => _viewportShotPath = path),

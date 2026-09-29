@@ -350,4 +350,20 @@ public class ViewportSettingsTests
         Assert.Equal(0.95f, settings.XRayAlpha);
         Assert.Equal(0.05f, settings.WireframeOpacity);
     }
+
+    [Fact]
+    public void TheWalkersBuildAndTheGamesScaleAreKept()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"walk-prefs-{Guid.NewGuid():N}.json");
+        var saved = new Preferences { Walk = new EditorApp.Core.Editing.WalkSettings { VoxelsPerMetre = 16f, Height = 1.6f, Step = 0.3f } };
+        saved.Save(path);
+
+        EditorApp.Core.Editing.WalkSettings walk = Preferences.Load(path).Walk;
+        File.Delete(path);
+
+        Assert.Equal(16f, walk.VoxelsPerMetre);
+        Assert.Equal(1.6f, walk.Height);
+        Assert.Equal(0.3f, walk.Step);
+        Assert.Equal(new EditorApp.Core.Editing.WalkSettings().Gravity, walk.Gravity);
+    }
 }

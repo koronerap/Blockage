@@ -19,6 +19,9 @@ public sealed class ViewActions
     /// <summary>The window for turntables, sprite sheets and every camera's picture.</summary>
     public Action RenderOutputs { get; init; } = () => { };
 
+    /// <summary>Shift+`: walk through the level at a player's size.</summary>
+    public Action Walk { get; init; } = () => { };
+
     /// <summary>Numpad 0: through the camera renders are seen from, and back.</summary>
     public Action ViewCamera { get; init; } = () => { };
 
