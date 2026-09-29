@@ -91,11 +91,16 @@ foreach (string argument in args)
 
 if (iconPath is not null)
 {
-    // The committed .ico and .icns are generated, not drawn by hand, so they can be regenerated
-    // whenever the mark or the shading constants behind it change.
-    bool mac = iconPath.EndsWith(".icns", StringComparison.OrdinalIgnoreCase);
-    File.WriteAllBytes(iconPath, mac ? EditorApp.Core.Export.AppIcon.EncodeIcns() : EditorApp.Core.Export.AppIcon.EncodeIco());
-    Console.WriteLine($"Wrote {iconPath} ({(mac ? EditorApp.Core.Export.AppIcon.IcnsEntries.Length : EditorApp.Core.Export.AppIcon.Sizes.Length)} sizes).");
+    // The committed .ico, .icns and .png are generated, not drawn by hand, so they can be regenerated
+    // whenever the mark or the shading constants behind it change. The PNG is Linux's, at 256.
+    string kind = Path.GetExtension(iconPath).ToLowerInvariant();
+    File.WriteAllBytes(iconPath, kind switch
+    {
+        ".icns" => EditorApp.Core.Export.AppIcon.EncodeIcns(),
+        ".png" => EditorApp.Core.Export.AppIcon.EncodePng(256),
+        _ => EditorApp.Core.Export.AppIcon.EncodeIco(),
+    });
+    Console.WriteLine($"Wrote {iconPath}.");
     return 0;
 }
 

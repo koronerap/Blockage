@@ -13,7 +13,8 @@ Performance, platforms and the road to 1.0.
   request, and every run measures a large level.
 - A release pipeline. A version tag builds the Windows, macOS and Linux packages and puts them, with
   their SHA-256 sums, in a draft release. The Windows build is signed once a certificate is set up.
-- A Linux build: `dotnet publish src/EditorApp -p:PublishProfile=linux-x64`.
+- A Linux build, as a tarball with an icon and `install.sh`, which puts Blockage in the applications
+  menu for you alone (`./install.sh --remove` takes it out again).
 - A Mac app. The macOS build comes as `Blockage.app`, with its icon, signed ad hoc; once a Developer
   ID is set up it is signed with that and notarized. On a Mac, Command works wherever Blockage says
   Ctrl.

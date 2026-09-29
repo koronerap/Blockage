@@ -147,15 +147,11 @@ jobs:
       - name: Publish
         run: dotnet publish src/EditorApp -p:PublishProfile=linux-x64
       - name: Package
-        run: |
-          name="Blockage-$VERSION-linux-x64"
-          mv publish/linux-x64 "publish/$name"
-          mkdir -p dist
-          tar -czf "dist/$name.tar.gz" -C publish "$name"
+        run: bash tools/package-linux.sh publish/linux-x64 "$VERSION" dist
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/*
+          path: dist/*.tar.gz
 
   release:
     name: Draft release
@@ -193,7 +189,7 @@ jobs:
             else
               echo "| macOS 14+, Apple Silicon | \`Blockage-$VERSION-osx-arm64.zip\` | **Experimental: built, not yet run on a Mac.** Unzip, and since the app is not notarized, run \`xattr -dr com.apple.quarantine Blockage.app\` before opening it the first time. |"
             fi
-            echo "| Linux, x64 | \`Blockage-$VERSION-linux-x64.tar.gz\` | Unpack and run \`./Blockage\`. Needs OpenGL 3.3. |"
+            echo "| Linux, x64 | \`Blockage-$VERSION-linux-x64.tar.gz\` | Unpack and run \`./Blockage\`; \`./install.sh\` adds it to the applications menu. Needs OpenGL 3.3. |"
             echo
             echo "Check a download against \`SHA256SUMS.txt\`: \`sha256sum -c SHA256SUMS.txt --ignore-missing\`."
             echo

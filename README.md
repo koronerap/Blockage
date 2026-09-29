@@ -135,7 +135,8 @@ dotnet publish src/EditorApp -p:PublishProfile=win-x64        # a standalone bui
 ```
 
 On a Mac, `bash tools/package-macos.sh publish/osx-arm64 <version> dist` then makes `Blockage.app` of
-the macOS build, signs it and zips it.
+the macOS build, signs it and zips it. On Linux, `bash tools/package-linux.sh publish/linux-x64
+<version> dist` makes the tarball, with the icon and an `install.sh` for the applications menu.
 
 The Android app needs the .NET `android` workload, JDK 17 and the Android SDK. `build-android.ps1`
 looks for them in a user-local .NET under `%LOCALAPPDATA%\Microsoft\dotnet`, JDK 17 under
