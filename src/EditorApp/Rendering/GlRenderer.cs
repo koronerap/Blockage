@@ -341,8 +341,10 @@ public sealed class GlRenderer : IDisposable
             _gl.DepthFunc(DepthFunction.Lequal);
         }
 
-        // See-through: blended, writing no depth so what is behind still draws, and with both sides
-        // of every face so the far side of the model shows too.
+        // See-through: blended, writing no depth so what is behind still draws. Only the faces that
+        // face the camera, as ever — the backs of the far faces are the model's inside, and drawn
+        // through the front they read as a second, inside-out model. A see-through wireframe is the
+        // exception: there every line is wanted, the far ones included.
         bool blended = wireframe || XRay > 0f;
         if (blended)
         {
@@ -351,7 +353,7 @@ public sealed class GlRenderer : IDisposable
             _gl.DepthMask(false);
         }
 
-        if (XRay > 0f)
+        if (wireframe && XRay > 0f)
         {
             _gl.Disable(EnableCap.CullFace);
         }
