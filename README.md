@@ -32,10 +32,17 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
   whole selection, with Blender-style snapping (increments, corners, edge centres, surfaces) and a
   choice of pivot; parenting and joining into the active object, duplicate, subdivide, quarter turns
   and mirrors, hide and lock.
+- **Inside an object.** Tab into Edit Mode to choose voxels - by click, box, magic wand or colour -
+  move and turn them on the object's lattice, separate them with P, fill or delete them.
+- **Sculpt, carve and combine.** A Sculpt tool for terrain and anything organic (build up, carve,
+  raise, lower, flatten, smooth); boolean union, difference and intersection; hollow, thicken, thin,
+  clean up loose pieces, halve the resolution or scale a model.
+- **Non-destructive modifiers.** Mirror and Array, shown and exported over the voxels you edit, to
+  switch off, change or apply at any time.
 - **Paint face by face.** Brush, bucket and pattern fills, an eyedropper on Alt, a 256-colour palette.
-- **Add with Shift+A.** Cubes, spheres, cylinders, cones, stairs, arches and more; ready-made props
-  — crates, barrels, tables, trees — and lights, set down on the surface under the cursor and sized
-  afterwards in an *Adjust* panel.
+- **Add with Shift+A.** Cubes, spheres, cylinders, cones, stairs, arches, voxel lettering and more;
+  ready-made props — crates, barrels, tables, trees — and lights, set down on the surface under the
+  cursor and sized afterwards in an *Adjust* panel.
 - **Blender where it helps.** F3 command search, a right-click context menu, overlays, X-Ray and
   wireframe, an Outliner with hierarchy, rebindable keys (a *Default* and a *Mimic Busters* preset), a
   welcome screen with templates.
@@ -60,7 +67,8 @@ changes them.
 | Orbit, pan, zoom | middle mouse; Shift + middle; the wheel |
 | Frame | Home for the level, F for the object |
 | Select | W, then click; drag for a box. Shift adds, Ctrl takes away · A all · Alt+A none · Ctrl+I invert |
-| Tools | G move · R rotate · E extrude · B paint · Ctrl+R loop cut · V view |
+| Tools | G move · R rotate · E extrude · B paint · S sculpt · Ctrl+R loop cut · V view |
+| Edit Mode | Tab into the active object and out; P separates the chosen voxels |
 | Add | Shift+A |
 | Search for any command | F3 |
 | Context menu | right click |
