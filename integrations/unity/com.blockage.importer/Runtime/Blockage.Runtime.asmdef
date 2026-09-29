@@ -1,0 +1,9 @@
+{
+    "name": "Blockage.Runtime",
+    "rootNamespace": "Blockage",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "autoReferenced": true
+}

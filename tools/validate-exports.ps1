@@ -6,8 +6,9 @@
 # Builds the editor, has it write its sample level in every format (--export-to), then opens the
 # OBJ, GLB, glTF and FBX in Blender and the FBX and OBJ in Unity, each in batch mode, and checks
 # that what arrives is what left: every object, its texture, its size and place, the hierarchy,
-# linked copies sharing one mesh, markers with their properties, lights and collision. Godot is
-# looked for and, when it is not installed, said to be skipped. Exits with 1 on any failure.
+# linked copies sharing one mesh, markers with their properties, lights and collision. With -Unity
+# the Blockage Importer package (integrations/unity) is checked too, on the .vxlevel itself. Godot
+# is looked for and, when it is not installed, said to be skipped. Exits with 1 on any failure.
 
 param(
     [string]$Out = (Join-Path $env:TEMP 'blockage-validate'),
@@ -62,6 +63,21 @@ if ($Unity) {
         if ($LASTEXITCODE -ne 0) { $failed = $true }
         $result = Join-Path $project 'validate-result.txt'
         if (Test-Path $result) { Get-Content $result | Out-Host } else { Write-Host 'FAIL Unity wrote no result: see unity-validate.log'; $failed = $true }
+
+        # The importer package, on the level file itself.
+        Write-Host '== Unity: the Blockage Importer package'
+        $manifestPath = Join-Path $project 'Packages\manifest.json'
+        $packagePath = (Join-Path $repo 'integrations\unity\com.blockage.importer') -replace '\\', '/'
+        $manifest = Get-Content $manifestPath -Raw
+        $manifest = $manifest -replace '"dependencies": \{', ('"dependencies": {' + "`n    `"com.blockage.importer`": `"file:$packagePath`",")
+        [IO.File]::WriteAllText($manifestPath, $manifest)
+        $levels = New-Item -ItemType Directory -Force (Join-Path $project 'Assets\Levels')
+        Copy-Item (Join-Path $Out 'sample.vxlevel') $levels
+        Copy-Item (Join-Path $PSScriptRoot 'validate\unity\CheckVxLevel.cs') $scripts
+        & $editor.FullName -batchmode -nographics -projectPath $project -executeMethod CheckVxLevel.Run -logFile (Join-Path $Out 'unity-vxlevel.log') | Out-Null
+        if ($LASTEXITCODE -ne 0) { $failed = $true }
+        $result = Join-Path $project 'vxlevel-result.txt'
+        if (Test-Path $result) { Get-Content $result | Out-Host } else { Write-Host 'FAIL Unity wrote no result: see unity-vxlevel.log'; $failed = $true }
     }
     else {
         Write-Host '== Unity: not found, skipped'

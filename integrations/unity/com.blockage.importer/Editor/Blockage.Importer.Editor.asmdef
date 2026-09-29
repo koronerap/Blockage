@@ -1,0 +1,13 @@
+{
+    "name": "Blockage.Importer.Editor",
+    "rootNamespace": "Blockage.Importer",
+    "references": [
+        "Blockage.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "autoReferenced": true
+}
