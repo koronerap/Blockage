@@ -19,8 +19,14 @@ public static class Icons
     public delegate void Painter(IIconCanvas canvas, Vector2 centre, float radius);
 
     // ---- Tools -------------------------------------------------------------------------------
+    //
+    // The four tools share one drawing: solid heads and faces, strokes of one weight, and the two
+    // that act on the model in three dimensions — Extrude and Loop Cut — drawn as the same small
+    // isometric cube, so they read as a family and as operations on a block. The first set drew each
+    // tool its own way, in flat outlines, and at button size they read as a stamp, a lollipop and a
+    // battery.
 
-    /// <summary>Transform: arrows out of a centre, the universal "move this" mark.</summary>
+    /// <summary>Transform: four solid-headed arrows out of a centre, the universal "move this".</summary>
     public static void Move(IIconCanvas canvas, Vector2 centre, float r)
     {
         Span<Vector2> directions = [new(0f, -1f), new(0f, 1f), new(-1f, 0f), new(1f, 0f)];
@@ -28,55 +34,114 @@ public static class Icons
         foreach (Vector2 direction in directions)
         {
             Vector2 tip = centre + (direction * r);
-            canvas.Line(centre, tip);
-            Arrowhead(canvas, tip, direction, r * 0.34f);
+            canvas.Line(centre + (direction * r * 0.12f), tip - (direction * r * 0.3f));
+            Arrowhead(canvas, tip, direction, r * 0.46f);
         }
+
+        canvas.FilledRect(centre - new Vector2(r * 0.14f), centre + new Vector2(r * 0.14f));
     }
 
-    /// <summary>Extrude: a face lifting off the surface it came from.</summary>
+    /// <summary>
+    /// Extrude: a block with its top face chosen — filled, as a selection is — and an arrow rising
+    /// well clear of it. The face and the pull, which is the whole of the tool.
+    /// </summary>
     public static void Extrude(IIconCanvas canvas, Vector2 centre, float r)
     {
-        // The base surface.
-        canvas.Line(
-            centre + new Vector2(-r, r * 0.72f),
-            centre + new Vector2(r, r * 0.72f));
+        Block block = IsoBlock(centre + new Vector2(0f, r * 0.2f), r * 0.74f, r * 0.4f);
 
-        // The slab being pulled off it.
-        canvas.Rect(
-            centre + new Vector2(-r * 0.62f, -r * 0.1f),
-            centre + new Vector2(r * 0.62f, r * 0.42f),
-            2f);
+        // The chosen face, then the block's visible edges over it.
+        canvas.FilledTriangle(block.Top, block.Right, block.Front);
+        canvas.FilledTriangle(block.Top, block.Front, block.Left);
+        DrawBlock(canvas, block, 1f);
 
-        Vector2 tip = centre + new Vector2(0f, -r);
-        canvas.Line(centre + new Vector2(0f, -r * 0.28f), tip);
-        Arrowhead(canvas, tip, new Vector2(0f, -1f), r * 0.34f);
+        Vector2 tip = new(centre.X, centre.Y - r);
+        canvas.Line(new Vector2(centre.X, block.Top.Y + (r * 0.1f)), tip + new Vector2(0f, r * 0.4f), 1.25f);
+        Arrowhead(canvas, tip, new Vector2(0f, -1f), r * 0.5f);
     }
 
-    /// <summary>Paint: a brush dab.</summary>
+    /// <summary>
+    /// Paint: a brush, handle up and to the right, bristles to a point at the lower left — the way a
+    /// brush tool has been drawn since the first paint programs, and why it is recognised at a glance.
+    /// </summary>
     public static void Paint(IIconCanvas canvas, Vector2 centre, float r)
     {
-        canvas.FilledCircle(centre + new Vector2(0f, r * 0.22f), r * 0.5f);
-        canvas.Line(
-            centre + new Vector2(r * 0.28f, -r * 0.1f),
-            centre + new Vector2(r * 0.78f, -r * 0.8f),
-            1.6f);
+        var along = Vector2.Normalize(new Vector2(-1f, 1f));
+        var across = new Vector2(-along.Y, along.X);
+
+        Vector2 handleEnd = centre - (along * r * 0.92f);
+        Vector2 ferrule = centre - (along * r * 0.02f);
+        Vector2 bristles = centre + (along * r * 0.24f);
+        Vector2 point = centre + (along * r * 1.08f);
+
+        canvas.Line(handleEnd, ferrule, 1.1f);
+        canvas.FilledCircle(handleEnd, r * 0.1f);
+        canvas.Line(ferrule, bristles, 2.8f);
+
+        // The bristles: full where they leave the ferrule, drawn to a point, bent a touch the way a
+        // loaded brush lies on the paper.
+        float wide = r * 0.3f;
+        Vector2 belly = bristles + (along * r * 0.34f) + (across * r * 0.06f);
+        canvas.FilledTriangle(bristles + (across * wide), bristles - (across * wide), belly);
+        canvas.FilledTriangle(bristles + (across * wide), belly, point);
+        canvas.FilledTriangle(bristles - (across * wide), belly, point);
+        canvas.FilledCircle(belly, wide * 0.92f);
     }
 
-    /// <summary>Loop Cut: a plane splitting a body in two.</summary>
+    /// <summary>
+    /// Loop Cut: the same block, with a ring round its middle drawn heavy and running out past its
+    /// sides — the section the cut goes through, as the tool's own preview rings it, and as Blender
+    /// draws its loop cut.
+    /// </summary>
     public static void Cut(IIconCanvas canvas, Vector2 centre, float r)
     {
-        canvas.Rect(
-            centre + new Vector2(-r * 0.75f, -r * 0.72f),
-            centre + new Vector2(r * 0.75f, r * 0.72f),
-            2f);
+        Block block = IsoBlock(centre + new Vector2(0f, -r * 0.34f), r * 0.8f, r * 1.02f);
+        DrawBlock(canvas, block, 0.75f);
 
-        // A dashed line, because a solid one would read as an edge of the box rather than a cut.
-        for (float x = -r; x < r; x += r * 0.32f)
-        {
-            canvas.Line(
-                centre + new Vector2(x, 0f),
-                centre + new Vector2(MathF.Min(x + (r * 0.18f), r), 0f));
-        }
+        Vector2 down = new(0f, block.Height * 0.52f);
+        Vector2 left = block.Left + down;
+        Vector2 front = block.Front + down;
+        Vector2 right = block.Right + down;
+        // Along the block's own edges, from constants rather than from the corners: at size zero
+        // the corners coincide, and a direction taken from them would be NaN.
+        Vector2 overhang = IsoLeftward * r * 0.3f;
+        Vector2 overhangRight = new Vector2(-IsoLeftward.X, IsoLeftward.Y) * r * 0.3f;
+
+        canvas.Polyline([left + overhang, front, right + overhangRight], 2f);
+    }
+
+    /// <summary>View: a camera — the tool that only ever moves the camera.</summary>
+    public static void ViewTool(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.9f, -r * 0.45f), centre + new Vector2(r * 0.9f, r * 0.72f), r * 0.18f);
+        canvas.FilledRect(centre + new Vector2(-r * 0.36f, -r * 0.72f), centre + new Vector2(r * 0.2f, -r * 0.45f), r * 0.08f);
+        canvas.Circle(centre + new Vector2(0f, r * 0.14f), r * 0.34f);
+        canvas.FilledCircle(centre + new Vector2(0f, r * 0.14f), r * 0.14f);
+    }
+
+    /// <summary>From a block's front corner towards its left one: the slope of every receding edge.</summary>
+    private static readonly Vector2 IsoLeftward = Vector2.Normalize(new Vector2(-1f, -0.5f));
+
+    /// <summary>The corners of a block seen from above one of its vertical edges.</summary>
+    private readonly record struct Block(Vector2 Top, Vector2 Right, Vector2 Front, Vector2 Left, float Height);
+
+    /// <param name="topCentre">Where the middle of the top face is.</param>
+    /// <param name="halfWidth">Half the block's width on screen; the top face is half as tall as it is wide.</param>
+    /// <param name="height">How far the sides run down.</param>
+    private static Block IsoBlock(Vector2 topCentre, float halfWidth, float height) => new(
+        topCentre - new Vector2(0f, halfWidth * 0.5f),
+        topCentre + new Vector2(halfWidth, 0f),
+        topCentre + new Vector2(0f, halfWidth * 0.5f),
+        topCentre - new Vector2(halfWidth, 0f),
+        height);
+
+    /// <summary>The nine edges of a block that can be seen from above it.</summary>
+    private static void DrawBlock(IIconCanvas canvas, Block block, float width)
+    {
+        Vector2 down = new(0f, block.Height);
+
+        canvas.Polyline([block.Top, block.Right, block.Front, block.Left, block.Top], width);
+        canvas.Polyline([block.Left, block.Left + down, block.Front + down, block.Right + down, block.Right], width);
+        canvas.Line(block.Front, block.Front + down, width);
     }
 
     // ---- Tool options ------------------------------------------------------------------------
@@ -151,41 +216,68 @@ public static class Icons
         canvas.Circle(centre, r * 0.82f, 0.8f);
     }
 
-    /// <summary>Bucket: a tipped pail.</summary>
+    /// <summary>
+    /// Bucket: a pail tipped over to the right, full of paint, with a drop leaving the lip — the fill,
+    /// in the one picture every paint program uses for it.
+    /// </summary>
     public static void Bucket(IIconCanvas canvas, Vector2 centre, float r)
     {
-        Vector2 topLeft = centre + new Vector2(-r * 0.72f, -r * 0.62f);
-        Vector2 topRight = centre + new Vector2(r * 0.72f, -r * 0.62f);
-        Vector2 bottomRight = centre + new Vector2(r * 0.36f, r * 0.72f);
-        Vector2 bottomLeft = centre + new Vector2(-r * 0.36f, r * 0.72f);
+        // Upright, then turned a third of the way to pouring.
+        float turn = 0.52f;
+        float cos = MathF.Cos(turn);
+        float sin = MathF.Sin(turn);
+        Vector2 pivot = centre + new Vector2(-r * 0.2f, -r * 0.05f);
 
-        canvas.Line(topLeft, topRight);
-        canvas.Line(topRight, bottomRight);
-        canvas.Line(bottomRight, bottomLeft);
-        canvas.Line(bottomLeft, topLeft);
+        Vector2 At(float x, float y) => pivot + new Vector2((x * cos) - (y * sin), (x * sin) + (y * cos)) * r;
 
-        // A drip, so it is a bucket pouring rather than a plain trapezoid.
-        canvas.FilledCircle(centre + new Vector2(r * 0.85f, r * 0.5f), r * 0.2f);
+        Vector2 rimLeft = At(-0.56f, -0.42f);
+        Vector2 rimRight = At(0.56f, -0.42f);
+        Vector2 baseRight = At(0.4f, 0.6f);
+        Vector2 baseLeft = At(-0.4f, 0.6f);
+
+        // The paint, filling the pail below its rim.
+        Vector2 levelLeft = At(-0.5f, -0.12f);
+        Vector2 levelRight = At(0.52f, -0.12f);
+        canvas.FilledTriangle(levelLeft, levelRight, baseRight);
+        canvas.FilledTriangle(levelLeft, baseRight, baseLeft);
+
+        canvas.Polyline([rimLeft, baseLeft, baseRight, rimRight, rimLeft]);
+
+        // The handle, arching over the open top.
+        Span<Vector2> handle = stackalloc Vector2[9];
+        for (int i = 0; i < handle.Length; i++)
+        {
+            float a = MathF.PI + (i / (float)(handle.Length - 1) * MathF.PI);
+            handle[i] = At(MathF.Cos(a) * 0.5f, -0.42f + (MathF.Sin(a) * 0.42f));
+        }
+
+        canvas.Polyline(handle, 0.8f);
+
+        // A drop falling from the lip.
+        Vector2 drop = centre + new Vector2(r * 0.72f, r * 0.62f);
+        canvas.FilledCircle(drop, r * 0.2f);
+        canvas.FilledTriangle(drop + new Vector2(-r * 0.19f, -r * 0.05f), drop + new Vector2(r * 0.19f, -r * 0.05f), drop - new Vector2(0f, r * 0.42f));
     }
 
     /// <summary>
-    /// Eyedropper: a pipette. What the desktop does with Alt held, which a finger cannot do, so on
-    /// a phone it is a mode that lasts exactly one tap.
+    /// Eyedropper: a pipette — bulb, the collar it is squeezed at, the glass, and a drop at the tip.
+    /// What the desktop does with Alt held, which a finger cannot do, so on a phone it is a mode that
+    /// lasts exactly one tap.
     /// </summary>
     public static void Eyedropper(IIconCanvas canvas, Vector2 centre, float r)
     {
-        // The barrel, running corner to corner.
-        canvas.Line(
-            centre + new Vector2(-r * 0.55f, r * 0.55f),
-            centre + new Vector2(r * 0.4f, -r * 0.4f),
-            1.6f);
+        var along = Vector2.Normalize(new Vector2(-1f, 1f));
+        var across = new Vector2(-along.Y, along.X);
 
-        // The bulb at the top, and the drop at the tip.
-        canvas.FilledCircle(centre + new Vector2(r * 0.6f, -r * 0.6f), r * 0.3f);
-        canvas.FilledTriangle(
-            centre + new Vector2(-r * 0.82f, r * 0.82f),
-            centre + new Vector2(-r * 0.3f, r * 0.5f),
-            centre + new Vector2(-r * 0.5f, r * 0.3f));
+        Vector2 bulb = centre - (along * r * 0.62f);
+        Vector2 collar = centre - (along * r * 0.22f);
+        Vector2 tip = centre + (along * r * 0.8f);
+
+        canvas.FilledCircle(bulb, r * 0.3f);
+        canvas.Line(bulb, collar, 2.2f);
+        canvas.Line(collar - (across * r * 0.28f), collar + (across * r * 0.28f), 1.8f);
+        canvas.Line(collar, tip - (along * r * 0.14f), 1.2f);
+        canvas.FilledTriangle(tip, tip - (along * r * 0.3f) + (across * r * 0.1f), tip - (along * r * 0.3f) - (across * r * 0.1f));
     }
 
     /// <summary>Pattern: a chequer.</summary>

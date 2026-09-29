@@ -32,7 +32,7 @@ public static class ToolColumn
             }
         }
 
-        return (Icons.Move, "View", "V");
+        return (Icons.ViewTool, "View", "V");
     }
 
     /// <summary>Where the colour button was drawn last frame — for tests to aim at.</summary>
