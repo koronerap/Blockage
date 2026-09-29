@@ -21,6 +21,12 @@ public sealed class ExtrudeInteraction(EditorSession session)
     /// </summary>
     public float ArrowGrabPixels { get; set; } = 14f;
 
+    /// <summary>
+    /// Whether the arrow is there to take hold of — off with the header's tool gizmos. A press on the
+    /// selection itself still pulls it.
+    /// </summary>
+    public bool ArrowEnabled { get; set; } = true;
+
     /// <summary>Arrow length in voxels. Long enough to aim at, short enough not to cover the model.</summary>
     private const float ArrowLength = 3f;
 
@@ -171,7 +177,8 @@ public sealed class ExtrudeInteraction(EditorSession session)
     }
 
     private bool IsOnArrow(Vector2 mouse, Vector2 viewport, FlyCamera camera) =>
-        Arrow() is { } arrow
+        ArrowEnabled
+        && Arrow() is { } arrow
         && camera.TryProjectToScreen(arrow.Start, viewport, out Vector2 start)
         && camera.TryProjectToScreen(arrow.End, viewport, out Vector2 end)
         && DistanceToSegment(mouse, start, end) <= ArrowGrabPixels;

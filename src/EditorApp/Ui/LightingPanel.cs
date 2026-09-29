@@ -13,22 +13,26 @@ namespace EditorApp.Ui;
 public static class LightingPanel
 {
     /// <param name="droppedLights">Lights switched on beyond what the shader can draw at once.</param>
-    public static void DrawContent(EditorSession session, SceneLighting lighting, int droppedLights)
+    public static void DrawContent(EditorSession session, ViewportSettings viewport, int droppedLights)
     {
+        int shown = viewport.Shading switch { ShadingMode.Lit => 0, ShadingMode.Unlit => 1, _ => 2 };
         int mode = Props.Choice(
             "Shading",
             "shading",
-            [(Icons.Lit, "Lit"), (Icons.Unlit, "Unlit")],
-            lighting.IsLit ? 0 : 1);
+            [(Icons.Lit, "Lit"), (Icons.Unlit, "Solid"), (Icons.ShadingWire, "Wireframe")],
+            shown);
 
-        lighting.Mode = mode == 0 ? ShadingMode.Lit : ShadingMode.Unlit;
+        if (mode != shown)
+        {
+            viewport.Shading = mode switch { 0 => ShadingMode.Lit, 1 => ShadingMode.Unlit, _ => ShadingMode.Wireframe };
+        }
 
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("Unlit gives each face a fixed shade - how the exported mesh looks.");
+            ImGui.SetTooltip("Solid gives each face a fixed shade - how the exported mesh looks.");
         }
 
-        ImGui.BeginDisabled(!lighting.IsLit);
+        ImGui.BeginDisabled(viewport.Shading != ShadingMode.Lit);
 
         float ambient = session.Scene.Ambient;
         if (Props.Slider("Ambient", "ambient", ref ambient, 0f, 1f, "%.2f"))

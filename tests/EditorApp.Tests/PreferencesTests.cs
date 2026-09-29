@@ -35,7 +35,6 @@ public sealed class PreferencesFileTests : IDisposable
             LineWidth = 1.5f,
             GizmoSize = 0.75f,
             VSync = false,
-            ShowGrid = false,
             OrbitSpeed = 2f,
             FlySpeed = 0.5f,
             InvertZoom = true,
@@ -44,6 +43,11 @@ public sealed class PreferencesFileTests : IDisposable
             RecentFilesKept = 20,
         };
 
+        saved.Viewport.Grid = false;
+        saved.Viewport.XRay = true;
+        saved.Viewport.Shading = ShadingMode.Wireframe;
+        saved.Viewport.Colour = ColourMode.Random;
+        saved.Viewport.SingleColour = new System.Numerics.Vector3(1f, 0f, 0f);
         saved.Snap.RotationIncrement = 45f;
         saved.Snap.Enabled = true;
         saved.Snap.Set(EditorApp.Core.Editing.SnapTarget.Surface, true);
@@ -63,7 +67,11 @@ public sealed class PreferencesFileTests : IDisposable
         Assert.Equal(1.5f, loaded.LineWidth);
         Assert.Equal(0.75f, loaded.GizmoSize);
         Assert.False(loaded.VSync);
-        Assert.False(loaded.ShowGrid);
+        Assert.False(loaded.Viewport.Grid);
+        Assert.True(loaded.Viewport.XRay);
+        Assert.Equal(ShadingMode.Wireframe, loaded.Viewport.Shading);
+        Assert.Equal(ColourMode.Random, loaded.Viewport.Colour);
+        Assert.Equal(new System.Numerics.Vector3(1f, 0f, 0f), loaded.Viewport.SingleColour);
         Assert.Equal(2f, loaded.OrbitSpeed);
         Assert.Equal(0.5f, loaded.FlySpeed);
         Assert.True(loaded.InvertZoom);
@@ -299,5 +307,45 @@ public class GizmoSizeTests
         (start, end) = transform.Segment(arrow, camera);
 
         Assert.Equal(designed * 2f, Vector3.Distance(start, end), 3);
+    }
+}
+
+public class ViewportSettingsTests
+{
+    [Fact]
+    public void ColoursSurviveTheirHexForm()
+    {
+        var settings = new ViewportSettings { SingleColour = new Vector3(1f, 0.5f, 0f), BackgroundColour = new Vector3(0.1f, 0.2f, 0.3f) };
+
+        Assert.Equal("#FF8000", settings.SingleColourHex);
+        Assert.True(Vector3.Distance(new Vector3(1f, 0.5f, 0f), settings.SingleColour) < 0.01f);
+        Assert.True(Vector3.Distance(new Vector3(0.1f, 0.2f, 0.3f), settings.BackgroundColour) < 0.01f);
+    }
+
+    [Fact]
+    public void ABadHexIsTheDefaultColour()
+    {
+        var settings = new ViewportSettings { SingleColourHex = "not a colour" };
+
+        Assert.Equal(new Vector3(0.78f), settings.SingleColour);
+    }
+
+    /// <summary>Neighbouring objects get colours well apart, so Random colouring tells them apart.</summary>
+    [Fact]
+    public void NeighbouringObjectsGetDifferentColours()
+    {
+        for (int id = 1; id < 20; id++)
+        {
+            Assert.True(Vector3.Distance(ViewportSettings.ObjectColour(id), ViewportSettings.ObjectColour(id + 1)) > 0.2f, $"objects {id} and {id + 1}");
+        }
+    }
+
+    [Fact]
+    public void OutOfRangeAmountsAreKeptInRange()
+    {
+        var settings = new ViewportSettings { XRayAlpha = 5f, WireframeOpacity = -1f };
+
+        Assert.Equal(0.95f, settings.XRayAlpha);
+        Assert.Equal(0.05f, settings.WireframeOpacity);
     }
 }

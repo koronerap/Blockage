@@ -214,10 +214,25 @@ public static class MainMenu
 
         ImGui.Separator();
 
-        // One checkable item, the same single switch the header carries.
-        if (ImGui.MenuItem("Lit Shading", null, view.Lighting.IsLit))
+        // The header's shading, as three checkable items.
+        if (ImGui.MenuItem("Wireframe", Shortcut.Of(EditorAction.ToggleWireframe), view.Viewport.Shading == ShadingMode.Wireframe))
         {
-            view.Lighting.Mode = view.Lighting.IsLit ? ShadingMode.Unlit : ShadingMode.Lit;
+            view.Viewport.Shading = ShadingMode.Wireframe;
+        }
+
+        if (ImGui.MenuItem("Solid", null, view.Viewport.Shading == ShadingMode.Unlit))
+        {
+            view.Viewport.Shading = ShadingMode.Unlit;
+        }
+
+        if (ImGui.MenuItem("Lit", null, view.Viewport.Shading == ShadingMode.Lit))
+        {
+            view.Viewport.Shading = ShadingMode.Lit;
+        }
+
+        if (ImGui.MenuItem("X-Ray", Shortcut.Of(EditorAction.ToggleXRay), view.Viewport.XRay))
+        {
+            view.Viewport.XRay = !view.Viewport.XRay;
         }
 
         ImGui.EndMenu();

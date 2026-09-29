@@ -8,8 +8,11 @@ public enum ShadingMode
     /// <summary>One directional light, so the level can be judged the way an engine would light it.</summary>
     Lit = 0,
 
-    /// <summary>The flat per-face shade of EditorApp.md §5. No light source at all.</summary>
+    /// <summary>The flat per-face shade of EditorApp.md §5. No light source at all. "Solid" in the header.</summary>
     Unlit = 1,
+
+    /// <summary>Only the voxel lattice, drawn as lines — the desktop's; the phone offers the other two.</summary>
+    Wireframe = 2,
 }
 
 /// <summary>

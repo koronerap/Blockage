@@ -30,7 +30,8 @@ public static class ViewportOverlay
         bool showMeasurements,
         string dragReadout,
         SelectionOperation? cursorMark = null,
-        Color32? cursorSample = null)
+        Color32? cursorSample = null,
+        bool textInfo = false)
     {
         // The background list, not the foreground one. Both draw over the 3D scene, since all of
         // ImGui is composited on top of GL — but the foreground list is submitted after every
@@ -41,6 +42,11 @@ public static class ViewportOverlay
         if (showMeasurements)
         {
             DrawObjectDimensions(drawList, session, camera, viewport);
+        }
+
+        if (textInfo)
+        {
+            DrawTextInfo(drawList, session, camera, viewport);
         }
 
         if (dragReadout.Length > 0)
@@ -103,6 +109,37 @@ public static class ViewportOverlay
         {
             drawList.AddLine(centre - new Vector2(0f, Arm), centre + new Vector2(0f, Arm), mark, 2f);
         }
+    }
+
+    /// <summary>
+    /// Blender's text info, top left beside the tools: which view this is, and what is focused. The
+    /// view's name is what says an aligned view is not the perspective it looks like.
+    /// </summary>
+    private static void DrawTextInfo(ImDrawListPtr drawList, EditorSession session, FlyCamera camera, ViewportRect viewport)
+    {
+        string projection = camera.Orthographic ? "Orthographic" : "Perspective";
+        string view = camera.CurrentAlignedView() is { } aligned ? $"{aligned} {projection}" : $"User {projection}";
+
+        string focus = session.SelectedLight is { } light
+            ? $"{light.Name}  ·  {light.Kind} light"
+            : session.Scene.Focus is { } o
+                ? $"{o.Name}{(o.Locked ? "  (locked)" : string.Empty)}"
+                : string.Empty;
+
+        Vector2 at = viewport.Position + new Vector2(58f, 10f);
+        Text(drawList, at, view, Theme.Text with { W = 0.9f });
+
+        if (focus.Length > 0)
+        {
+            Text(drawList, at + new Vector2(0f, ImGui.GetTextLineHeightWithSpacing()), focus, Theme.Text with { W = 0.7f });
+        }
+    }
+
+    /// <summary>Text with a shadow under it, readable on a light model and a dark background alike.</summary>
+    private static void Text(ImDrawListPtr drawList, Vector2 at, string text, Vector4 colour)
+    {
+        drawList.AddText(at + Vector2.One, Colour(new Vector4(0f, 0f, 0f, colour.W * 0.6f)), text);
+        drawList.AddText(at, Colour(colour), text);
     }
 
     /// <summary>

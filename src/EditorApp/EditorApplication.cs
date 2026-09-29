@@ -49,8 +49,6 @@ public sealed class EditorApplication : IDisposable
 
     private Vector2 _previousMousePosition;
     private bool _looking;
-    private bool _showLightIcons = true;
-    private bool _showMirrorPlanes = true;
     private MiddleDrag _middleDrag;
     private bool _middleWasDown;
     private bool _confirmedClose;
@@ -83,13 +81,25 @@ public sealed class EditorApplication : IDisposable
     private bool _paintShapeIsBox;
     private readonly Preferences _preferences;
 
+    /// <summary>What Shift+Z goes back to from Wireframe.</summary>
+    private ShadingMode _shadingBeforeWireframe = ShadingMode.Lit;
+
+    /// <summary>The viewport header's settings — gizmos, overlays, X-Ray, shading — kept with the preferences.</summary>
+    private ViewportSettings View => _preferences.Viewport;
+
+    // What is drawn, with the header's two master switches taken into account.
+    private bool ShowGrid => View.Overlays && View.Grid;
+    private bool ShowMeasurements => View.Overlays && View.Measurements;
+    private bool ShowLightIcons => View.Overlays && View.LightIcons;
+    private bool ShowMirrorPlanes => View.Overlays && View.MirrorPlanes;
+    private bool ToolGizmos => View.Gizmos && View.ToolGizmos;
+    private bool LightGizmos => View.Gizmos && View.LightGizmos;
+
     // The designed values the preferences scale.
     private const float BaseLookSensitivity = 0.0035f;
     private const float BaseMoveSpeed = 16f;
     private const float BaseLineThickness = 0.0035f;
 
-    private bool _showGrid = true;
-    private bool _showMeasurements = true;
     private int _frameCount;
     private float _lastDelta = 1f / 60f;
 
@@ -309,10 +319,23 @@ public sealed class EditorApplication : IDisposable
             _project.Recent.Capacity = p.RecentFilesKept;
         }
 
-        _showGrid = p.ShowGrid;
-        _showMeasurements = p.ShowMeasurements;
-        _showLightIcons = p.ShowLightIcons;
-        _showMirrorPlanes = p.ShowMirrorPlanes;
+    }
+
+    /// <summary>The header's shading and overlays, handed to the renderer for this frame.</summary>
+    private void ApplyViewStyle()
+    {
+        _renderer!.Lighting.Mode = View.Shading;
+        _renderer.SolidLighting = View.SolidLighting;
+        _renderer.Colour = View.Colour;
+        _renderer.SingleColour = View.SingleColour;
+        _renderer.WireOverlay = View.Overlays && View.Wireframe ? View.WireframeOpacity : 0f;
+        _renderer.XRay = View.XRay ? View.XRayAlpha : 0f;
+
+        (Vector4 bottom, Vector4 top) = View.Background == BackgroundMode.Custom
+            ? (new Vector4(View.BackgroundColour, 1f), new Vector4(View.BackgroundColour, 1f))
+            : (Theme.Viewport, Theme.ViewportTop);
+        _renderer.BackgroundColor = Color32.FromVector4(bottom);
+        _renderer.BackgroundTopColor = Color32.FromVector4(top);
     }
 
     /// <summary>Takes in what was changed outside the window — the overlay keys, the keymap — and writes it out.</summary>
@@ -332,10 +355,6 @@ public sealed class EditorApplication : IDisposable
     private void RememberViewState()
     {
         _preferences.Snap.CopyFrom(_session.Snap);
-        _preferences.ShowGrid = _showGrid;
-        _preferences.ShowMeasurements = _showMeasurements;
-        _preferences.ShowLightIcons = _showLightIcons;
-        _preferences.ShowMirrorPlanes = _showMirrorPlanes;
     }
 
     /// <summary>
@@ -579,16 +598,21 @@ public sealed class EditorApplication : IDisposable
 
     private void UpdateTransform(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released, bool pointing)
     {
-        _transform!.UpdateHover(mouse, viewport, _camera);
+        // With the tools' gizmos switched off there is no gizmo to hover or take hold of; the
+        // lights' icons can still be picked.
+        if (ToolGizmos)
+        {
+            _transform!.UpdateHover(mouse, viewport, _camera);
+        }
 
-        if (pointing && !_aim!.IsAiming && !_transform.IsDragging)
+        if (pointing && LightGizmos && !_aim!.IsAiming && !_transform!.IsDragging)
         {
             _aimHover = _aim.LineUnder(mouse, viewport, _camera, IsLightShown);
         }
 
         // A sun's or a spot's aim line first: it reaches out past the gizmo, and a press on it means
         // "point the light there".
-        if (pressed && _aim!.OnPress(mouse, viewport, _camera, IsLightShown))
+        if (pressed && LightGizmos && _aim!.OnPress(mouse, viewport, _camera, IsLightShown))
         {
             return;
         }
@@ -605,7 +629,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        if (pressed && !_transform.OnPress(mouse, viewport, _camera))
+        if (pressed && !(ToolGizmos && _transform!.OnPress(mouse, viewport, _camera)))
         {
             // Not a handle: a light's icon picks the light, and anywhere else lets go of one, so the
             // gizmo goes back to the focused object.
@@ -618,24 +642,23 @@ public sealed class EditorApplication : IDisposable
                 _session.ClearLightSelection();
             }
         }
-        else if (leftDown && _transform.IsDragging)
+        else if (leftDown && _transform!.IsDragging)
         {
-            // Shift releases snap; without it movement lands on whole voxels and rotation on a
-            // fixed angle step.
             // Shift turns the magnet the other way for as long as it is held: snapping on when the
             // magnet is off, as it is by default, and off when it is lit.
             _transform.OnDrag(mouse, viewport, _camera, snap: _session.Snap.Enabled != IsShiftHeld());
         }
         else if (released)
         {
-            _transform.OnRelease();
+            _transform!.OnRelease();
         }
     }
 
     private void UpdateExtrude(Vector2 mouse, Vector2 viewport, bool leftDown, bool pressed, bool released, bool pointing)
     {
+        _extrude!.ArrowEnabled = ToolGizmos;
         _extrudeWouldPull = pointing
-            && !_extrude!.IsBusy
+            && !_extrude.IsBusy
             && _extrude.WouldPull(_pick, mouse, viewport, _camera, IsShiftHeld(), IsAltHeld());
 
         if (pressed)
@@ -746,7 +769,7 @@ public sealed class EditorApplication : IDisposable
         && (_input.Keyboards[0].IsKeyPressed(Key.AltLeft) || _input.Keyboards[0].IsKeyPressed(Key.AltRight));
 
     /// <summary>Whether a light's icon is drawn, and so whether it can be taken hold of.</summary>
-    private bool IsLightShown(SceneLight light) => _showLightIcons || light.Id == _session.SelectedLightId;
+    private bool IsLightShown(SceneLight light) => ShowLightIcons || light.Id == _session.SelectedLightId;
 
     /// <summary>What a click in Extrude would do to the selection, by the modifier held right now.</summary>
     private SelectionOperation HeldSelectionOperation() =>
@@ -931,8 +954,25 @@ public sealed class EditorApplication : IDisposable
 
             case EditorAction.Subdivide when !IsDragging(): ObjectMenu.SubdivideFocus(_session, ReportLog.Shared); break;
 
-            case EditorAction.ToggleGrid: _showGrid = !_showGrid; break;
-            case EditorAction.ToggleMeasurements: _showMeasurements = !_showMeasurements; break;
+            case EditorAction.ToggleGrid: View.Grid = !View.Grid; break;
+            case EditorAction.ToggleMeasurements: View.Measurements = !View.Measurements; break;
+            case EditorAction.ToggleXRay: View.XRay = !View.XRay; break;
+            case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
+            case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
+
+            // Blender's Shift+Z: into Wireframe, and back out to whatever it was before.
+            case EditorAction.ToggleWireframe:
+                if (View.Shading == ShadingMode.Wireframe)
+                {
+                    View.Shading = _shadingBeforeWireframe;
+                }
+                else
+                {
+                    _shadingBeforeWireframe = View.Shading;
+                    View.Shading = ShadingMode.Wireframe;
+                }
+
+                break;
             case EditorAction.ToggleSidebar: _layout.SidebarVisible = !_layout.SidebarVisible; break;
             case EditorAction.ShortcutSheet: ShortcutSheet.Toggle(); break;
             case EditorAction.Preferences when PreferencesWindow.IsOpen:
@@ -1164,7 +1204,8 @@ public sealed class EditorApplication : IDisposable
         // Off while painting. The highlight is a lie about brightness, and it is a useful one right
         // up until the colours themselves are what is being judged — at which point a face lifted
         // towards white is not the colour that was just put on it.
-        _renderer.FocusHighlight = _session.ActiveTool != EditorTool.Paint;
+        _renderer.FocusHighlight = View.Overlays && View.FocusHighlight && _session.ActiveTool != EditorTool.Paint;
+        ApplyViewStyle();
 
         _renderer.Render(
             _session.Scene,
@@ -1242,27 +1283,39 @@ public sealed class EditorApplication : IDisposable
         lines.CameraPosition = _camera.Position;
         gizmos.CameraPosition = _camera.Position;
 
-        if (_showGrid)
+        float spacing = GroundGrid.WorldUnitsPerCell(_session.Scene.Focus?.VoxelSize ?? 1f);
+        bool axisX = View.Overlays && View.AxisX;
+        bool axisZ = View.Overlays && View.AxisZ;
+
+        if (ShowGrid)
         {
+            // Leaving out the lines the axes are drawn on, which would otherwise fight them for the pixels.
             lines.AddGroundGrid(
                 GroundGrid.HalfExtentCells,
-                GroundGrid.WorldUnitsPerCell(_session.Scene.Focus?.VoxelSize ?? 1f),
+                spacing,
                 EditorOverlays.GridMinor,
-                EditorOverlays.GridMajor);
+                EditorOverlays.GridMajor,
+                skipXAxis: axisX,
+                skipZAxis: axisZ);
+        }
+
+        if (View.Overlays)
+        {
+            EditorOverlays.AddAxes(lines, axisX, View.AxisY, axisZ, GroundGrid.HalfExtentCells * spacing);
         }
 
         // The lights, over everything: an icon hidden inside a wall could not be picked. A picked light
         // is drawn even with the icons switched off, so what the gizmo is on can still be seen.
         foreach (SceneLight light in _session.Scene.Lights)
         {
-            if (!_showLightIcons && light.Id != _session.SelectedLightId)
+            if (!ShowLightIcons && light.Id != _session.SelectedLightId)
             {
                 continue;
             }
 
             bool marked = light.Id == _session.SelectedLightId || light.Id == ObjectListPanel.HoveredId;
             Vector3? aimedAt = _aim!.Light?.Id == light.Id ? _aim.Target : null;
-            EditorOverlays.AddLight(gizmos, light, _camera, marked, aimedAt, aimLit: _aimHover?.Id == light.Id);
+            EditorOverlays.AddLight(gizmos, light, _camera, marked, aimedAt, aimLit: _aimHover?.Id == light.Id, aimLine: LightGizmos);
         }
 
         // The object whose row the mouse is over in the outliner, so a name can be matched to a shape.
@@ -1286,7 +1339,7 @@ public sealed class EditorApplication : IDisposable
         EditorOverlays.AddExtrudeSelection(lines, _session, _extrude!);
 
         // Over the model, not into it: a plane through the middle of the model is mostly inside it.
-        if (_showMirrorPlanes)
+        if (ShowMirrorPlanes)
         {
             EditorOverlays.AddMirrorPlanes(gizmos, _session);
         }
@@ -1324,8 +1377,16 @@ public sealed class EditorApplication : IDisposable
         lines.Transform = Matrix4x4.Identity;
         gizmos.Transform = Matrix4x4.Identity;
 
-        EditorOverlays.AddExtrudeArrow(gizmos, _session, _extrude!, _extrudeWouldPull);
-        EditorOverlays.AddTransformGizmo(gizmos, _session, _transform!, _camera);
+        if (ToolGizmos)
+        {
+            EditorOverlays.AddExtrudeArrow(gizmos, _session, _extrude!, _extrudeWouldPull);
+            EditorOverlays.AddTransformGizmo(gizmos, _session, _transform!, _camera);
+        }
+
+        if (View.Overlays && View.Origins)
+        {
+            EditorOverlays.AddOrigins(gizmos, _session.Scene, _camera);
+        }
         EditorOverlays.AddSnapTarget(gizmos, _transform!, _camera);
     }
 
@@ -1381,6 +1442,7 @@ public sealed class EditorApplication : IDisposable
         _viewport = _shell.Draw(context);
         ShortcutSheet.Draw(ImGui.GetIO().DisplaySize);
 
+
         // A key rebound between frames is put into effect here; the window's own changes as it draws.
         if (PreferencesWindow.PendingApply)
         {
@@ -1398,7 +1460,7 @@ public sealed class EditorApplication : IDisposable
             SavePreferences();
         }
 
-        ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout, CursorMark(), CursorSample());
+        ViewportOverlay.Draw(_session, _camera, _viewport, ShowMeasurements, context.DragReadout, CursorMark(), CursorSample(), View.Overlays && View.TextInfo);
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -1432,19 +1494,20 @@ public sealed class EditorApplication : IDisposable
             _camera.Orthographic = false;
         },
         Camera = _camera,
-        GridVisible = () => _showGrid,
-        ToggleGrid = () => _showGrid = !_showGrid,
-        MeasurementsVisible = () => _showMeasurements,
-        ToggleMeasurements = () => _showMeasurements = !_showMeasurements,
+        GridVisible = () => View.Grid,
+        ToggleGrid = () => View.Grid = !View.Grid,
+        MeasurementsVisible = () => View.Measurements,
+        ToggleMeasurements = () => View.Measurements = !View.Measurements,
         SidebarVisible = () => _layout.SidebarVisible,
         ToggleSidebar = () => _layout.SidebarVisible = !_layout.SidebarVisible,
         StatisticsVisible = () => _layout.StatisticsVisible,
         ToggleStatistics = () => _layout.StatisticsVisible = !_layout.StatisticsVisible,
-        LightIconsVisible = () => _showLightIcons,
-        ToggleLightIcons = () => _showLightIcons = !_showLightIcons,
-        MirrorPlanesVisible = () => _showMirrorPlanes,
-        ToggleMirrorPlanes = () => _showMirrorPlanes = !_showMirrorPlanes,
+        LightIconsVisible = () => View.LightIcons,
+        ToggleLightIcons = () => View.LightIcons = !View.LightIcons,
+        MirrorPlanesVisible = () => View.MirrorPlanes,
+        ToggleMirrorPlanes = () => View.MirrorPlanes = !View.MirrorPlanes,
         Lighting = _renderer!.Lighting,
+        Viewport = View,
     };
 
     private void FrameLevel()

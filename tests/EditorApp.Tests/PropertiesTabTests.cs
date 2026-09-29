@@ -159,14 +159,16 @@ public sealed class PropertiesTabTests : IDisposable
     [Fact]
     public void TheWorldTabSwitchesShading()
     {
-        var lighting = new SceneLighting();
+        var viewport = new ViewportSettings();
 
-        void Draw() => LightingPanel.DrawContent(_session, lighting, droppedLights: 0);
+        void Draw() => LightingPanel.DrawContent(_session, viewport, droppedLights: 0);
         Settle(Draw);
 
         _ui.Click(Centre("shading-1"), Draw);
+        Assert.Equal(ShadingMode.Unlit, viewport.Shading);
 
-        Assert.False(lighting.IsLit);
+        _ui.Click(Centre("shading-2"), Draw);
+        Assert.Equal(ShadingMode.Wireframe, viewport.Shading);
     }
 
     /// <summary>Drawing a tab and leaving it alone must never change anything or leave history behind.</summary>

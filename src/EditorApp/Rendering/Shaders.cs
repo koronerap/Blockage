@@ -35,6 +35,11 @@ public static class Shaders
         // The unlit mode's flat shade for this face, carried along so the fragment stage can choose.
         out float vFaceShade;
 
+        // Where on the object's own lattice this point is, and which way its face points there: the
+        // wireframe is drawn from these, a line wherever a coordinate across the face is whole.
+        out vec3 vLocal;
+        out vec3 vLocalNormal;
+
         void main()
         {
             int face = int(aFace + 0.5);
@@ -46,6 +51,8 @@ public static class Shaders
             vWorldPosition = world.xyz;
             vFaceShade = uFaceShade[face];
             vColor = aColor;
+            vLocal = aPosition;
+            vLocalNormal = uFaceNormal[face];
 
             gl_Position = uViewProjection * world;
         }
@@ -62,9 +69,25 @@ public static class Shaders
         in vec3 vNormal;
         in vec3 vWorldPosition;
         in float vFaceShade;
+        in vec3 vLocal;
+        in vec3 vLocalNormal;
 
-        // 0 = lit, 1 = unlit.
+        // 0 = lit, 1 = unlit (the per-face shade), 2 = flat (no shade at all).
         uniform int uUnlit;
+
+        // Where a face's colour comes from: 0 its palette colour, 1 one colour for everything,
+        // 2 a colour for the object. Every one of these is left at 0 by a head that never sets it.
+        uniform int uColorMode;
+        uniform vec3 uSingleColor;
+        uniform vec3 uObjectColor;
+
+        // The voxel lattice over the faces: how strongly (0, not at all), and whether the lines
+        // are all that is drawn - the Wireframe shading.
+        uniform float uWire;
+        uniform int uWireOnly;
+
+        // X-Ray: the alpha every face is drawn with. 0 is off, solid as ever.
+        uniform float uXRay;
         uniform float uAmbient;
 
         uniform int uLightCount;
@@ -117,17 +140,50 @@ public static class Shaders
             return total;
         }
 
+        /// How much of a line of the lattice this pixel is: 1 on one, 0 a pixel and a half away.
+        float latticeLine()
+        {
+            // Distance to the nearest whole coordinate, in pixels, along each axis across the face.
+            vec3 away = abs(fract(vLocal + 0.5) - 0.5) / max(fwidth(vLocal), vec3(0.0001));
+
+            // The axis the face points along runs through it, not across it: it makes no line.
+            away += abs(vLocalNormal) * 1.0e6;
+            return 1.0 - smoothstep(0.6, 1.4, min(away.x, min(away.y, away.z)));
+        }
+
         void main()
         {
-            vec3 light = uUnlit != 0 ? vec3(vFaceShade) : lightArriving(normalize(vNormal));
-            vec3 lit = vColor.rgb * light;
+            vec3 albedo = uColorMode == 1 ? uSingleColor : uColorMode == 2 ? uObjectColor : vColor.rgb;
+            vec3 light = uUnlit == 2 ? vec3(1.0) : uUnlit != 0 ? vec3(vFaceShade) : lightArriving(normalize(vNormal));
+            vec3 lit = albedo * light;
 
             // Lift towards white rather than scaling: multiplying leaves an already-white model
             // exactly as it was, which is the one case that has to read as focused.
             vec3 highlighted = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
             lit = mix(lit, highlighted, uFocusStrength);
 
-            fragColor = vec4(clamp(lit, 0.0, 1.0), vColor.a);
+            float alpha = uXRay > 0.0 ? uXRay : vColor.a;
+
+            if (uWireOnly != 0)
+            {
+                // Lines only, in the face's own colour lifted a little, so a model reads in its
+                // colours even as a wireframe.
+                float line = latticeLine();
+                if (line < 0.02)
+                {
+                    discard;
+                }
+
+                fragColor = vec4(clamp(mix(lit, vec3(1.0), 0.2), 0.0, 1.0), line * max(alpha, 0.6));
+                return;
+            }
+
+            if (uWire > 0.0)
+            {
+                lit = mix(lit, lit * 0.22, latticeLine() * uWire);
+            }
+
+            fragColor = vec4(clamp(lit, 0.0, 1.0), alpha);
         }
         """;
 

@@ -268,11 +268,7 @@ public static class PreferencesWindow
             changed |= Percent("Line width", "pref-line-width", p.LineWidth, 0.5f, 2f, v => p.LineWidth = v);
             changed |= Percent("Gizmo size", "pref-gizmo-size", p.GizmoSize, 0.5f, 2f, v => p.GizmoSize = v);
 
-            bool grid = p.ShowGrid, measure = p.ShowMeasurements, lights = p.ShowLightIcons, planes = p.ShowMirrorPlanes;
-            if (Props.Check("Show", "pref-grid", "Ground grid", ref grid)) { p.ShowGrid = grid; changed = true; }
-            if (Props.Check(string.Empty, "pref-measure", "Measurements", ref measure)) { p.ShowMeasurements = measure; changed = true; }
-            if (Props.Check(string.Empty, "pref-light-icons", "Light icons", ref lights)) { p.ShowLightIcons = lights; changed = true; }
-            if (Props.Check(string.Empty, "pref-planes", "Mirror planes", ref planes)) { p.ShowMirrorPlanes = planes; changed = true; }
+            Props.Note(string.Empty, "What is drawn over the model, and how it is shaded, are in the viewport header: Gizmos, Overlays, X-Ray and Shading. They are kept from one session to the next.", Theme.TextDim);
         }
 
         return changed | RestoreDefaults(p, d =>
@@ -281,10 +277,7 @@ public static class PreferencesWindow
             p.VSync = d.VSync;
             p.LineWidth = d.LineWidth;
             p.GizmoSize = d.GizmoSize;
-            p.ShowGrid = d.ShowGrid;
-            p.ShowMeasurements = d.ShowMeasurements;
-            p.ShowLightIcons = d.ShowLightIcons;
-            p.ShowMirrorPlanes = d.ShowMirrorPlanes;
+            p.Viewport = d.Viewport.Clone();
         });
     }
 

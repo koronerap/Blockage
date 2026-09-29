@@ -267,6 +267,19 @@ public sealed class GlRenderer : IDisposable
     /// </summary>
     public bool FocusHighlight { get; set; } = true;
 
+    /// <summary>How Solid shading lights a face, where one colour comes from, and the lattice lines — the header's Shading and Overlays.</summary>
+    public SolidLighting SolidLighting { get; set; } = SolidLighting.Studio;
+
+    public ColourMode Colour { get; set; } = ColourMode.Palette;
+
+    public Vector3 SingleColour { get; set; } = new(0.78f);
+
+    /// <summary>The voxel lattice over the faces, 0 for none.</summary>
+    public float WireOverlay { get; set; }
+
+    /// <summary>X-Ray: how solid a face stays, 0 for off.</summary>
+    public float XRay { get; set; }
+
     public void AdvanceFocusFade(VoxelScene scene, float deltaSeconds)
     {
         // Frame-rate independent easing: the same fade whether the editor runs at 60 or 300 fps.
@@ -302,26 +315,57 @@ public sealed class GlRenderer : IDisposable
         Matrix4x4 viewProjection = camera.ViewProjection(viewportSize.X / MathF.Max(viewportSize.Y, 1f));
         Frustum frustum = Frustum.FromViewProjection(viewProjection);
 
+        bool wireframe = Lighting.Mode == ShadingMode.Wireframe;
+
         _voxelShader.Use();
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
-        _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : 1);
+        _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : SolidLighting == SolidLighting.Flat ? 2 : 1);
         UploadLights(scene);
         _voxelShader.SetFloat("uFocusStrength", FocusHighlight ? 1f : 0f);
+        _voxelShader.SetInt("uColorMode", (int)Colour);
+        _voxelShader.SetVector3("uSingleColor", SingleColour);
+        _voxelShader.SetFloat("uWire", wireframe ? 0f : WireOverlay);
+        _voxelShader.SetInt("uWireOnly", wireframe ? 1 : 0);
+        _voxelShader.SetFloat("uXRay", XRay);
 
         VisibleChunks = 0;
         DrawnTriangles = 0;
 
-        foreach (VoxelObject o in scene.Objects)
+        // A wireframe with nothing seen through it still hides what is behind: the faces go into the
+        // depth buffer first, unseen, and only the lines on the nearest of them pass.
+        if (wireframe && XRay <= 0f)
         {
-            if (!o.Visible || !_buffers.TryGetValue(o.Id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
-            {
-                continue;
-            }
-
-            _voxelShader.SetMatrix4("uModel", o.Transform.ToMatrix());
-            _voxelShader.SetFloat("uFocus", _focusAmount.GetValueOrDefault(o.Id, o.Id == scene.FocusId ? 1f : 0f));
-            DrawObjectChunks(o, chunks, frustum);
+            _gl.ColorMask(false, false, false, false);
+            DrawObjects(scene, frustum, count: false);
+            _gl.ColorMask(true, true, true, true);
+            _gl.DepthFunc(DepthFunction.Lequal);
         }
+
+        // See-through: blended, writing no depth so what is behind still draws, and with both sides
+        // of every face so the far side of the model shows too.
+        bool blended = wireframe || XRay > 0f;
+        if (blended)
+        {
+            _gl.Enable(EnableCap.Blend);
+            _gl.BlendFuncSeparate(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha, BlendingFactor.Zero, BlendingFactor.One);
+            _gl.DepthMask(false);
+        }
+
+        if (XRay > 0f)
+        {
+            _gl.Disable(EnableCap.CullFace);
+        }
+
+        DrawObjects(scene, frustum, count: true);
+
+        if (blended)
+        {
+            _gl.DepthMask(true);
+            _gl.Disable(EnableCap.Blend);
+        }
+
+        _gl.Enable(EnableCap.CullFace);
+        _gl.DepthFunc(DepthFunction.Less);
 
         Reference.Draw(viewProjection);
         DrawOverlays(viewProjection);
@@ -400,10 +444,27 @@ public sealed class GlRenderer : IDisposable
         _gl.Enable(EnableCap.CullFace);
     }
 
+    private void DrawObjects(VoxelScene scene, Frustum frustum, bool count)
+    {
+        foreach (VoxelObject o in scene.Objects)
+        {
+            if (!o.Visible || !_buffers.TryGetValue(o.Id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+            {
+                continue;
+            }
+
+            _voxelShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            _voxelShader.SetFloat("uFocus", _focusAmount.GetValueOrDefault(o.Id, o.Id == scene.FocusId ? 1f : 0f));
+            _voxelShader.SetVector3("uObjectColor", ViewportSettings.ObjectColour(o.Id));
+            DrawObjectChunks(o, chunks, frustum, count);
+        }
+    }
+
     private void DrawObjectChunks(
         VoxelObject o,
         Dictionary<ChunkCoord, ChunkMeshBuffer> chunks,
-        Frustum frustum)
+        Frustum frustum,
+        bool count)
     {
         foreach ((ChunkCoord coord, ChunkMeshBuffer buffer) in chunks)
         {
@@ -424,8 +485,12 @@ public sealed class GlRenderer : IDisposable
             }
 
             buffer.Draw();
-            VisibleChunks++;
-            DrawnTriangles += buffer.IndexCount / 3;
+
+            if (count)
+            {
+                VisibleChunks++;
+                DrawnTriangles += buffer.IndexCount / 3;
+            }
         }
     }
 

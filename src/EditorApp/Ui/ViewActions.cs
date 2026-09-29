@@ -58,4 +58,7 @@ public sealed class ViewActions
     /// in a delegate would only add a layer to step through.
     /// </summary>
     public required SceneLighting Lighting { get; init; }
+
+    /// <summary>The viewport header's settings: gizmos, overlays, X-Ray and shading.</summary>
+    public ViewportSettings Viewport { get; init; } = new();
 }

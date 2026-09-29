@@ -468,6 +468,42 @@ public static class Icons
     public static void Unlit(IIconCanvas canvas, Vector2 centre, float r) =>
         canvas.FilledCircle(centre, r * 0.46f);
 
+    /// <summary>Wireframe shading: a ball drawn in its lines alone.</summary>
+    public static void ShadingWire(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre, r * 0.78f, 0.9f);
+        Arc(canvas, centre, r * 0.78f, new Vector2(0.4f, 1f), 0f, MathF.Tau, 16);
+        Arc(canvas, centre, r * 0.78f, new Vector2(1f, 0.36f), 0f, MathF.Tau, 16);
+    }
+
+    /// <summary>Solid shading: the same ball, filled, one flat tone.</summary>
+    public static void ShadingSolid(IIconCanvas canvas, Vector2 centre, float r) =>
+        canvas.FilledCircle(centre, r * 0.78f);
+
+    /// <summary>
+    /// X-Ray: one square over another, the front one only outlined, so the one behind shows through
+    /// it — Blender's mark for seeing through.
+    /// </summary>
+    public static void XRay(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.FilledRect(centre + new Vector2(-r * 0.85f, -r * 0.85f), centre + new Vector2(r * 0.25f, r * 0.25f), r * 0.1f);
+        canvas.Rect(centre + new Vector2(-r * 0.25f, -r * 0.25f), centre + new Vector2(r * 0.85f, r * 0.85f), r * 0.1f);
+    }
+
+    /// <summary>Gizmos: three arrows out of a corner, the handles the tools are driven by.</summary>
+    public static void Gizmo(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 origin = centre + new Vector2(-r * 0.45f, r * 0.45f);
+        Span<Vector2> directions = [new(0f, -1f), new(1f, 0f), Vector2.Normalize(new Vector2(0.72f, -0.72f))];
+
+        foreach (Vector2 direction in directions)
+        {
+            Vector2 tip = origin + (direction * r * 1.15f);
+            canvas.Line(origin, tip - (direction * r * 0.3f));
+            Arrowhead(canvas, tip, direction, r * 0.42f);
+        }
+    }
+
     // ---- Navigation ----------------------------------------------------------------------------
 
     /// <summary>Perspective: a floor whose lines run together into the distance.</summary>

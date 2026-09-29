@@ -61,6 +61,10 @@ public enum EditorAction
     ToggleGrid,
     ToggleMeasurements,
     ToggleSidebar,
+    ToggleOverlays,
+    ToggleGizmos,
+    ToggleXRay,
+    ToggleWireframe,
 
     // Help
     ShortcutSheet,
@@ -134,6 +138,10 @@ public static class EditorActions
         new(EditorAction.ToggleGrid, "view.grid", "Ground grid", View),
         new(EditorAction.ToggleMeasurements, "view.measurements", "Measurements", View),
         new(EditorAction.ToggleSidebar, "view.sidebar", "Sidebar", View),
+        new(EditorAction.ToggleOverlays, "view.overlays", "Overlays on or off", View),
+        new(EditorAction.ToggleGizmos, "view.gizmos", "Gizmos on or off", View),
+        new(EditorAction.ToggleXRay, "view.xray", "X-Ray", View),
+        new(EditorAction.ToggleWireframe, "view.wireframe", "Wireframe, and back", View),
 
         new(EditorAction.ShortcutSheet, "help.shortcuts", "This list of shortcuts", Help),
         new(EditorAction.Preferences, "help.preferences", "Preferences", Help),

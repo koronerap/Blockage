@@ -215,6 +215,11 @@ public sealed class Keymap
 
             // Blender's: Shift+Tab. Free in the old keys too, so both have it.
             [EditorAction.ToggleSnap] = [KeyChord.ShiftOf(Key.Tab)],
+
+            // Blender's viewport keys: Alt+Z X-Ray, Shift+Alt+Z overlays, Shift+Z wireframe.
+            [EditorAction.ToggleXRay] = [KeyChord.AltOf(Key.Z)],
+            [EditorAction.ToggleOverlays] = [new(Key.Z, Shift: true, Alt: true)],
+            [EditorAction.ToggleWireframe] = [KeyChord.ShiftOf(Key.Z)],
         };
 
         if (preset == KeymapPreset.MimicBusters)

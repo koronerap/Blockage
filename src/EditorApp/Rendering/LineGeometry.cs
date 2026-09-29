@@ -253,7 +253,9 @@ public abstract class LineGeometry
     /// <summary>A ground grid on the Y = 0 plane, with every tenth line emphasised.</summary>
     /// <param name="halfCells">How far the grid reaches from the origin, counted in cells.</param>
     /// <param name="spacing">Width of one cell, in voxels. See <see cref="GroundGrid"/>.</param>
-    public void AddGroundGrid(int halfCells, float spacing, Color32 minor, Color32 major)
+    /// <param name="skipXAxis">Leaves out the line along X through the origin, for an axis line drawn there instead.</param>
+    /// <param name="skipZAxis">Likewise the line along Z.</param>
+    public void AddGroundGrid(int halfCells, float spacing, Color32 minor, Color32 major, bool skipXAxis = false, bool skipZAxis = false)
     {
         if (spacing <= 0f || !float.IsFinite(spacing))
         {
@@ -268,8 +270,15 @@ public abstract class LineGeometry
             float offset = i * spacing;
             Color32 color = i % 10 == 0 ? major : minor;
 
-            AddLine(new Vector3(offset, 0, -extent), new Vector3(offset, 0, extent), color);
-            AddLine(new Vector3(-extent, 0, offset), new Vector3(extent, 0, offset), color);
+            if (!(i == 0 && skipZAxis))
+            {
+                AddLine(new Vector3(offset, 0, -extent), new Vector3(offset, 0, extent), color);
+            }
+
+            if (!(i == 0 && skipXAxis))
+            {
+                AddLine(new Vector3(-extent, 0, offset), new Vector3(extent, 0, offset), color);
+            }
         }
     }
 }

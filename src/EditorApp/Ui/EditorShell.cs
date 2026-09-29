@@ -83,7 +83,11 @@ public sealed class EditorShell(LayoutSettings layout)
             new Vector2(0f, top),
             new Vector2(MathF.Max(sidebarLeft, 1f), MathF.Max(bottom - top, 1f)));
 
-        _navigation.Draw(context.Camera, viewport, context.View.FrameLevel);
+        // The navigation gizmo is one of the header's gizmos, and goes with them.
+        if (context.View.Viewport is { Gizmos: true, NavigateGizmo: true })
+        {
+            _navigation.Draw(context.Camera, viewport, context.View.FrameLevel);
+        }
         DrawStatistics(context, viewport);
 
         return viewport;
@@ -124,32 +128,17 @@ public sealed class EditorShell(LayoutSettings layout)
     {
         float button = ImGui.GetFrameHeight();
 
-        // The wider gap is what says the first edits the level and the other two only change how it
-        // is looked at.
+        // The wider gap is what says the first edits the level and the rest only change how it is
+        // looked at.
         const float GroupGap = 14f;
-        const float Pair = 4f;
-        float width = (button * 3f) + GroupGap + Pair;
+        float width = button + GroupGap + ViewportHeader.Width(button);
 
         ImGui.SameLine(size.X - width - ImGui.GetStyle().WindowPadding.X);
 
         DrawObjectMenuButton(context, button);
 
         ImGui.SameLine(0f, GroupGap);
-        OverlaysMenu.DrawButton(context.View, button);
-
-        ImGui.SameLine(0f, Pair);
-
-        SceneLighting lighting = context.View.Lighting;
-        if (IconButton.Toggle(
-                "shading",
-                (Icons.Lit, "Lit  -  by the level's own lights"),
-                (Icons.Unlit, "Unlit  -  flat per-face shade, as exported"),
-                !lighting.IsLit,
-                string.Empty,
-                button))
-        {
-            lighting.Mode = lighting.IsLit ? ShadingMode.Unlit : ShadingMode.Lit;
-        }
+        ViewportHeader.Draw(context.View, button);
     }
 
     /// <summary>
@@ -242,7 +231,7 @@ public sealed class EditorShell(LayoutSettings layout)
 
                 if (Props.Section("Lighting"))
                 {
-                    LightingPanel.DrawContent(context.Session, context.View.Lighting, context.Renderer.DroppedLights);
+                    LightingPanel.DrawContent(context.Session, context.View.Viewport, context.Renderer.DroppedLights);
                 }
 
                 break;

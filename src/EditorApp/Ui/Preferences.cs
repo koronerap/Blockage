@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using EditorApp.Core.Editing;
 using EditorApp.Input;
+using EditorApp.Rendering;
 
 namespace EditorApp.Ui;
 
@@ -73,14 +74,8 @@ public sealed class Preferences
     /// <summary>Frames wait for the screen. Off draws as fast as it can, and runs the fans for it.</summary>
     public bool VSync { get; set; } = true;
 
-    // The overlay switches, kept from one session to the next.
-    public bool ShowGrid { get; set; } = true;
-
-    public bool ShowMeasurements { get; set; } = true;
-
-    public bool ShowLightIcons { get; set; } = true;
-
-    public bool ShowMirrorPlanes { get; set; } = true;
+    /// <summary>Gizmos, overlays, X-Ray and shading, as the viewport header leaves them.</summary>
+    public ViewportSettings Viewport { get; set; } = new();
 
     // ---- Navigation --------------------------------------------------------------------------
 
@@ -176,6 +171,7 @@ public sealed class Preferences
                 loaded.KeymapPreset = Enum.IsDefined(loaded.KeymapPreset) ? loaded.KeymapPreset : KeymapPreset.Default;
                 loaded.KeymapChanges ??= [];
                 loaded.Snap ??= new SnapSettings();
+                loaded.Viewport ??= new ViewportSettings();
                 return loaded;
             }
         }

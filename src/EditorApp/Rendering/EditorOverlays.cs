@@ -424,13 +424,15 @@ public static class EditorOverlays
     /// </summary>
     /// <param name="aimedAt">Where the light is being pointed right now, while its line is dragged.</param>
     /// <param name="aimLit">The aim line is under the pointer: a press would take hold of it.</param>
+    /// <param name="aimLine">Whether the aim line is drawn at all — off with the header's light gizmos.</param>
     public static void AddLight(
         LineGeometry lines,
         SceneLight light,
         FlyCamera camera,
         bool highlighted,
         Vector3? aimedAt = null,
-        bool aimLit = false)
+        bool aimLit = false,
+        bool aimLine = true)
     {
         Vector3 at = light.Position;
         float size = LightIconSize(light, camera);
@@ -467,7 +469,7 @@ public static class EditorOverlays
                 break;
         }
 
-        if (AimHandle(light, camera) is not { } handle)
+        if (!aimLine || AimHandle(light, camera) is not { } handle)
         {
             return;
         }
@@ -616,6 +618,53 @@ public static class EditorOverlays
         lines.AddThickLine(point - (right * 0.35f), point + (right * 0.35f), SnapMark, GizmoEdgeWidth);
         lines.AddThickLine(point - (up * 0.35f), point + (up * 0.35f), SnapMark, GizmoEdgeWidth);
     }
+
+    /// <summary>
+    /// The world's axes across the floor through the origin, each in its colour — Blender draws them
+    /// over its grid, and the red and blue lines are what say which way X and Z run at a glance.
+    /// </summary>
+    public static void AddAxes(LineGeometry lines, bool x, bool y, bool z, float extent)
+    {
+        if (x)
+        {
+            lines.AddLine(new Vector3(-extent, 0f, 0f), new Vector3(extent, 0f, 0f), AxisX);
+        }
+
+        if (y)
+        {
+            lines.AddLine(new Vector3(0f, -extent, 0f), new Vector3(0f, extent, 0f), AxisY);
+        }
+
+        if (z)
+        {
+            lines.AddLine(new Vector3(0f, 0f, -extent), new Vector3(0f, 0f, extent), AxisZ);
+        }
+    }
+
+    /// <summary>A dot at each visible object's origin — the point its position is — the focused one's lit.</summary>
+    public static void AddOrigins(LineGeometry lines, VoxelScene scene, FlyCamera camera)
+    {
+        foreach (VoxelObject o in scene.Objects)
+        {
+            if (!o.Visible)
+            {
+                continue;
+            }
+
+            Vector3 at = o.Transform.Position;
+            float size = MathF.Max(Vector3.Distance(camera.Position, at) * 0.005f, 0.004f);
+            Vector3 right = camera.Right * size;
+            Vector3 up = camera.Up * size;
+            Color32 colour = o.Id == scene.FocusId ? OriginFocused : OriginOther;
+
+            lines.AddQuad(at - right - up, at + right - up, at + right + up, at - right + up, colour);
+            AddBillboardCircle(lines, at, right, up, 1.5f, colour, GizmoEdgeWidth * 0.8f);
+        }
+    }
+
+    public static readonly Color32 OriginFocused = new(255, 170, 64);
+
+    public static readonly Color32 OriginOther = new(170, 170, 180);
 
     /// <summary>The ring round a snap target: Blender's snapping mark is this colour.</summary>
     public static readonly Color32 SnapMark = new(255, 196, 64);
