@@ -48,7 +48,11 @@ public sealed class ReferenceImage(string path)
 
     public bool Visible { get; set; } = true;
 
-    public string Name => System.IO.Path.GetFileNameWithoutExtension(Path);
+    /// <summary>
+    /// The picture's file name, without its extension. Either kind of slash ends a folder: a level
+    /// saved on Windows keeps its backslashes wherever it is opened after.
+    /// </summary>
+    public string Name => System.IO.Path.GetFileNameWithoutExtension(Path[(Path.LastIndexOfAny(['/', '\\']) + 1)..]);
 
     public ReferenceImage Copy() => new(Path)
     {

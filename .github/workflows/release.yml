@@ -25,7 +25,7 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: check
         name: Tag, project and CHANGELOG agree
         run: |
@@ -49,8 +49,8 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       HAS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Publish
@@ -78,7 +78,7 @@ jobs:
           Rename-Item publish/win-x64 $name
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path "publish/$name" -DestinationPath "dist/$name.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/*
@@ -91,8 +91,8 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       HAS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Publish
@@ -128,7 +128,7 @@ jobs:
           xcrun stapler staple dist/Blockage.app
           rm "$zip"
           ditto -c -k --keepParent dist/Blockage.app "$zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: dist/*.zip
@@ -140,15 +140,15 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Publish
         run: dotnet publish src/EditorApp -p:PublishProfile=linux-x64
       - name: Package
         run: bash tools/package-linux.sh publish/linux-x64 "$VERSION" dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: dist/*.tar.gz
@@ -165,8 +165,8 @@ jobs:
       NOTARIZED: ${{ secrets.MACOS_CERTIFICATE != '' }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
