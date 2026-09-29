@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Numerics;
+using System.Text;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Export;
@@ -146,6 +148,48 @@ public static class AppIcon
 
         writer.Flush();
         return stream.ToArray();
+    }
+
+    /// <summary>
+    /// What a Mac asks an .icns for: each size under its own type code, the Retina ones — a size drawn
+    /// at twice its pixels — as PNGs too.
+    /// </summary>
+    public static readonly (string Type, int Pixels)[] IcnsEntries =
+    [
+        ("icp4", 16), ("icp5", 32), ("icp6", 64), ("ic07", 128), ("ic08", 256), ("ic09", 512), ("ic10", 1024),
+        ("ic11", 32), ("ic12", 64), ("ic13", 256), ("ic14", 512),
+    ];
+
+    /// <summary>
+    /// A macOS .icns: a four-letter type and a big-endian length, then each image as a PNG under its
+    /// own type and length — every length counting its own eight bytes. A size wanted twice is drawn
+    /// once.
+    /// </summary>
+    public static byte[] EncodeIcns()
+    {
+        var drawn = new Dictionary<int, byte[]>();
+        using var body = new MemoryStream();
+        Span<byte> header = stackalloc byte[8];
+        foreach ((string type, int pixels) in IcnsEntries)
+        {
+            if (!drawn.TryGetValue(pixels, out byte[]? png))
+            {
+                png = EncodePng(pixels);
+                drawn[pixels] = png;
+            }
+
+            Encoding.ASCII.GetBytes(type, header);
+            BinaryPrimitives.WriteInt32BigEndian(header[4..], png.Length + 8);
+            body.Write(header);
+            body.Write(png);
+        }
+
+        using var file = new MemoryStream();
+        Encoding.ASCII.GetBytes("icns", header);
+        BinaryPrimitives.WriteInt32BigEndian(header[4..], (int)body.Length + 8);
+        file.Write(header);
+        body.WriteTo(file);
+        return file.ToArray();
     }
 
     /// <summary>Winding-agnostic point-in-convex-polygon: every cross product on the same side.</summary>

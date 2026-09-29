@@ -134,6 +134,9 @@ dotnet test                                                   # the test suites
 dotnet publish src/EditorApp -p:PublishProfile=win-x64        # a standalone build; or osx-arm64, linux-x64
 ```
 
+On a Mac, `bash tools/package-macos.sh publish/osx-arm64 <version> dist` then makes `Blockage.app` of
+the macOS build, signs it and zips it.
+
 The Android app needs the .NET `android` workload, JDK 17 and the Android SDK. `build-android.ps1`
 looks for them in a user-local .NET under `%LOCALAPPDATA%\Microsoft\dotnet`, JDK 17 under
 `%LOCALAPPDATA%\Programs\jdk-17` and the SDK under `%LOCALAPPDATA%\Android\Sdk` — change the three

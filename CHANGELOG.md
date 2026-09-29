@@ -14,6 +14,9 @@ Performance, platforms and the road to 1.0.
 - A release pipeline. A version tag builds the Windows, macOS and Linux packages and puts them, with
   their SHA-256 sums, in a draft release. The Windows build is signed once a certificate is set up.
 - A Linux build: `dotnet publish src/EditorApp -p:PublishProfile=linux-x64`.
+- A Mac app. The macOS build comes as `Blockage.app`, with its icon, signed ad hoc; once a Developer
+  ID is set up it is signed with that and notarized. On a Mac, Command works wherever Blockage says
+  Ctrl.
 - This changelog, notes for contributors, and templates for issues and pull requests.
 
 ### Changed
@@ -22,6 +25,9 @@ Performance, platforms and the road to 1.0.
   - Faces that look alike are merged into one.
   - Parts of the level are meshed on worker threads.
   - The panels no longer walk every voxel in every frame.
+- ImGui's memory of its windows (`imgui.ini`) is kept with the layout in the settings folder, not in
+  whatever folder Blockage was started from. Started from the Finder, Blockage browses and exports
+  from the home folder rather than from `/`.
 
 ## [0.8.0] — 2026-09-29
 

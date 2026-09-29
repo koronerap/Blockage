@@ -195,11 +195,11 @@ public static class ObjectListPanel
         {
             session.SelectMany(
                 _shownOrder.GetRange(Math.Min(from, to), Math.Abs(to - from) + 1),
-                io.KeyCtrl ? SelectionOperation.Add : SelectionOperation.Replace);
+                ControlKey.IsHeld(io) ? SelectionOperation.Add : SelectionOperation.Replace);
             return true;
         }
 
-        if (io.KeyCtrl)
+        if (ControlKey.IsHeld(io))
         {
             return session.ClickSelect(id, extend: true);
         }
@@ -282,7 +282,7 @@ public static class ObjectListPanel
         {
             if (DrawSelectable(active, active, row, width))
             {
-                scene.ActiveCollectionId = active && ImGui.GetIO().KeyCtrl ? 0 : collection.Id;
+                scene.ActiveCollectionId = active && ControlKey.IsHeld(ImGui.GetIO()) ? 0 : collection.Id;
                 if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                 {
                     StartRename(collection.Id, collection.Name);

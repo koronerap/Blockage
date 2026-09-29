@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Export;
 using EditorApp.Core.Raycast;
@@ -404,7 +405,7 @@ public sealed class EditorApplication : IDisposable
         if (Theme.ResolveFontPath() is not { } fontPath)
         {
             Console.WriteLine("No UI font found; falling back to the built-in bitmap font.");
-            return new ImGuiController(gl, _window, input);
+            return new ImGuiController(gl, _window, input, null, KeepImGuiSettings);
         }
 
         // Every text size goes into the atlas while it is being built, so changing size later is a
@@ -413,7 +414,30 @@ public sealed class EditorApplication : IDisposable
         {
             ImFontAtlasPtr atlas = ImGui.GetIO().Fonts;
             Theme.AddFonts(atlas, fontPath, atlas.Fonts[0]);
+            KeepImGuiSettings();
         });
+    }
+
+    /// <summary>
+    /// Where ImGui keeps what it remembers of its windows: beside the layout, not in whatever folder
+    /// the editor was started from — which is / when a Mac opens it from Finder, and the home folder
+    /// on a Linux desktop. Allocated once and never freed: ImGui holds on to it for as long as the
+    /// editor runs.
+    /// </summary>
+    private static readonly nint ImGuiSettingsPath = Marshal.StringToCoTaskMemUTF8(
+        Path.Combine(Path.GetDirectoryName(LayoutSettings.DefaultPath)!, "imgui.ini"));
+
+    /// <summary>Set before ImGui's first frame, which is when it reads the file. A smoke run keeps none.</summary>
+    private unsafe void KeepImGuiSettings()
+    {
+        if (_smokeFrames > 0)
+        {
+            ImGui.GetIO().NativePtr->IniFilename = null;
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(LayoutSettings.DefaultPath)!);
+        ImGui.GetIO().NativePtr->IniFilename = (byte*)ImGuiSettingsPath;
     }
 
     /// <summary>Puts the preferences into effect — at start, and after every change in their window.</summary>
@@ -609,7 +633,7 @@ public sealed class EditorApplication : IDisposable
         }
 
         // Ctrl is a menu modifier (Ctrl+S, Ctrl+Z...), never a movement key.
-        if (keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight))
+        if (ControlKey.IsHeld(keyboard))
         {
             return;
         }
@@ -772,7 +796,7 @@ public sealed class EditorApplication : IDisposable
         if (pressedNow && !io.WantCaptureMouse && _viewport.Contains(mouse.Position))
         {
             bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
-            bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
+            bool control = ControlKey.IsHeld(keyboard);
             _middleDrag = shift ? MiddleDrag.Pan : control ? MiddleDrag.Zoom : MiddleDrag.Orbit;
         }
 
@@ -1250,8 +1274,7 @@ public sealed class EditorApplication : IDisposable
         && (_input.Keyboards[0].IsKeyPressed(Key.ShiftLeft) || _input.Keyboards[0].IsKeyPressed(Key.ShiftRight));
 
     private bool IsControlHeld() =>
-        _input is { Keyboards.Count: > 0 }
-        && (_input.Keyboards[0].IsKeyPressed(Key.ControlLeft) || _input.Keyboards[0].IsKeyPressed(Key.ControlRight));
+        _input is { Keyboards.Count: > 0 } && ControlKey.IsHeld(_input.Keyboards[0]);
 
     /// <summary>The key the last shortcut was pressed with: a pie watches it to know when it is let go.</summary>
     private Key _lastKey;
@@ -1279,7 +1302,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
+        bool control = ControlKey.IsHeld(keyboard);
         bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
         bool alt = keyboard.IsKeyPressed(Key.AltLeft) || keyboard.IsKeyPressed(Key.AltRight);
         var chord = new KeyChord(key, control, shift, alt);

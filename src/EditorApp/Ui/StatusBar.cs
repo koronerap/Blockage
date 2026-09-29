@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Voxels;
+using EditorApp.Input;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -92,7 +93,7 @@ public static class StatusBar
         }
 
         ImGuiIOPtr io = ImGui.GetIO();
-        IReadOnlyList<MouseHint> hints = MouseHints.For(context.Session, context.Looking, io.KeyShift, io.KeyCtrl, io.KeyAlt);
+        IReadOnlyList<MouseHint> hints = MouseHints.For(context.Session, context.Looking, io.KeyShift, ControlKey.IsHeld(io), io.KeyAlt);
 
         float height = ImGui.GetFrameHeight();
         uint colour = ImGui.GetColorU32(ImGuiCol.TextDisabled);

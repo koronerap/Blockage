@@ -9,6 +9,13 @@ if (args.Length > 0)
 
 CrashLog.Install();
 
+// A Mac's Finder starts an app in /, where nothing can be written and nobody keeps their levels —
+// and a level not yet saved is exported, and browsed for, from the working directory.
+if (!OperatingSystem.IsWindows() && Environment.CurrentDirectory == "/")
+{
+    Environment.CurrentDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+}
+
 // --smoke[=frames]        opens the window, renders a few frames and exits. Lets a build pipeline
 //                         verify GL context creation, shader compilation and the first upload.
 // --export-to=<dir>       runs the whole export chain with no window and exits: every format, for
@@ -84,10 +91,11 @@ foreach (string argument in args)
 
 if (iconPath is not null)
 {
-    // The committed .ico is generated, not drawn by hand, so it can be regenerated whenever the
-    // mark or the shading constants behind it change.
-    File.WriteAllBytes(iconPath, EditorApp.Core.Export.AppIcon.EncodeIco());
-    Console.WriteLine($"Wrote {iconPath} ({EditorApp.Core.Export.AppIcon.Sizes.Length} sizes).");
+    // The committed .ico and .icns are generated, not drawn by hand, so they can be regenerated
+    // whenever the mark or the shading constants behind it change.
+    bool mac = iconPath.EndsWith(".icns", StringComparison.OrdinalIgnoreCase);
+    File.WriteAllBytes(iconPath, mac ? EditorApp.Core.Export.AppIcon.EncodeIcns() : EditorApp.Core.Export.AppIcon.EncodeIco());
+    Console.WriteLine($"Wrote {iconPath} ({(mac ? EditorApp.Core.Export.AppIcon.IcnsEntries.Length : EditorApp.Core.Export.AppIcon.Sizes.Length)} sizes).");
     return 0;
 }
 

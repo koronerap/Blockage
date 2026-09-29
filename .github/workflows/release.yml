@@ -2,9 +2,13 @@
 # release of them with their SHA-256 sums and the CHANGELOG's section for that version. The draft is
 # read over and published by hand.
 #
-# Signing is ready and off: with the WINDOWS_CERTIFICATE (a base64 .pfx) and
+# Signing is ready and off. With the WINDOWS_CERTIFICATE (a base64 .pfx) and
 # WINDOWS_CERTIFICATE_PASSWORD secrets set, Blockage.exe is signed and time-stamped before it is
-# zipped. Without them the build goes out unsigned, as it does now.
+# zipped. With MACOS_CERTIFICATE (a base64 Developer ID .p12), MACOS_CERTIFICATE_PASSWORD,
+# MACOS_SIGNING_IDENTITY ("Developer ID Application: ..."), APPLE_ID, APPLE_TEAM_ID and
+# APPLE_APP_PASSWORD (an app-specific password) set, Blockage.app is signed with the hardened
+# runtime, notarized and stapled. Without them Windows goes out unsigned and the Mac app signed ad hoc,
+# as they do now.
 name: Release
 
 on:
@@ -85,6 +89,7 @@ jobs:
     runs-on: macos-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      HAS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -92,16 +97,41 @@ jobs:
           dotnet-version: 10.0.x
       - name: Publish
         run: dotnet publish src/EditorApp -p:PublishProfile=osx-arm64
-      - name: Package
+      - name: Import the signing certificate
+        if: env.HAS_CERTIFICATE == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
-          name="Blockage-$VERSION-osx-arm64"
-          mv publish/osx-arm64 "publish/$name"
-          mkdir -p dist
-          tar -czf "dist/$name.tar.gz" -C publish "$name"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain
+          rm "$RUNNER_TEMP/certificate.p12"
+      - name: Package
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: bash tools/package-macos.sh publish/osx-arm64 "$VERSION" dist
+      - name: Notarize
+        if: env.HAS_CERTIFICATE == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          zip="dist/Blockage-$VERSION-osx-arm64.zip"
+          xcrun notarytool submit "$zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple dist/Blockage.app
+          rm "$zip"
+          ditto -c -k --keepParent dist/Blockage.app "$zip"
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: dist/*
+          path: dist/*.zip
 
   linux:
     name: Linux package
@@ -136,6 +166,7 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       SIGNED: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+      NOTARIZED: ${{ secrets.MACOS_CERTIFICATE != '' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -157,7 +188,11 @@ jobs:
             else
               echo "| Windows 10/11, x64 | \`Blockage-$VERSION-win-x64.zip\` | Unzip and run \`Blockage.exe\`; no .NET install needed. Not code-signed, so SmartScreen may stop it the first time: **More info → Run anyway**. |"
             fi
-            echo "| macOS, Apple Silicon | \`Blockage-$VERSION-osx-arm64.tar.gz\` | **Experimental: built, not yet run on a Mac.** Unpack, run \`xattr -dr com.apple.quarantine Blockage-$VERSION-osx-arm64\`, then \`./Blockage\` from a terminal inside it. |"
+            if [ "$NOTARIZED" = "true" ]; then
+              echo "| macOS 14+, Apple Silicon | \`Blockage-$VERSION-osx-arm64.zip\` | Unzip and open \`Blockage.app\`. |"
+            else
+              echo "| macOS 14+, Apple Silicon | \`Blockage-$VERSION-osx-arm64.zip\` | **Experimental: built, not yet run on a Mac.** Unzip, and since the app is not notarized, run \`xattr -dr com.apple.quarantine Blockage.app\` before opening it the first time. |"
+            fi
             echo "| Linux, x64 | \`Blockage-$VERSION-linux-x64.tar.gz\` | Unpack and run \`./Blockage\`. Needs OpenGL 3.3. |"
             echo
             echo "Check a download against \`SHA256SUMS.txt\`: \`sha256sum -c SHA256SUMS.txt --ignore-missing\`."
