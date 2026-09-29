@@ -214,6 +214,9 @@ public sealed class Keymap
             // Blender's M.
             [EditorAction.MoveToCollection] = [new(Key.M)],
 
+            // Blender's clipping region is Alt+B.
+            [EditorAction.ToggleSection] = [KeyChord.AltOf(Key.B)],
+
             // Blender's Alt+D: a copy that shares its voxels with the original.
             [EditorAction.DuplicateLinked] = [KeyChord.AltOf(Key.D)],
 

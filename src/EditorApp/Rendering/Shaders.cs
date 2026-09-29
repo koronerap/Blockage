@@ -112,6 +112,11 @@ public static class Shaders
         // each corner is in the colour's alpha: 1 fully open, 0 closed in on both sides.
         uniform float uOcclusion;
 
+        // The section box: nothing outside it is drawn. Off unless a head turns it on.
+        uniform int uClip;
+        uniform vec3 uClipMin;
+        uniform vec3 uClipMax;
+
         #ifdef BLOCKAGE_SHADOWS
         // The sun's shadow: a depth map seen from it, and which of the lights it is for (-1 none).
         uniform sampler2DShadow uShadowMap;
@@ -259,6 +264,11 @@ public static class Shaders
 
         void main()
         {
+            if (uClip != 0 && (any(lessThan(vWorldPosition, uClipMin - vec3(0.001))) || any(greaterThan(vWorldPosition, uClipMax + vec3(0.001)))))
+            {
+                discard;
+            }
+
             vec4 material = texelFetch(uMaterials, ivec2(vPalette, 0), 0);
             float opacity = material.a;
 
@@ -359,6 +369,99 @@ public static class Shaders
         }
         """;
 
+    /// <summary>
+    /// The outline's mask: where each outlined object shows, as a code — hovered, listed, selected,
+    /// active — the rest left clear. Everything else goes in first as depth alone, so only what can
+    /// be seen of an object is outlined, as Blender's is.
+    /// </summary>
+    public const string MaskVertex = """
+        #version 330 core
+        layout(location = 0) in vec3 aPosition;
+
+        uniform mat4 uViewProjection;
+        uniform mat4 uModel;
+
+        out vec3 vWorldPosition;
+
+        void main()
+        {
+            vec4 world = uModel * vec4(aPosition, 1.0);
+            vWorldPosition = world.xyz;
+            gl_Position = uViewProjection * world;
+        }
+        """;
+
+    public const string MaskFragment = """
+        #version 330 core
+        in vec3 vWorldPosition;
+
+        uniform float uCode;
+        uniform int uClip;
+        uniform vec3 uClipMin;
+        uniform vec3 uClipMax;
+
+        out vec4 fragColor;
+
+        void main()
+        {
+            if (uClip != 0 && (any(lessThan(vWorldPosition, uClipMin - vec3(0.001))) || any(greaterThan(vWorldPosition, uClipMax + vec3(0.001)))))
+            {
+                discard;
+            }
+
+            fragColor = vec4(uCode, 0.0, 0.0, 1.0);
+        }
+        """;
+
+    /// <summary>
+    /// The outline itself, over the viewport: a pixel no outlined object covers, but one near it does,
+    /// takes that object's outline colour — so only the outside edge of what is seen is drawn, never
+    /// its inner edges and never a box.
+    /// </summary>
+    public const string OutlineFragment = """
+        #version 330 core
+        in vec2 vUv;
+
+        uniform sampler2D uMask;
+        uniform vec4 uOutlineColour[5];
+        uniform int uOutlineWidth;
+
+        out vec4 fragColor;
+
+        void main()
+        {
+            ivec2 size = textureSize(uMask, 0);
+            ivec2 at = clamp(ivec2(vUv * vec2(size)), ivec2(0), size - ivec2(1));
+            if (texelFetch(uMask, at, 0).r > 0.0)
+            {
+                discard;
+            }
+
+            float strongest = 0.0;
+            int reach = uOutlineWidth;
+            for (int dx = -reach; dx <= reach; dx++)
+            {
+                for (int dy = -reach; dy <= reach; dy++)
+                {
+                    if ((dx * dx) + (dy * dy) > (reach * reach) + reach)
+                    {
+                        continue;
+                    }
+
+                    ivec2 near = clamp(at + ivec2(dx, dy), ivec2(0), size - ivec2(1));
+                    strongest = max(strongest, texelFetch(uMask, near, 0).r);
+                }
+            }
+
+            if (strongest <= 0.0)
+            {
+                discard;
+            }
+
+            fragColor = uOutlineColour[int(strongest * 4.0 + 0.5)];
+        }
+        """;
+
     /// <summary>The depth of everything as the sun sees it, for the shadows it casts: positions only.</summary>
     public const string ShadowVertex = """
         #version 330 core
@@ -367,17 +470,31 @@ public static class Shaders
         uniform mat4 uLightViewProjection;
         uniform mat4 uModel;
 
+        out vec3 vWorldPosition;
+
         void main()
         {
-            gl_Position = uLightViewProjection * (uModel * vec4(aPosition, 1.0));
+            vec4 world = uModel * vec4(aPosition, 1.0);
+            vWorldPosition = world.xyz;
+            gl_Position = uLightViewProjection * world;
         }
         """;
 
+    /// <summary>What the section box cuts away casts no shadow either: the room it opens is lit.</summary>
     public const string ShadowFragment = """
         #version 330 core
+        in vec3 vWorldPosition;
+
+        uniform int uClip;
+        uniform vec3 uClipMin;
+        uniform vec3 uClipMax;
 
         void main()
         {
+            if (uClip != 0 && (any(lessThan(vWorldPosition, uClipMin - vec3(0.001))) || any(greaterThan(vWorldPosition, uClipMax + vec3(0.001)))))
+            {
+                discard;
+            }
         }
         """;
 

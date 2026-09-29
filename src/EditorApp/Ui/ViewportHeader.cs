@@ -198,6 +198,7 @@ public static class ViewportHeader
         ImGui.SameLine();
         Check("Shadows", "The sun casts shadows, in Lit shading.", v.Shadows, on => v.Shadows = on);
         Check("X-Ray", "See through the model: what is behind shows through it.", v.XRay, on => v.XRay = on);
+        SectionViewport.Draw(v);
 
         ImGui.SameLine();
         ImGui.BeginDisabled(!v.XRay);

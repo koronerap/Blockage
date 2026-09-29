@@ -109,6 +109,13 @@ public sealed class ViewportSettings
     /// <summary>The sun's shadows, in Lit shading.</summary>
     public bool Shadows { get; set; } = true;
 
+    /// <summary>
+    /// The section box (Fullreleaseplan 7.2): nothing outside it is drawn or picked. Null for none.
+    /// A way of looking at the level now, not kept from one run to the next.
+    /// </summary>
+    [JsonIgnore]
+    public EditorApp.Core.Scene.ClipBox? Clip { get; set; }
+
     /// <summary>How solid a face stays with X-Ray on.</summary>
     public float XRayAlpha
     {

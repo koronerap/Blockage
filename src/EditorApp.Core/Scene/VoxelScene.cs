@@ -901,7 +901,8 @@ public sealed class VoxelScene
         float maxDistance = VoxelRaycaster.DefaultMaxDistance,
         bool includeLocked = false,
         Func<VoxelObject, bool>? skip = null,
-        bool shown = false)
+        bool shown = false,
+        ClipBox? clip = null)
     {
         pick = default;
         bool found = false;
@@ -919,7 +920,10 @@ public sealed class VoxelScene
             // would win just for having more cells in the way.
             float scale = o.VoxelSize;
             Ray localRay = o.Transform.InverseTransformRay(worldRay);
-            if (!VoxelRaycaster.TryCast(shown ? o.Shown : o.Grid, localRay, out RaycastHit hit, maxDistance / scale))
+            // What a section box cuts away is looked straight through.
+            ObjectTransform placed = o.Transform;
+            Func<int, int, int, bool>? cut = clip is { } box ? (x, y, z) => !box.Contains(placed, x, y, z) : null;
+            if (!VoxelRaycaster.TryCast(shown ? o.Shown : o.Grid, localRay, out RaycastHit hit, maxDistance / scale, cut))
             {
                 continue;
             }

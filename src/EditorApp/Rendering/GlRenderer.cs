@@ -38,6 +38,23 @@ public sealed class GlRenderer : IDisposable
     private readonly uint _emptyVao;
     private readonly ShaderProgram _imageShader;
     private readonly ShaderProgram _shadowShader;
+    private readonly ShaderProgram _maskShader;
+    private readonly ShaderProgram _outlineShader;
+
+    private uint _maskFramebuffer;
+    private uint _maskTexture;
+    private uint _maskDepth;
+    private uint _maskWidth;
+    private uint _maskHeight;
+
+    /// <summary>
+    /// The objects outlined round what can be seen of them, and how: the active one, the rest of the
+    /// selection, the one the outliner points at, the one the mouse is over. Empty for none.
+    /// </summary>
+    public IReadOnlyList<(int Id, OutlineKind Kind)> Outlines { get; set; } = [];
+
+    /// <summary>How many pixels out from the edge the outline reaches.</summary>
+    public int OutlineWidth { get; set; } = 2;
 
     /// <summary>How many texels across the sun's depth map is.</summary>
     private const int ShadowSize = 2048;
@@ -50,6 +67,9 @@ public sealed class GlRenderer : IDisposable
 
     /// <summary>Whether the sun casts shadows, in Lit shading.</summary>
     public bool Shadows { get; set; } = true;
+
+    /// <summary>The section box nothing outside of is drawn; null for none.</summary>
+    public ClipBox? Clip { get; set; }
 
     /// <summary>
     /// Rendered shading's picture, drawn in the voxels' place; 0 draws the voxels. They still go into
@@ -114,6 +134,8 @@ public sealed class GlRenderer : IDisposable
         // The desktop's voxel shader has the sun's shadows; a head without them leaves the define out.
         _voxelShader = new ShaderProgram(gl, Shaders.VoxelVertex, Shaders.VoxelFragment.Replace("#version 330 core", "#version 330 core\n#define BLOCKAGE_SHADOWS"));
         _shadowShader = new ShaderProgram(gl, Shaders.ShadowVertex, Shaders.ShadowFragment);
+        _maskShader = new ShaderProgram(gl, Shaders.MaskVertex, Shaders.MaskFragment);
+        _outlineShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.OutlineFragment);
         _lineShader = new ShaderProgram(gl, Shaders.LineVertex, Shaders.LineFragment);
         _backgroundShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.BackgroundFragment);
         _imageShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.ImageFragment);
@@ -403,6 +425,7 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.SetMatrix4("uShadowMatrix", shadow ?? Matrix4x4.Identity);
         _voxelShader.SetFloat("uShadowBias", _shadowBias);
         _voxelShader.SetFloat("uOcclusion", Lighting.Mode == ShadingMode.Wireframe ? 0f : AmbientOcclusion);
+        SetClip(_voxelShader);
         _voxelShader.SetVector3("uCameraPosition", camera.Position);
         _voxelShader.SetInt("uPass", 2);
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
@@ -485,6 +508,8 @@ public sealed class GlRenderer : IDisposable
         _gl.Enable(EnableCap.CullFace);
         _gl.DepthFunc(DepthFunction.Less);
 
+        DrawOutlines(scene, viewProjection, frustum, (int)viewportPosition.X, glY, width, height);
+
         Reference.Draw(viewProjection);
         DrawOverlays(viewProjection);
 
@@ -492,6 +517,120 @@ public sealed class GlRenderer : IDisposable
     }
 
     /// <summary>The level's own lights and ambient floor. Whether they are used at all is the Lit switch.</summary>
+    /// <summary>
+    /// Blender's selection outline: what shows of each outlined object drawn into a mask, then its
+    /// outside edge painted over the viewport in the object's outline colour.
+    /// </summary>
+    private unsafe void DrawOutlines(VoxelScene scene, Matrix4x4 viewProjection, Frustum frustum, int x, int y, uint width, uint height)
+    {
+        if (Outlines.Count == 0 || Lighting.Mode == ShadingMode.Wireframe)
+        {
+            return;
+        }
+
+        if (_maskFramebuffer == 0 || _maskWidth != width || _maskHeight != height)
+        {
+            if (_maskFramebuffer != 0)
+            {
+                _gl.DeleteFramebuffer(_maskFramebuffer);
+                _gl.DeleteTexture(_maskTexture);
+                _gl.DeleteRenderbuffer(_maskDepth);
+            }
+
+            _maskTexture = _gl.GenTexture();
+            _gl.BindTexture(TextureTarget.Texture2D, _maskTexture);
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.R8, width, height, 0, PixelFormat.Red, PixelType.UnsignedByte, null);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            _gl.BindTexture(TextureTarget.Texture2D, 0);
+
+            _maskDepth = _gl.GenRenderbuffer();
+            _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _maskDepth);
+            _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24, width, height);
+            _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, 0);
+
+            _maskFramebuffer = _gl.GenFramebuffer();
+            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _maskFramebuffer);
+            _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _maskTexture, 0);
+            _gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, _maskDepth);
+            _maskWidth = width;
+            _maskHeight = height;
+        }
+
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _maskFramebuffer);
+        _gl.Viewport(0, 0, width, height);
+        _gl.ClearColor(0f, 0f, 0f, 0f);
+        _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+        _gl.Enable(EnableCap.DepthTest);
+        _gl.DepthMask(true);
+
+        _maskShader.Use();
+        _maskShader.SetMatrix4("uViewProjection", viewProjection);
+        SetClip(_maskShader);
+
+        // What stands in front of an outlined object hides its outline there — unless X-Ray sees through.
+        if (XRay <= 0f)
+        {
+            _gl.ColorMask(false, false, false, false);
+            foreach (VoxelObject o in scene.Objects)
+            {
+                if (o.Visible && _buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+                {
+                    _maskShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+                    DrawObjectChunks(o, chunks, frustum, count: false);
+                }
+            }
+
+            _gl.ColorMask(true, true, true, true);
+        }
+
+        _gl.DepthFunc(DepthFunction.Lequal);
+        foreach ((int id, OutlineKind kind) in Outlines.OrderBy(outline => outline.Kind))
+        {
+            if (FindShown(scene, id) is not { } o || !_buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+            {
+                continue;
+            }
+
+            _maskShader.SetFloat("uCode", (int)kind / 4f);
+            _maskShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            DrawObjectChunks(o, chunks, frustum, count: false);
+        }
+
+        _gl.DepthFunc(DepthFunction.Less);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        _gl.Viewport(x, y, width, height);
+
+        _outlineShader.Use();
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _gl.BindTexture(TextureTarget.Texture2D, _maskTexture);
+        _outlineShader.SetInt("uMask", 0);
+        _outlineShader.SetInt("uOutlineWidth", Math.Clamp(OutlineWidth, 1, 6));
+        _outlineShader.SetVector4Array("uOutlineColour",
+        [
+            Vector4.Zero,
+            EditorOverlays.ObjectHovered.ToVector4() with { W = 0.7f },
+            EditorOverlays.Highlight.ToVector4(),
+            EditorOverlays.ObjectSelected.ToVector4(),
+            EditorOverlays.ObjectActive.ToVector4(),
+        ]);
+
+        _gl.Disable(EnableCap.DepthTest);
+        _gl.DepthMask(false);
+        _gl.Enable(EnableCap.Blend);
+        _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+        _gl.BindVertexArray(_emptyVao);
+        _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
+        _gl.BindVertexArray(0);
+        _gl.Disable(EnableCap.Blend);
+        _gl.DepthMask(true);
+        _gl.Enable(EnableCap.DepthTest);
+        _gl.BindTexture(TextureTarget.Texture2D, 0);
+    }
+
+    private static VoxelObject? FindShown(VoxelScene scene, int id) =>
+        scene.Find(id) is { Visible: true } o ? o : null;
+
     /// <summary>Which of the uploaded lights is the first sun, the one that casts shadows; -1 for none.</summary>
     private int _shadowLight = -1;
 
@@ -572,6 +711,7 @@ public sealed class GlRenderer : IDisposable
         key.Add(max);
         key.Add(TotalVertices);
         key.Add(_meshRevision);
+        key.Add(Clip);
         foreach (VoxelObject o in scene.Objects)
         {
             key.Add(o.Visible);
@@ -602,6 +742,7 @@ public sealed class GlRenderer : IDisposable
 
         _shadowShader.Use();
         _shadowShader.SetMatrix4("uLightViewProjection", lightViewProjection);
+        SetClip(_shadowShader);
         foreach (VoxelObject o in scene.Objects)
         {
             if (!o.Visible || !_buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
@@ -624,6 +765,13 @@ public sealed class GlRenderer : IDisposable
         _shadowKey = shadowKey;
         _shadowMatrix = lightViewProjection;
         return lightViewProjection;
+    }
+
+    private void SetClip(ShaderProgram shader)
+    {
+        shader.SetInt("uClip", Clip is null ? 0 : 1);
+        shader.SetVector3("uClipMin", Clip?.Min ?? Vector3.Zero);
+        shader.SetVector3("uClipMax", Clip?.Max ?? Vector3.Zero);
     }
 
     private void UploadLights(VoxelScene scene)
@@ -814,6 +962,15 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.Dispose();
         _imageShader.Dispose();
         _shadowShader.Dispose();
+        _maskShader.Dispose();
+        _outlineShader.Dispose();
+        if (_maskFramebuffer != 0)
+        {
+            _gl.DeleteFramebuffer(_maskFramebuffer);
+            _gl.DeleteTexture(_maskTexture);
+            _gl.DeleteRenderbuffer(_maskDepth);
+        }
+
         if (_shadowFramebuffer != 0)
         {
             _gl.DeleteFramebuffer(_shadowFramebuffer);

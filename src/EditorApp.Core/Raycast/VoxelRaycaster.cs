@@ -23,7 +23,8 @@ public static class VoxelRaycaster
 {
     public const float DefaultMaxDistance = 512f;
 
-    public static bool TryCast(VoxelWorld world, Ray ray, out RaycastHit hit, float maxDistance = DefaultMaxDistance)
+    /// <param name="passes">Cells to look straight through as though they were empty — those a section box cuts away.</param>
+    public static bool TryCast(VoxelWorld world, Ray ray, out RaycastHit hit, float maxDistance = DefaultMaxDistance, Func<int, int, int, bool>? passes = null)
     {
         hit = default;
 
@@ -39,7 +40,7 @@ public static class VoxelRaycaster
 
         // A camera sitting inside geometry still needs an answer; report the face most opposed to
         // the view direction so the highlight lands somewhere sensible.
-        if (world.IsSolid(x, y, z))
+        if (world.IsSolid(x, y, z) && passes?.Invoke(x, y, z) != true)
         {
             hit = new RaycastHit(new Int3(x, y, z), MostOpposedFace(direction), 0f);
             return true;
@@ -89,7 +90,7 @@ public static class VoxelRaycaster
                 return false;
             }
 
-            if (world.IsSolid(x, y, z))
+            if (world.IsSolid(x, y, z) && passes?.Invoke(x, y, z) != true)
             {
                 hit = new RaycastHit(new Int3(x, y, z), enteredFace, distance);
                 return true;

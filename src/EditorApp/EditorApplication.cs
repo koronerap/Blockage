@@ -261,6 +261,7 @@ public sealed class EditorApplication : IDisposable
         _library = new PropLibraryWindow(_gl);
         AddMenu.OpenPropLibrary = _library.Open;
         CameraPropertiesPanel.LookThrough = LookThrough;
+        SectionViewport.SceneOf = () => _session.Scene;
         CameraPropertiesPanel.MoveToView = camera => _session.SetCameraToView(camera.Id, ViewAsCamera());
         _viewportRender = new ViewportRender(_gl);
 
@@ -420,6 +421,7 @@ public sealed class EditorApplication : IDisposable
         _renderer.XRay = View.XRay ? View.XRayAlpha : 0f;
         _renderer.AmbientOcclusion = View.AmbientOcclusion ? 1f : 0f;
         _renderer.Shadows = View.Shadows;
+        _renderer.Clip = View.Clip;
 
         (Vector4 bottom, Vector4 top) = View.Background == BackgroundMode.Custom
             ? (new Vector4(View.BackgroundColour, 1f), new Vector4(View.BackgroundColour, 1f))
@@ -743,7 +745,7 @@ public sealed class EditorApplication : IDisposable
             ? o => o.Id != edited.Id
             : selectedOnly ? o => !_session.IsSelected(o.Id) : null;
 
-        return _session.Scene.TryPick(ray, out ScenePick pick, skip: skip, shown: shown) ? pick : null;
+        return _session.Scene.TryPick(ray, out ScenePick pick, skip: skip, shown: shown, clip: View.Clip) ? pick : null;
     }
 
     /// <summary>The voxel of the object in Edit Mode under a point of the viewport, or null.</summary>
@@ -1371,6 +1373,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToggleGrid: View.Grid = !View.Grid; break;
             case EditorAction.ToggleMeasurements: View.Measurements = !View.Measurements; break;
             case EditorAction.ToggleXRay: View.XRay = !View.XRay; break;
+            case EditorAction.ToggleSection: ToggleSection(); break;
             case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
             case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
 
@@ -1804,6 +1807,13 @@ public sealed class EditorApplication : IDisposable
             EditorOverlays.AddLight(gizmos, light, _camera, marked, aimedAt, aimLit: _aimHover?.Id == light.Id, aimLine: LightGizmos);
         }
 
+        // The section box's edges, faintly, so it is plain that something is cut away.
+        if (View.Clip is { } clip && View.Overlays)
+        {
+            lines.Transform = Matrix4x4.Identity;
+            lines.AddBox(clip.Min, clip.Max, EditorOverlays.CutPlane with { A = 150 }, EditorOverlays.SelectionWidth * 0.6f);
+        }
+
         // Markers, in their object's colour when selected — they have no box to show it by.
         if (View.Overlays)
         {
@@ -1835,43 +1845,33 @@ public sealed class EditorApplication : IDisposable
             }
         }
 
-        // The object whose row the mouse is over in the outliner, so a name can be matched to a shape.
-        if (ObjectListPanel.HoveredId != 0
-            && _session.Scene.Find(ObjectListPanel.HoveredId) is { Visible: true } listed
-            && listed.TryGetLocalBounds(out Vector3 listedMin, out Vector3 listedMax))
+        // Outlined round what shows of them, as Blender outlines — the selection in its orange, the
+        // active one lighter; the object whose outliner row the mouse is over, so a name can be
+        // matched to a shape; and, faintly, what the pointer is over, which a click would select.
+        var outlines = new List<(int, OutlineKind)>();
+        if (ObjectListPanel.HoveredId != 0 && _session.Scene.Find(ObjectListPanel.HoveredId) is { Visible: true } listed)
         {
-            lines.Transform = listed.Transform.ToMatrix();
-            lines.AddBox(listedMin, listedMax, EditorOverlays.Highlight, EditorOverlays.SelectionWidth);
+            outlines.Add((listed.Id, OutlineKind.Listed));
         }
 
-        // What is selected, boxed in Blender's orange — the active one lighter — and, faintly, what
-        // the pointer is over, which a click would select.
         if (View.Overlays && !_session.InEditMode)
         {
             foreach (VoxelObject chosen in _session.SelectedObjects)
             {
-                if (chosen.TryGetLocalBounds(out Vector3 chosenMin, out Vector3 chosenMax))
-                {
-                    lines.Transform = chosen.Transform.ToMatrix();
-                    lines.AddBox(
-                        chosenMin,
-                        chosenMax,
-                        chosen.Id == _session.ActiveId ? EditorOverlays.ObjectActive : EditorOverlays.ObjectSelected,
-                        EditorOverlays.SelectionWidth);
-                }
+                outlines.Add((chosen.Id, chosen.Id == _session.ActiveId ? OutlineKind.Active : OutlineKind.Selected));
             }
 
             if (_hoverObjectId != 0
                 && !VoxelToolInHand
                 && _session.ActiveTool != EditorTool.View
                 && !_session.IsSelected(_hoverObjectId)
-                && _session.Scene.Find(_hoverObjectId) is { } pointed
-                && pointed.TryGetLocalBounds(out Vector3 pointedMin, out Vector3 pointedMax))
+                && _session.Scene.Find(_hoverObjectId) is { } pointed)
             {
-                lines.Transform = pointed.Transform.ToMatrix();
-                lines.AddBox(pointedMin, pointedMax, EditorOverlays.ObjectHovered, 1f);
+                outlines.Add((pointed.Id, OutlineKind.Hovered));
             }
         }
+
+        _renderer!.Outlines = outlines;
 
         // Everything from here on is expressed in the focused object's own space.
         Matrix4x4 focusMatrix = _session.Scene.Focus?.Transform.ToMatrix() ?? Matrix4x4.Identity;
@@ -2128,6 +2128,21 @@ public sealed class EditorApplication : IDisposable
             ReportLog.Shared.Post($"Could not read the prop {entry.Name}: {exception.Message}", ReportKind.Error);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Alt+B: the section box on, round the level with its top two fifths taken away — the ceiling
+    /// off a room, to work inside it — or off again.
+    /// </summary>
+    private void ToggleSection()
+    {
+        if (View.Clip is not null)
+        {
+            View.Clip = null;
+            return;
+        }
+
+        View.Clip = SectionViewport.Default(_session.Scene);
     }
 
     /// <summary>What Render Image is seen from: the camera renders are seen from, or the view when there is none.</summary>
