@@ -66,6 +66,8 @@ public static class PathTraceShader
         uniform float uFog;
         uniform float uEmissionStrength;
         uniform int uTransparentBackground;
+        uniform int uColourBackground;
+        uniform vec3 uBackdrop;
         uniform float uSunSpread;
 
         const float Nudge = 1e-3;
@@ -479,6 +481,7 @@ public static class PathTraceShader
             float alpha = 1.0;
             int glassObject = -1;
             uint glassIndex = 0u;
+            bool direct = true;
 
             for (int bounce = 0; bounce <= uBounces; bounce++)
             {
@@ -491,7 +494,7 @@ public static class PathTraceShader
                         break;
                     }
 
-                    radiance += throughput * sky(direction);
+                    radiance += throughput * (direct && uColourBackground != 0 ? uBackdrop : sky(direction));
                     break;
                 }
 
@@ -514,6 +517,7 @@ public static class PathTraceShader
                     {
                         origin = hit.point + (hit.normal * Nudge);
                         direction = reflect(direction, hit.normal);
+                        direct = false;
                         continue;
                     }
 
@@ -529,6 +533,7 @@ public static class PathTraceShader
 
                 glassObject = -1;
                 glassIndex = 0u;
+                direct = false;
 
                 vec3 surface = hit.point + (hit.normal * Nudge);
                 radiance += throughput * directLight(surface, hit.normal, direction, albedo, material);

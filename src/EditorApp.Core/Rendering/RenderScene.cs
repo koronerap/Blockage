@@ -45,6 +45,15 @@ public sealed record RenderSettings
     /// <summary>Nothing behind the level: the background comes out see-through, for a PNG to lay over something.</summary>
     public bool TransparentBackground { get; init; }
 
+    /// <summary>
+    /// A plain colour behind the level instead of the sky, where the sky would be seen straight on —
+    /// a backdrop: the sky still lights the level and shows in its reflections.
+    /// </summary>
+    public bool ColourBackground { get; init; }
+
+    /// <summary>The backdrop's colour, in sRGB 0 to 1: the picture shows exactly this.</summary>
+    public Vector3 BackgroundColour { get; init; } = new(0.2f, 0.2f, 0.22f);
+
     /// <summary>Stops of light: 0 as it is, +1 twice as bright.</summary>
     public float Exposure { get; init; }
 

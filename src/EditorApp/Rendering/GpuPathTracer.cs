@@ -219,6 +219,8 @@ public sealed class GpuPathTracer : IDisposable
         SetFloat("uFog", _settings.Fog);
         SetFloat("uEmissionStrength", _settings.EmissionStrength);
         SetInt("uTransparentBackground", _settings.TransparentBackground ? 1 : 0);
+        SetInt("uColourBackground", _settings.ColourBackground ? 1 : 0);
+        SetVector("uBackdrop", PathTracer.BackdropOf(_settings));
         SetFloat("uSunSpread", _settings.SunSize > 0f ? MathF.Tan(_settings.SunSize * 0.5f * (MathF.PI / 180f)) : 0f);
     }
 

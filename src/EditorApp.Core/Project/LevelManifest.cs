@@ -177,6 +177,11 @@ public sealed class LevelManifest
         [JsonPropertyName("transparent")]
         public bool TransparentBackground { get; set; }
 
+        /// <summary>A plain backdrop in place of the sky, in sRGB; absent for the sky.</summary>
+        [JsonPropertyName("backgroundColour")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public float[]? BackgroundColour { get; set; }
+
         [JsonPropertyName("exposure")]
         public float Exposure { get; set; }
 

@@ -170,6 +170,20 @@ public class PathTracerTests
     }
 
     [Fact]
+    public void ABackdropComesOutAsExactlyTheColourChosen()
+    {
+        var scene = new VoxelScene();
+        var camera = new RenderCamera(Vector3.Zero, -Vector3.UnitZ, Vector3.UnitY, 40f, false, 0f);
+        var settings = new RenderSettings { Width = 8, Height = 8, Samples = 1, ColourBackground = true, BackgroundColour = new Vector3(0.3f, 0.5f, 0.7f), Exposure = 1f };
+
+        byte[] image = Render(scene, camera, settings);
+
+        Assert.InRange(image[0], 75, 78);
+        Assert.InRange(image[1], 126, 129);
+        Assert.InRange(image[2], 177, 180);
+    }
+
+    [Fact]
     public void RenderSettingsAreSavedWithTheLevel()
     {
         var scene = VoxelScene.CreateStarter();
@@ -183,6 +197,8 @@ public class PathTracerTests
             Bloom = 0.75f,
             SunSize = 3f,
             Fog = 0.2f,
+            ColourBackground = true,
+            BackgroundColour = new Vector3(0.3f, 0.5f, 0.7f),
         };
 
         using var stream = new MemoryStream();

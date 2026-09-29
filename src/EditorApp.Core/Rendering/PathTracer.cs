@@ -27,6 +27,7 @@ public sealed class PathTracer
     private readonly Vector3 _skyTop;
     private readonly Vector3 _skyHorizon;
     private readonly float _skyScale;
+    private readonly Vector3 _backdrop;
 
     public PathTracer(RenderScene scene, RenderCamera camera, RenderSettings settings)
     {
@@ -38,6 +39,7 @@ public sealed class PathTracer
         _sum = new Vector4[Width * Height];
 
         (_skyTop, _skyHorizon, _skyScale) = SkyOf(scene, _settings);
+        _backdrop = BackdropOf(_settings);
     }
 
     public int Width { get; }
@@ -122,6 +124,34 @@ public sealed class PathTracer
         settings.SkyStrength * MathF.Max(scene.Ambient, 0.05f) * 2.5f);
 
     /// <summary>
+    /// The light a backdrop gives off so that, exposed and tone-mapped, it comes out as exactly the
+    /// colour chosen: the tone curve run backwards.
+    /// </summary>
+    public static Vector3 BackdropOf(RenderSettings settings)
+    {
+        Vector3 wanted = Linear(settings.BackgroundColour);
+        float exposure = MathF.Pow(2f, settings.Clamped().Exposure);
+        return new Vector3(InverseAces(wanted.X), InverseAces(wanted.Y), InverseAces(wanted.Z)) / exposure;
+    }
+
+    /// <summary>The light the ACES curve turns into <paramref name="y"/>: the root of its quadratic.</summary>
+    private static float InverseAces(float y)
+    {
+        y = Math.Clamp(y, 0f, 0.99f);
+        float a = (y * 2.43f) - 2.51f;
+        float b = (y * 0.59f) - 0.03f;
+        float c = y * 0.14f;
+        if (MathF.Abs(a) < 1e-6f)
+        {
+            return b != 0f ? -c / b : 0f;
+        }
+
+        float root = MathF.Sqrt(MathF.Max((b * b) - (4f * a * c), 0f));
+        float x = (-b - root) / (2f * a);
+        return MathF.Max(x, 0f);
+    }
+
+    /// <summary>
     /// What spills from the brightest parts: what is over the tone curve's knee, blurred wide in a
     /// few passes of a box — a soft halo round a lamp or a sunlit edge.
     /// </summary>
@@ -193,6 +223,9 @@ public sealed class PathTracer
         int glassObject = -1;
         byte glassIndex = 0;
 
+        // Still the camera's own line of sight — through glass, but not yet turned by anything.
+        bool direct = true;
+
         for (int bounce = 0; bounce <= _settings.Bounces; bounce++)
         {
             if (!Intersect(ray, float.MaxValue, glassObject, glassIndex, out Hit hit))
@@ -203,7 +236,7 @@ public sealed class PathTracer
                     break;
                 }
 
-                radiance += throughput * Sky(ray.Direction);
+                radiance += throughput * (direct && _settings.ColourBackground ? _backdrop : Sky(ray.Direction));
                 break;
             }
 
@@ -227,6 +260,7 @@ public sealed class PathTracer
                 if (random.Next() < Schlick(0.04f, facing))
                 {
                     ray = new Ray(hit.Point + (hit.Normal * Nudge), Vector3.Reflect(ray.Direction, hit.Normal));
+                    direct = false;
                     continue;
                 }
 
@@ -242,6 +276,7 @@ public sealed class PathTracer
 
             glassObject = -1;
             glassIndex = 0;
+            direct = false;
 
             Vector3 origin = hit.Point + (hit.Normal * Nudge);
             radiance += throughput * DirectLight(origin, hit.Normal, ray.Direction, albedo, material, ref random);

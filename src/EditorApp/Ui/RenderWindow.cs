@@ -270,10 +270,28 @@ public sealed class RenderWindow(GL gl) : IDisposable
             changed = changed with { FocusDistance = focus };
         }
 
-        bool transparent = settings.TransparentBackground;
-        if (Props.Check(string.Empty, "render-transparent", "See-through background", ref transparent))
+        // Behind the level: the sky, a plain backdrop, or nothing at all for a PNG to lay over something.
+        int background = settings.TransparentBackground ? 2 : settings.ColourBackground ? 1 : 0;
+        int chosen = Props.Choice("Background", "render-background", [(null, "Sky"), (null, "Colour"), (null, "None")], background);
+        if (chosen != background)
         {
-            changed = changed with { TransparentBackground = transparent };
+            changed = changed with { TransparentBackground = chosen == 2, ColourBackground = chosen == 1 };
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Sky: the sky behind the level. Colour: a plain backdrop; the sky still lights the level. None: see-through, saved as a PNG with alpha.");
+        }
+
+        if (settings.ColourBackground && !settings.TransparentBackground)
+        {
+            Vector3 backdrop = settings.BackgroundColour;
+            Props.Label("Backdrop");
+            ImGui.SetNextItemWidth(-1f);
+            if (ImGui.ColorEdit3("##render-backdrop", ref backdrop))
+            {
+                changed = changed with { BackgroundColour = backdrop };
+            }
         }
 
         if (changed != settings)
