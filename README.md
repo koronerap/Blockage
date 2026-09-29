@@ -11,7 +11,7 @@ export clean meshes for a game engine.
 It grew out of the level and prop pipeline for the game *Mimic Busters*, and writes that game's
 `.character` and `.weapons` files as well as OBJ and glTF.
 
-> **Status: early — 0.7.** In daily use, but expect rough edges, and file-format
+> **Status: early — 0.7, with 0.8 in development.** In daily use, but expect rough edges, and file-format
 > changes before 1.0. The downloads below are still the 0.1.0 release.
 
 ## Download
