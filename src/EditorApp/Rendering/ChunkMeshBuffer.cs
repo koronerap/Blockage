@@ -57,14 +57,13 @@ public sealed class ChunkMeshBuffer : IDisposable
 
         _gl.BindVertexArray(_vao);
 
+        // Grown in steps so an edit that nudges the count does not grow it every frame — and given new
+        // storage every time, the old left to the frames the GPU is still drawing from it. Writing
+        // into storage in use would wait for them.
         var vertexBytes = (nuint)(vertices.Length * MeshVertex.SizeInBytes);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
-        if (vertexBytes > _vertexCapacity)
-        {
-            // Grow in steps so an edit that nudges the count does not reallocate every frame.
-            _vertexCapacity = NextCapacity(vertexBytes);
-            _gl.BufferData(BufferTargetARB.ArrayBuffer, _vertexCapacity, null, BufferUsageARB.DynamicDraw);
-        }
+        _vertexCapacity = Math.Max(_vertexCapacity, NextCapacity(vertexBytes));
+        _gl.BufferData(BufferTargetARB.ArrayBuffer, _vertexCapacity, null, BufferUsageARB.DynamicDraw);
 
         fixed (MeshVertex* source = vertices)
         {
@@ -73,11 +72,8 @@ public sealed class ChunkMeshBuffer : IDisposable
 
         var indexBytes = (nuint)(indices.Length * sizeof(uint));
         _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _ibo);
-        if (indexBytes > _indexCapacity)
-        {
-            _indexCapacity = NextCapacity(indexBytes);
-            _gl.BufferData(BufferTargetARB.ElementArrayBuffer, _indexCapacity, null, BufferUsageARB.DynamicDraw);
-        }
+        _indexCapacity = Math.Max(_indexCapacity, NextCapacity(indexBytes));
+        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, _indexCapacity, null, BufferUsageARB.DynamicDraw);
 
         fixed (uint* source = indices)
         {

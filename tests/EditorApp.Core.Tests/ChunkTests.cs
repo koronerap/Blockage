@@ -74,6 +74,53 @@ public class ChunkTests
         Assert.Equal(new Int3(20, 11, 30), max);
     }
 
+    /// <summary>
+    /// The bounds are kept between asks, so they have to follow every voxel that comes or goes —
+    /// checked against every voxel, over a run of random edits and a load.
+    /// </summary>
+    [Fact]
+    public void KeptBoundsFollowEveryEdit()
+    {
+        var random = new Random(9);
+        var chunk = new Chunk();
+        for (int step = 0; step < 400; step++)
+        {
+            int count = random.Next(1, 6);
+            for (int i = 0; i < count; i++)
+            {
+                chunk.Set(random.Next(Chunk.Size), random.Next(Chunk.Size), random.Next(Chunk.Size), (byte)(random.Next(3) == 0 ? 0 : random.Next(1, 9)));
+            }
+
+            if (step == 200)
+            {
+                byte[] indices = new byte[Chunk.VoxelCount];
+                indices[Chunk.LinearIndex(31, 0, 17)] = 4;
+                indices[Chunk.LinearIndex(3, 31, 0)] = 4;
+                chunk.LoadIndices(indices);
+            }
+
+            Int3 min = new(int.MaxValue, int.MaxValue, int.MaxValue);
+            Int3 max = new(int.MinValue, int.MinValue, int.MinValue);
+            for (int linear = 0; linear < Chunk.VoxelCount; linear++)
+            {
+                Int3 at = Chunk.FromLinearIndex(linear);
+                if (chunk.IsSolid(at.X, at.Y, at.Z))
+                {
+                    min = Int3.Min(min, at);
+                    max = Int3.Max(max, at);
+                }
+            }
+
+            bool any = chunk.TryGetLocalBounds(out Int3 keptMin, out Int3 keptMax);
+            Assert.Equal(!chunk.IsEmpty, any);
+            if (any)
+            {
+                Assert.Equal(min, keptMin);
+                Assert.Equal(max, keptMax);
+            }
+        }
+    }
+
     [Fact]
     public void NegativeWorldCoordinatesMapToTheCorrectChunk()
     {

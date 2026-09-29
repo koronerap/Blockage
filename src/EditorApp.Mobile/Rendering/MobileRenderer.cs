@@ -160,7 +160,9 @@ public sealed class MobileRenderer : IDisposable
                 continue;   // the object went away before its chunk came up
             }
 
-            EditMesher.BuildChunk(owner.Grid, key.Coord, _scratch);
+            // A quad a face, as ever: merged faces need their corners grown in the shader to meet
+            // without gaps (Shaders.GrownCorner on the desktop), and this head's shaders do not.
+            EditMesher.BuildChunk(owner.Grid, key.Coord, _scratch, merge: false);
             ApplyChunkMesh(key);
             rebuilt++;
         }

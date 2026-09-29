@@ -11,7 +11,33 @@ namespace EditorApp.Rendering;
 /// </summary>
 public static class Shaders
 {
-    public const string VoxelVertex = """
+    /// <summary>
+    /// For the shaders that draw voxel faces. Faces merged into quads of different sizes meet with
+    /// a corner of one partway along the other's edge, and the rasterizer, rounding the two edges
+    /// apart, can leave a pixel on that line that neither covers: a dot of whatever lies behind.
+    /// Each corner is pushed a fifth of a pixel out along its face, so that neighbours overlap there
+    /// instead. Which corner of its quad a vertex is comes from where it is in the buffer — every
+    /// quad's four come one after another — and which way is out from the face's table.
+    /// </summary>
+    private const string GrownCorner = """
+        uniform vec3 uCornerOut[24];
+
+        // How far a corner is pushed, in the object's own units: a fifth of a pixel of the view, a
+        // distance of one from the eye, for the object's voxel size — and as much more further off
+        // as the pixels there are wider. An orthographic view's pixels are one size everywhere.
+        uniform float uGrow;
+        uniform vec3 uEye;
+        uniform float uPerspective;
+
+        // A corner's push out along its face, in the object's own space.
+        vec3 cornerPush(vec3 world, int face)
+        {
+            float away = mix(1.0, length(world - uEye), uPerspective);
+            return uCornerOut[(face * 4) + (gl_VertexID & 3)] * (uGrow * away);
+        }
+        """;
+
+    public const string VoxelVertex = $$"""
         #version 330 core
         layout(location = 0) in vec3 aPosition;
         layout(location = 1) in vec4 aColor;
@@ -43,13 +69,17 @@ public static class Shaders
         // The palette entry the face was painted with, which says what it is made of.
         flat out int vPalette;
 
+        {{GrownCorner}}
+
         void main()
         {
             // The attribute carries the face and the palette entry both: face + 8 x entry.
             int faceAndEntry = int(aFace + 0.5);
             int face = faceAndEntry % 8;
             vPalette = faceAndEntry / 8;
-            vec4 world = uModel * vec4(aPosition, 1.0);
+            vec4 unmoved = uModel * vec4(aPosition, 1.0);
+            vec3 push = cornerPush(unmoved.xyz, face);
+            vec4 world = unmoved + vec4(mat3(uModel) * push, 0.0);
 
             // Rotated into the world, or turning an object would leave its shading behind. The voxel
             // size is a uniform scale, which normalising takes straight back out.
@@ -57,7 +87,7 @@ public static class Shaders
             vWorldPosition = world.xyz;
             vFaceShade = uFaceShade[face];
             vColor = aColor;
-            vLocal = aPosition;
+            vLocal = aPosition + push;
             vLocalNormal = uFaceNormal[face];
 
             gl_Position = uViewProjection * world;
@@ -374,18 +404,22 @@ public static class Shaders
     /// active — the rest left clear. Everything else goes in first as depth alone, so only what can
     /// be seen of an object is outlined, as Blender's is.
     /// </summary>
-    public const string MaskVertex = """
+    public const string MaskVertex = $$"""
         #version 330 core
         layout(location = 0) in vec3 aPosition;
+        layout(location = 2) in float aFace;
 
         uniform mat4 uViewProjection;
         uniform mat4 uModel;
 
         out vec3 vWorldPosition;
 
+        {{GrownCorner}}
+
         void main()
         {
-            vec4 world = uModel * vec4(aPosition, 1.0);
+            vec4 unmoved = uModel * vec4(aPosition, 1.0);
+            vec4 world = unmoved + vec4(mat3(uModel) * cornerPush(unmoved.xyz, int(aFace + 0.5) % 8), 0.0);
             vWorldPosition = world.xyz;
             gl_Position = uViewProjection * world;
         }
@@ -502,19 +536,23 @@ public static class Shaders
         }
         """;
 
-    /// <summary>The depth of everything as the sun sees it, for the shadows it casts: positions only.</summary>
-    public const string ShadowVertex = """
+    /// <summary>The depth of everything as the sun sees it, for the shadows it casts: positions, and the face each is on for its push.</summary>
+    public const string ShadowVertex = $$"""
         #version 330 core
         layout(location = 0) in vec3 aPosition;
+        layout(location = 2) in float aFace;
 
         uniform mat4 uLightViewProjection;
         uniform mat4 uModel;
 
         out vec3 vWorldPosition;
 
+        {{GrownCorner}}
+
         void main()
         {
-            vec4 world = uModel * vec4(aPosition, 1.0);
+            vec4 unmoved = uModel * vec4(aPosition, 1.0);
+            vec4 world = unmoved + vec4(mat3(uModel) * cornerPush(unmoved.xyz, int(aFace + 0.5) % 8), 0.0);
             vWorldPosition = world.xyz;
             gl_Position = uLightViewProjection * world;
         }

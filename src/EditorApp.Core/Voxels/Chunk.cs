@@ -39,6 +39,15 @@ public sealed class Chunk
     /// <summary>Number of solid voxels; a chunk that reaches zero can be dropped from the world.</summary>
     public int SolidCount { get; private set; }
 
+    /// <summary>
+    /// The solid voxels' bounds, worked out when first asked for after a voxel came or went. The
+    /// panels and the shadow map ask every frame, and a level of millions of voxels cannot be walked
+    /// that often. One object, so a reader on another thread sees both corners or neither.
+    /// </summary>
+    private LocalBounds? _bounds;
+
+    private sealed record LocalBounds(Int3 Min, Int3 Max);
+
     public bool IsEmpty => SolidCount == 0;
 
     /// <summary>Linear index for a local coordinate, X varying fastest.</summary>
@@ -224,6 +233,7 @@ public sealed class Chunk
 
         if (wasSolid != isSolid)
         {
+            _bounds = null;
             ref ulong word = ref _occupancy[linear >> 6];
             ulong bit = 1UL << (linear & 63);
             if (isSolid)
@@ -258,6 +268,7 @@ public sealed class Chunk
     private void RebuildOccupancy()
     {
         Array.Clear(_occupancy);
+        _bounds = null;
         _hasFaceOverride = null;
         _faceOverrides = null;
         SolidCount = 0;
@@ -275,33 +286,56 @@ public sealed class Chunk
     }
 
     /// <summary>
-    /// Tight local bounds of the solid voxels. Skips whole 64-voxel words at a time, so an empty or
-    /// sparse chunk costs almost nothing. Returns false when the chunk holds no voxels.
+    /// Tight local bounds of the solid voxels. Returns false when the chunk holds no voxels.
     /// </summary>
     public bool TryGetLocalBounds(out Int3 min, out Int3 max)
     {
-        min = new Int3(int.MaxValue, int.MaxValue, int.MaxValue);
-        max = new Int3(int.MinValue, int.MinValue, int.MinValue);
-
         if (IsEmpty)
         {
+            min = new Int3(int.MaxValue, int.MaxValue, int.MaxValue);
+            max = new Int3(int.MinValue, int.MinValue, int.MinValue);
             return false;
         }
 
+        LocalBounds bounds = _bounds ??= MeasureBounds();
+        (min, max) = (bounds.Min, bounds.Max);
+        return true;
+    }
+
+    /// <summary>
+    /// A word of occupancy at a time, never a voxel: a word is two rows along x of one y — z even in
+    /// its low half, odd in its high one — so the rows' bits together give x, the halves z, and the
+    /// first and last words y.
+    /// </summary>
+    private LocalBounds MeasureBounds()
+    {
+        uint xs = 0;
+        uint zs = 0;
+        int first = -1;
+        int last = -1;
         for (int word = 0; word < OccupancyWords; word++)
         {
             ulong bits = _occupancy[word];
-            while (bits != 0)
+            if (bits == 0)
             {
-                int bit = System.Numerics.BitOperations.TrailingZeroCount(bits);
-                bits &= bits - 1;
-
-                Int3 local = FromLinearIndex((word << 6) | bit);
-                min = Int3.Min(min, local);
-                max = Int3.Max(max, local);
+                continue;
             }
+
+            if (first < 0)
+            {
+                first = word;
+            }
+
+            last = word;
+            uint low = (uint)bits;
+            uint high = (uint)(bits >> 32);
+            xs |= low | high;
+            int z = (word & 15) * 2;
+            zs |= (low != 0 ? 1u << z : 0u) | (high != 0 ? 1u << (z + 1) : 0u);
         }
 
-        return true;
+        return new LocalBounds(
+            new Int3(System.Numerics.BitOperations.TrailingZeroCount(xs), first >> 4, System.Numerics.BitOperations.TrailingZeroCount(zs)),
+            new Int3(31 - System.Numerics.BitOperations.LeadingZeroCount(xs), last >> 4, 31 - System.Numerics.BitOperations.LeadingZeroCount(zs)));
     }
 }

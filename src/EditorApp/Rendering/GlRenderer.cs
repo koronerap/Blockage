@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.ExceptionServices;
 using EditorApp.Core.Meshing;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
@@ -10,6 +12,11 @@ namespace EditorApp.Rendering;
 /// <summary>
 /// Draws the scene: one buffer per chunk per object, dirty chunks remeshed on the CPU and
 /// re-uploaded, plus a line pass for the grid, the selection and the gizmos.
+///
+/// A few dirty chunks — an edit being made — are meshed there and then, so the change shows in the
+/// frame it is made. Many at once — a level opened, a large paste, a palette edit — go to worker
+/// threads, each from its own copy of the voxels, and come back to be uploaded a budget's worth a
+/// frame (Fullreleaseplan 9.1).
 ///
 /// Vertices stay in their object's local space and the object's transform arrives as a uniform, so
 /// moving or rotating an object costs one matrix rather than a remesh.
@@ -30,6 +37,29 @@ public sealed class GlRenderer : IDisposable
     // repeatedly before it is reached is still only rebuilt once.
     private readonly HashSet<ChunkKey> _pending = new();
     private readonly Queue<ChunkKey> _pendingOrder = new();
+
+    /// <summary>A chunk meshed on a worker, for the main thread to upload — or the reason it could not be.</summary>
+    private sealed record MeshedChunk(ChunkKey Key, int Generation, MeshBuilder Mesh, ChunkNeighbourhood Copy, Exception? Failure);
+
+    /// <summary>
+    /// How many times each chunk has been dirtied. A mesh a worker made for an earlier time is out of
+    /// date when it arrives, and is thrown away: the chunk is already waiting to be meshed again.
+    /// </summary>
+    private readonly Dictionary<ChunkKey, int> _generations = new();
+
+    private readonly ConcurrentQueue<MeshedChunk> _meshed = new();
+    private readonly ConcurrentBag<MeshBuilder> _spareMeshes = new();
+    private readonly ConcurrentBag<ChunkNeighbourhood> _spareCopies = new();
+
+    /// <summary>Chunks handed to the workers and not yet taken back.</summary>
+    private int _onWorkers;
+
+    /// <summary>Enough chunks on the workers at once to keep every core busy, few enough that their copies stay small.</summary>
+    private static readonly int WorkerChunks = Math.Max(2, Environment.ProcessorCount * 2);
+
+    /// <summary>Up to this many chunks waiting are meshed in the frame, the way an edit wants; more go to the workers.</summary>
+    private const int MeshedInFrame = 8;
+
     private readonly ShaderProgram _voxelShader;
     private readonly ShaderProgram _lineShader;
     private readonly ShaderProgram _backgroundShader;
@@ -109,8 +139,15 @@ public sealed class GlRenderer : IDisposable
     /// </summary>
     public double RemeshBudgetMilliseconds { get; set; } = 6.0;
 
-    /// <summary>Chunks still waiting to be rebuilt.</summary>
-    public int PendingChunks => _pendingOrder.Count;
+    /// <summary>
+    /// How much of what the workers have meshed goes to the GPU in a frame, besides the first chunk.
+    /// Counted in bytes rather than time: the first GL call of a frame waits for the GPU to catch up
+    /// with the last one, and a time budget would spend itself on that wait.
+    /// </summary>
+    public int UploadBudgetBytes { get; set; } = 12 * 1024 * 1024;
+
+    /// <summary>Chunks still waiting to be rebuilt, on the workers or for them.</summary>
+    public int PendingChunks => _pendingOrder.Count + _onWorkers;
 
     public double LastMeshMilliseconds { get; private set; }
 
@@ -159,6 +196,60 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.Use();
         _voxelShader.SetVector3Array("uFaceNormal", FaceInfo.AllNormals);
         _voxelShader.SetFloatArray("uFaceShade", FaceInfo.AllShades);
+        foreach (ShaderProgram program in new[] { _voxelShader, _maskShader, _shadowShader })
+        {
+            program.Use();
+            program.SetVector3Array("uCornerOut", CornerOut);
+        }
+    }
+
+    /// <summary>
+    /// For each face and each of its four corners, which way the corner lies from the middle of its
+    /// quad: a unit step along each of the face's two axes. The shaders push corners out along it.
+    /// </summary>
+    private static readonly Vector3[] CornerOut = BuildCornerOut();
+
+    private static Vector3[] BuildCornerOut()
+    {
+        var table = new Vector3[FaceInfo.Count * 4];
+        for (int f = 0; f < FaceInfo.Count; f++)
+        {
+            int axis = FaceInfo.Axis((Face)f);
+            for (int k = 0; k < 4; k++)
+            {
+                // The corner of the unit cube, from its middle: out along the face's two axes, and
+                // not at all along its normal.
+                Int3 at = FaceInfo.Corner((Face)f, k);
+                var step = new Vector3((at.X * 2) - 1, (at.Y * 2) - 1, (at.Z * 2) - 1);
+                table[(f * 4) + k] = axis switch
+                {
+                    0 => step with { X = 0f },
+                    1 => step with { Y = 0f },
+                    _ => step with { Z = 0f },
+                };
+            }
+        }
+
+        return table;
+    }
+
+    /// <summary>How wide a pixel of the view being drawn is, a distance of one from the eye; where the eye is, and whether it sees in perspective.</summary>
+    private float _pixel;
+    private Vector3 _eye;
+    private float _perspective;
+
+    /// <summary>Puts an object's transform in a voxel program, and how far its corners are pushed for it (Shaders.GrownCorner).</summary>
+    private static void SetModel(ShaderProgram program, VoxelObject o, float pixel)
+    {
+        Matrix4x4 model = o.Transform.ToMatrix();
+        program.SetMatrix4("uModel", model);
+        program.SetFloat("uGrow", 0.2f * pixel / MathF.Max(new Vector3(model.M11, model.M12, model.M13).Length(), 1e-6f));
+    }
+
+    private void SetView(ShaderProgram program)
+    {
+        program.SetVector3("uEye", _eye);
+        program.SetFloat("uPerspective", _perspective);
     }
 
     /// <summary>
@@ -180,6 +271,7 @@ public sealed class GlRenderer : IDisposable
             foreach (ChunkCoord coord in shown.ConsumeDirtyChunks())
             {
                 var key = new ChunkKey(shown.Serial, coord);
+                _generations[key] = _generations.GetValueOrDefault(key) + 1;
                 if (_pending.Add(key))
                 {
                     _pendingOrder.Enqueue(key);
@@ -193,18 +285,45 @@ public sealed class GlRenderer : IDisposable
         LastMeshMilliseconds = 0;
         LastUploadMilliseconds = 0;
 
-        if (_pendingOrder.Count == 0)
-        {
-            return;
-        }
-
-        var frameClock = Stopwatch.StartNew();
         var stepClock = new Stopwatch();
 
+        // What the workers have finished first, onto the GPU: spend the budget, but never skip a
+        // frame's worth of work entirely. The time counts from the first upload: the first GL call
+        // of a frame is where it waits for the GPU to catch up, and that wait is not the uploads'.
+        long uploaded = 0;
+        var uploadClock = new Stopwatch();
+        while ((LastRemeshedChunks == 0 || (uploaded < UploadBudgetBytes && uploadClock.Elapsed.TotalMilliseconds < RemeshBudgetMilliseconds))
+            && _meshed.TryDequeue(out MeshedChunk? done))
+        {
+            _onWorkers--;
+            _spareCopies.Add(done.Copy);
+            if (done.Failure is not null)
+            {
+                ExceptionDispatchInfo.Capture(done.Failure).Throw();
+            }
+
+            if (_grids.ContainsKey(done.Key.MeshId) && _generations.GetValueOrDefault(done.Key) == done.Generation)
+            {
+                stepClock.Restart();
+                ApplyChunkMesh(done.Key, done.Mesh);
+                _meshRevision++;
+                LastUploadMilliseconds += stepClock.Elapsed.TotalMilliseconds;
+                LastRemeshedChunks++;
+                uploaded += (done.Mesh.VertexCount * MeshVertex.SizeInBytes) + (done.Mesh.IndexCount * sizeof(uint));
+                uploadClock.Start();
+            }
+
+            _spareMeshes.Add(done.Mesh);
+        }
+
+        // A few chunks, an edit being made, are all meshed here and now, so the change shows whole in
+        // the frame it is made. More are copied out for the workers, as many as they have room for
+        // within the budget, timed on its own for the same reason.
+        bool inFrame = _pendingOrder.Count <= MeshedInFrame;
+        var handClock = Stopwatch.StartNew();
         while (_pendingOrder.Count > 0)
         {
-            // Spend the budget, but never skip a frame's worth of work entirely.
-            if (LastRemeshedChunks > 0 && frameClock.Elapsed.TotalMilliseconds >= RemeshBudgetMilliseconds)
+            if (!inFrame && (_onWorkers >= WorkerChunks || handClock.Elapsed.TotalMilliseconds >= RemeshBudgetMilliseconds))
             {
                 break;
             }
@@ -218,16 +337,58 @@ public sealed class GlRenderer : IDisposable
             }
 
             stepClock.Restart();
+            if (!inFrame)
+            {
+                HandToWorker(key, grid);
+                LastMeshMilliseconds += stepClock.Elapsed.TotalMilliseconds;
+                continue;
+            }
+
             EditMesher.BuildChunk(grid, key.Coord, _scratch);
             LastMeshMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             stepClock.Restart();
-            ApplyChunkMesh(key);
+            ApplyChunkMesh(key, _scratch);
             _meshRevision++;
             LastUploadMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             LastRemeshedChunks++;
         }
+    }
+
+    /// <summary>
+    /// Copies what meshing a chunk reads, here on the main thread where the voxels are edited, and
+    /// has a worker mesh it from the copy.
+    /// </summary>
+    private void HandToWorker(ChunkKey key, VoxelWorld grid)
+    {
+        if (!_spareCopies.TryTake(out ChunkNeighbourhood? copy))
+        {
+            copy = new ChunkNeighbourhood();
+        }
+
+        copy.CopyFrom(grid, key.Coord);
+        int generation = _generations.GetValueOrDefault(key);
+        _onWorkers++;
+        Task.Run(() =>
+        {
+            if (!_spareMeshes.TryTake(out MeshBuilder? mesh))
+            {
+                mesh = new MeshBuilder();
+            }
+
+            Exception? failure = null;
+            try
+            {
+                EditMesher.BuildChunk(copy, mesh);
+            }
+            catch (Exception e)
+            {
+                failure = e;
+            }
+
+            _meshed.Enqueue(new MeshedChunk(key, generation, mesh, copy, failure));
+        });
     }
 
     /// <summary>Lets go of everything drawn for a grid nothing shows any more.</summary>
@@ -239,6 +400,14 @@ public sealed class GlRenderer : IDisposable
             if (!_grids.ContainsKey(id))
             {
                 (stale ??= []).Add(id);
+            }
+        }
+
+        if (stale is not null)
+        {
+            foreach (ChunkKey key in _generations.Keys.Where(key => !_grids.ContainsKey(key.MeshId)).ToList())
+            {
+                _generations.Remove(key);
             }
         }
 
@@ -303,7 +472,7 @@ public sealed class GlRenderer : IDisposable
     }
 
 
-    private void ApplyChunkMesh(ChunkKey key)
+    private void ApplyChunkMesh(ChunkKey key, MeshBuilder mesh)
     {
         if (!_buffers.TryGetValue(key.MeshId, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
         {
@@ -311,7 +480,7 @@ public sealed class GlRenderer : IDisposable
             _buffers.Add(key.MeshId, chunks);
         }
 
-        if (_scratch.IsEmpty)
+        if (mesh.IsEmpty)
         {
             if (chunks.Remove(key.Coord, out ChunkMeshBuffer? removed))
             {
@@ -331,7 +500,7 @@ public sealed class GlRenderer : IDisposable
         // Tracked incrementally: recounting every buffer each frame is wasted work once a level
         // reaches thousands of chunks.
         TotalVertices -= buffer.VertexCount;
-        buffer.Upload(_scratch.Vertices, _scratch.Indices);
+        buffer.Upload(mesh.Vertices, mesh.Indices);
         TotalVertices += buffer.VertexCount;
     }
 
@@ -450,6 +619,10 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.SetVector3("uCameraPosition", camera.Position);
         _voxelShader.SetInt("uPass", 2);
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
+        _pixel = 2f / (camera.ProjectionMatrix(viewportSize.X / MathF.Max(viewportSize.Y, 1f)).M22 * height);
+        _eye = camera.Position;
+        _perspective = camera.Orthographic ? 0f : 1f;
+        SetView(_voxelShader);
         _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : SolidLighting == SolidLighting.Flat ? 2 : 1);
         UploadLights(scene);
         _voxelShader.SetFloat("uFocusStrength", FocusHighlight ? 1f : 0f);
@@ -590,17 +763,20 @@ public sealed class GlRenderer : IDisposable
 
         _maskShader.Use();
         _maskShader.SetMatrix4("uViewProjection", viewProjection);
+        SetView(_maskShader);
         SetClip(_maskShader);
 
-        // What stands in front of an outlined object hides its outline there — unless X-Ray sees through.
+        // What stands in front of an outlined object hides its outline there — unless X-Ray sees
+        // through. The outlined ones hide each other as they are drawn into the mask, so only the rest
+        // go in first: a level's one large object, selected, is drawn once here rather than twice.
         if (XRay <= 0f)
         {
             _gl.ColorMask(false, false, false, false);
             foreach (VoxelObject o in scene.Objects)
             {
-                if (o.Visible && _buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+                if (o.Visible && !IsOutlined(o.Id) && _buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
                 {
-                    _maskShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+                    SetModel(_maskShader, o, _pixel);
                     DrawObjectChunks(o, chunks, frustum, count: false);
                 }
             }
@@ -617,7 +793,7 @@ public sealed class GlRenderer : IDisposable
             }
 
             _maskShader.SetFloat("uCode", (int)kind / 4f);
-            _maskShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            SetModel(_maskShader, o, _pixel);
             DrawObjectChunks(o, chunks, frustum, count: false);
         }
 
@@ -650,6 +826,19 @@ public sealed class GlRenderer : IDisposable
         _gl.DepthMask(true);
         _gl.Enable(EnableCap.DepthTest);
         _gl.BindTexture(TextureTarget.Texture2D, 0);
+    }
+
+    private bool IsOutlined(int id)
+    {
+        foreach ((int outlined, _) in Outlines)
+        {
+            if (outlined == id)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static VoxelObject? FindShown(VoxelScene scene, int id) =>
@@ -766,6 +955,8 @@ public sealed class GlRenderer : IDisposable
 
         _shadowShader.Use();
         _shadowShader.SetMatrix4("uLightViewProjection", lightViewProjection);
+        _shadowShader.SetFloat("uPerspective", 0f);
+        float texel = radius * 2f / ShadowSize;
         SetClip(_shadowShader);
         foreach (VoxelObject o in scene.Objects)
         {
@@ -774,7 +965,7 @@ public sealed class GlRenderer : IDisposable
                 continue;
             }
 
-            _shadowShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            SetModel(_shadowShader, o, texel);
             foreach (ChunkMeshBuffer buffer in chunks.Values)
             {
                 if (!buffer.IsEmpty)
@@ -894,7 +1085,7 @@ public sealed class GlRenderer : IDisposable
                 continue;
             }
 
-            _voxelShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            SetModel(_voxelShader, o, _pixel);
             _voxelShader.SetFloat("uFocus", _focusAmount.GetValueOrDefault(o.Id, scene.IsSelected(o.Id) ? 1f : 0f));
             _voxelShader.SetVector3("uObjectColor", ViewportSettings.ObjectColour(o.Id));
             DrawObjectChunks(o, chunks, frustum, count);

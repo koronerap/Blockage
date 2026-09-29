@@ -26,6 +26,34 @@ public static class StressCheck
 
         Console.WriteLine();
 
+        // The level size aimed at (Fullreleaseplan 9.1): 512 x 128 x 512, hills and caves, surfaces
+        // at every height — the meshing worst case a real level comes near.
+        RunCase("Level 512x128x512, hills and caves", () =>
+        {
+            var world = new VoxelWorld();
+            for (int x = 0; x < 512; x++)
+            {
+                for (int z = 0; z < 512; z++)
+                {
+                    int top = 24 + (int)(90f * EditorApp.Core.Editing.Noise.Fractal2(x / 96f, z / 96f, 7, 4, 0.5f));
+                    for (int y = 0; y < Math.Min(top, 128); y++)
+                    {
+                        // Caves where the noise runs high, never at the surface.
+                        if (y < top - 4 && EditorApp.Core.Editing.Noise.Fractal3(x / 24f, y / 16f, z / 24f, 11, 3, 0.5f) > 0.62f)
+                        {
+                            continue;
+                        }
+
+                        world.SetVoxel(x, y, z, (byte)(y >= top - 1 ? 78 : y >= top - 4 ? 96 : 8));
+                    }
+                }
+            }
+
+            return world;
+        });
+
+        Console.WriteLine();
+
         // A solid block is the memory worst case: every chunk fully populated.
         int side = Math.Max(halfExtent, 32);
         RunCase($"Solid {side}x{side}x{side} block", () =>
@@ -75,6 +103,19 @@ public static class StressCheck
         double meshMs = clock.Elapsed.TotalMilliseconds;
         double perChunk = world.Chunks.Count > 0 ? meshMs / world.Chunks.Count : 0;
         Console.WriteLine($"  {meshMs,12:0} ms edit-meshing every chunk ({perChunk:0.00} ms per chunk, {vertices:N0} vertices)");
+
+        // The same with a quad for every face, what merging is weighed against.
+        clock.Restart();
+        long faceVertices = 0;
+        foreach (ChunkCoord coord in world.Chunks.Keys)
+        {
+            EditMesher.BuildChunk(world, coord, builder, merge: false);
+            faceVertices += builder.VertexCount;
+        }
+
+        meshMs = clock.Elapsed.TotalMilliseconds;
+        perChunk = world.Chunks.Count > 0 ? meshMs / world.Chunks.Count : 0;
+        Console.WriteLine($"  {meshMs,12:0} ms with a quad a face ({perChunk:0.00} ms per chunk, {faceVertices:N0} vertices)");
 
         clock.Restart();
         ExportMesh greedy = GreedyMesher.Build(world);

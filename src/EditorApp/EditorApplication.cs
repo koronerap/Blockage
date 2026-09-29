@@ -177,6 +177,16 @@ public sealed class EditorApplication : IDisposable
     private const float BaseLineThickness = 0.0035f;
 
     private int _frameCount;
+
+    /// <summary>
+    /// For a smoke run's report (Fullreleaseplan 9.1): how long until the last chunk was meshed, and
+    /// how long each frame took once it was — what says whether a level of a size is workable.
+    /// </summary>
+    private readonly System.Diagnostics.Stopwatch _smokeClock = new();
+    private double _meshedAtMs = -1;
+    private double _lastFrameAtMs;
+    private double _settledMs;
+    private int _settledFrames;
     private float _lastDelta = 1f / 60f;
 
     private readonly string? _screenshotPath;
@@ -427,7 +437,8 @@ public sealed class EditorApplication : IDisposable
         _camera.LookSensitivity = BaseLookSensitivity * p.OrbitSpeed;
         _camera.MoveSpeed = BaseMoveSpeed * p.FlySpeed;
 
-        _window.VSync = p.VSync;
+        // A smoke run measures frames, so it does not wait for the screen.
+        _window.VSync = p.VSync && _smokeFrames <= 0;
         foreach (LevelDocument level in _levels)
         {
             ApplyPreferencesTo(level);
@@ -1837,6 +1848,23 @@ public sealed class EditorApplication : IDisposable
         _imgui.Render();
 
         _frameCount++;
+        if (_smokeFrames > 0)
+        {
+            double now = _smokeClock.Elapsed.TotalMilliseconds;
+            _smokeClock.Start();
+            if (_meshedAtMs >= 0)
+            {
+                _settledMs += now - _lastFrameAtMs;
+                _settledFrames++;
+            }
+            else if (_frameCount > 1 && _renderer.PendingChunks == 0)
+            {
+                _meshedAtMs = now;
+            }
+
+            _lastFrameAtMs = now;
+        }
+
         if (_smokeFrames > 0 && _frameCount >= _smokeFrames)
         {
             if (_screenshotPath is not null)
@@ -1846,6 +1874,16 @@ public sealed class EditorApplication : IDisposable
 
             Console.WriteLine($"Smoke run complete: {_frameCount} frames, "
                 + $"{_renderer.TotalVertices:N0} vertices, {_renderer.DrawnTriangles:N0} triangles drawn.");
+            if (_meshedAtMs >= 0)
+            {
+                Console.WriteLine($"  every chunk meshed after {_meshedAtMs:0} ms"
+                    + (_settledFrames > 0 ? $"; then {_settledMs / _settledFrames:0.0} ms a frame over {_settledFrames} frames" : string.Empty));
+            }
+            else
+            {
+                Console.WriteLine($"  {_renderer.PendingChunks:N0} chunks still waiting to be meshed");
+            }
+
             _closeRequested = true;
         }
 
