@@ -1851,6 +1851,7 @@ public sealed class EditorApplication : IDisposable
             }),
             _preferences.RecentCommands);
         ParentMenu.DrawPopup(_session);
+        ColourAdjustWindow.Draw(_session);
         AddMenu.DrawPopup();
         ViewportMenu.Draw(new ViewportMenuActions { Session = _session, Run = Run, Viewport = View });
 

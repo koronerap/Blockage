@@ -204,6 +204,27 @@ public static class ObjectMenu
         }
 
         bool any = session.InEditMode || session.SelectedObjects.Any(o => !o.IsEmpty);
+        if (ImGui.BeginMenu("Colours", any))
+        {
+            if (ImGui.MenuItem($"Replace {session.ActiveColorIndex} with {session.SecondaryColorIndex}"))
+            {
+                int changed = session.ReplaceColour(session.ActiveColorIndex, session.SecondaryColorIndex);
+                ReportLog.Shared.Post(changed > 0 ? $"Replaced the colour on {changed:N0} voxels." : "Nothing is that colour.", changed > 0 ? ReportKind.Info : ReportKind.Warning);
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("The colour in hand, everywhere in what is selected, becomes the second colour.\nSwap the two in the Paint tool's header.");
+            }
+
+            if (ImGui.MenuItem("Adjust Colours..."))
+            {
+                ColourAdjustWindow.Open();
+            }
+
+            ImGui.EndMenu();
+        }
+
         if (ImGui.BeginMenu("Volume", any))
         {
             if (ImGui.MenuItem($"Hollow  (walls {session.HollowThickness} thick)"))

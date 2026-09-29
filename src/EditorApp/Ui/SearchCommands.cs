@@ -173,6 +173,17 @@ public static class SearchCommands
         Toggle(commands, "view.gizmo.tools", "Tool gizmos", "Gizmos", () => viewport.ToolGizmos = !viewport.ToolGizmos, "arrow transform extrude");
         Toggle(commands, "view.gizmo.lights", "Light aim lines", "Gizmos", () => viewport.LightGizmos = !viewport.LightGizmos);
 
+        // ---- Object: colours
+        commands.Add(new("object.colour.replace", "Replace colour", "Object", () => session.ReplaceColour(session.ActiveColorIndex, session.SecondaryColorIndex))
+        {
+            Keywords = "swap recolour substitute",
+            Problem = () => NoVoxels(session) is null || session.InEditMode ? null : NoVoxels(session),
+        });
+        commands.Add(new("object.colour.adjust", "Adjust colours", "Object", ColourAdjustWindow.Open)
+        {
+            Keywords = "hue saturation value brightness shift tint",
+        });
+
         // ---- Object: booleans and volumes
         foreach ((BooleanOperation operation, string name, string keywords) in new[]
         {
