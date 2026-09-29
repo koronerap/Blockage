@@ -11,7 +11,7 @@ export clean meshes for a game engine.
 It grew out of the level and prop pipeline for the game *Mimic Busters*, and writes that game's
 `.character` and `.weapons` files as well as OBJ and glTF.
 
-> **Status: early — 0.7 in development.** In daily use, but expect rough edges, and file-format
+> **Status: early — 0.7.** In daily use, but expect rough edges, and file-format
 > changes before 1.0. The downloads below are still the 0.1.0 release.
 
 ## Download
@@ -58,6 +58,12 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
   viewport while the view is still. Cameras (perspective, orthographic or isometric) are kept with
   the level; look through one with Numpad 0. Turntables can be saved as GIF, PNGs or MP4 (with
   ffmpeg), and sprite sheets from any number of angles.
+- **See and work.** Ambient occlusion and sun shadows in the viewport; a section box to see inside
+  (Alt+B); reference images on planes to model over; a quad view of top, front and right beside the
+  perspective (Ctrl+Alt+Q); a walk through the level at a player's size, the scale yours to set; an
+  undo history to click back to any step; pie menus for shading (Z) and the view (`), and Quick
+  Favorites (Shift+Q); several levels open in tabs, with copy and paste between them; a measure tool,
+  and notes left in the level for whoever works on it next.
 - **Add with Shift+A.** Cubes, spheres, cylinders, cones, stairs, arches, voxel lettering and more;
   ready-made props — crates, barrels, tables, trees — and lights, set down on the surface under the
   cursor and sized afterwards in an *Adjust* panel; cameras, where the view stands.
@@ -85,15 +91,18 @@ changes them.
 | Orbit, pan, zoom | middle mouse; Shift + middle; the wheel |
 | Frame | Home for the level, F for the object |
 | Select | W, then click; drag for a box. Shift adds, Ctrl takes away · A all · Alt+A none · Ctrl+I invert |
-| Tools | G move · R rotate · E extrude · B paint · S sculpt · Ctrl+R loop cut · V view |
+| Tools | G move · R rotate · E extrude · B paint · S sculpt · Ctrl+R loop cut · Shift+M measure · V view |
 | Edit Mode | Tab into the active object and out; P separates the chosen voxels |
 | Collections, copies | M moves the selection to a collection · Alt+D duplicates linked |
 | Add | Shift+A |
+| View | Z shading pie · ` view pie · Ctrl+Alt+Q quad view · Alt+B section box · Shift+` walk |
+| Levels | Ctrl+Tab next tab · Ctrl+Shift+Tab the one before · Ctrl+W close |
+| Quick Favorites | Shift+Q |
 | Render | F12 renders an image · Numpad 0 looks through the render camera · Ctrl+Alt+Numpad 0 moves it to the view |
 | Search for any command | F3 |
 | Context menu | right click |
 | Snap | hold Shift while dragging; Shift+Tab keeps it on |
-| Undo, redo | Ctrl+Z, Ctrl+Shift+Z |
+| Undo, redo | Ctrl+Z, Ctrl+Shift+Z · Ctrl+Alt+Z the history |
 
 ## Building from source
 
