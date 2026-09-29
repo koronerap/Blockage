@@ -2063,6 +2063,7 @@ public sealed class EditorApplication : IDisposable
         _outputsWindow?.Draw(_session, RenderImageCamera);
         RenderOutputsWindow.DrawDialogs();
         _library?.Draw(_session);
+        ScatterWindow.Draw(_session);
         AppendDialog.Draw(_session);
         PlaceLibraryProps();
         ViewportShotBrowser.Draw();

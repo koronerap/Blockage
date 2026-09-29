@@ -585,6 +585,16 @@ public static class ObjectMenu
 
         DrawArrange(session);
 
+        if (ImGui.MenuItem("Scatter..."))
+        {
+            ScatterWindow.Open();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Copies of the selected objects set down at random on the active one: trees, rocks and grass on the ground.");
+        }
+
         IPlaceable? active = (IPlaceable?)session.SelectedLight ?? scene.Focus;
         if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename), false, active is not null) && active is not null)
         {
