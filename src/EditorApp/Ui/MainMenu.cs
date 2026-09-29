@@ -380,6 +380,13 @@ public static class MainMenu
 
         ImGui.Separator();
 
+        if (ImGui.MenuItem("Quad View", Shortcut.Of(EditorAction.ToggleQuadView), view.Viewport.Quad))
+        {
+            view.Viewport.Quad = !view.Viewport.Quad;
+        }
+
+        ImGui.Separator();
+
         if (ImGui.MenuItem("Camera", Shortcut.Of(EditorAction.ViewCamera)))
         {
             view.ViewCamera();

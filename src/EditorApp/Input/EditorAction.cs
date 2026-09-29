@@ -84,6 +84,7 @@ public enum EditorAction
     ToggleGizmos,
     ToggleXRay,
     ToggleSection,
+    ToggleQuadView,
     ToggleWireframe,
 
     // Render
@@ -184,6 +185,7 @@ public static class EditorActions
         new(EditorAction.ToggleGizmos, "view.gizmos", "Gizmos on or off", View),
         new(EditorAction.ToggleXRay, "view.xray", "X-Ray", View),
         new(EditorAction.ToggleSection, "view.section", "Section box", View),
+        new(EditorAction.ToggleQuadView, "view.quad", "Quad view", View),
         new(EditorAction.ToggleWireframe, "view.wireframe", "Wireframe, and back", View),
 
         new(EditorAction.RenderImage, "view.render", "Render an image of the level", View),

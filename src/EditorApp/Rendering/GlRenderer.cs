@@ -384,21 +384,35 @@ public sealed class GlRenderer : IDisposable
         }
     }
 
-    public void Render(VoxelScene scene, FlyCamera camera, Vector2 framebufferSize, Vector2 viewportPosition, Vector2 viewportSize)
+    /// <param name="clearAll">
+    /// Whether the whole framebuffer is cleared first — the first view of a frame. The quad view's
+    /// other views clear only their own part, or they would wipe out the ones drawn before them.
+    /// </param>
+    public void Render(VoxelScene scene, FlyCamera camera, Vector2 framebufferSize, Vector2 viewportPosition, Vector2 viewportSize, bool clearAll = true)
     {
         uint width = (uint)MathF.Max(viewportSize.X, 1f);
         uint height = (uint)MathF.Max(viewportSize.Y, 1f);
 
-        // Clear the whole framebuffer first: the chrome paints over the rest, but anything left
-        // undefined outside the viewport would flicker with whatever was in the buffer before.
-        _gl.Viewport(0, 0, (uint)MathF.Max(framebufferSize.X, 1f), (uint)MathF.Max(framebufferSize.Y, 1f));
-
-        Vector4 background = BackgroundColor.ToVector4();
-        _gl.ClearColor(background.X, background.Y, background.Z, 1f);
-        _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
         // GL counts rows from the bottom; the UI counts from the top.
         int glY = (int)(framebufferSize.Y - (viewportPosition.Y + viewportSize.Y));
+        Vector4 background = BackgroundColor.ToVector4();
+        _gl.ClearColor(background.X, background.Y, background.Z, 1f);
+
+        if (clearAll)
+        {
+            // Clear the whole framebuffer first: the chrome paints over the rest, but anything left
+            // undefined outside the viewport would flicker with whatever was in the buffer before.
+            _gl.Viewport(0, 0, (uint)MathF.Max(framebufferSize.X, 1f), (uint)MathF.Max(framebufferSize.Y, 1f));
+            _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+        }
+        else
+        {
+            _gl.Enable(EnableCap.ScissorTest);
+            _gl.Scissor((int)viewportPosition.X, glY, width, height);
+            _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            _gl.Disable(EnableCap.ScissorTest);
+        }
+
         _gl.Viewport((int)viewportPosition.X, glY, width, height);
 
         DrawBackgroundGradient();

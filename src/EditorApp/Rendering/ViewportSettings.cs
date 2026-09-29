@@ -116,6 +116,9 @@ public sealed class ViewportSettings
     [JsonIgnore]
     public EditorApp.Core.Scene.ClipBox? Clip { get; set; }
 
+    /// <summary>Blender's quad view (Fullreleaseplan 7.4): top, front and right beside the view itself.</summary>
+    public bool Quad { get; set; }
+
     /// <summary>How solid a face stays with X-Ray on.</summary>
     public float XRayAlpha
     {

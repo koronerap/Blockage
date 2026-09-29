@@ -42,6 +42,14 @@ public sealed class EditorApplication : IDisposable
     /// <summary>The space the shell leaves for the 3D view, in logical window pixels.</summary>
     private ViewportRect _viewport = new(Vector2.Zero, Vector2.One);
 
+    /// <summary>The whole of the viewport's area; <see cref="_viewport"/> is the part of it the view works in — all of it, but for the quad view.</summary>
+    private ViewportRect _viewportArea = new(Vector2.Zero, Vector2.One);
+
+    /// <summary>The quad view's top, front and right views: looking along the axes at what the view looks at.</summary>
+    private readonly FlyCamera[] _quadCameras = [new(), new(), new()];
+
+    private static readonly (AlignedView View, string Name)[] QuadViews = [(AlignedView.Top, "Top"), (AlignedView.Front, "Front"), (AlignedView.Right, "Right")];
+
     private GL? _gl;
     private IInputContext? _input;
     private ImGuiController? _imgui;
@@ -1375,6 +1383,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToggleMeasurements: View.Measurements = !View.Measurements; break;
             case EditorAction.ToggleXRay: View.XRay = !View.XRay; break;
             case EditorAction.ToggleSection: ToggleSection(); break;
+            case EditorAction.ToggleQuadView: View.Quad = !View.Quad; break;
             case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
             case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
 
@@ -1697,6 +1706,11 @@ public sealed class EditorApplication : IDisposable
             _viewport.Position * scale,
             _viewport.Size * scale);
 
+        if (View.Quad)
+        {
+            RenderQuadPanes(framebuffer, scale);
+        }
+
         if (shot is not null)
         {
             CaptureViewport(shot, _viewport.Position * scale, _viewport.Size * scale, framebuffer);
@@ -2006,7 +2020,10 @@ public sealed class EditorApplication : IDisposable
             Preferences = _preferences,
         };
 
-        _viewport = _shell.Draw(context);
+        _viewportArea = _shell.Draw(context);
+
+        // The quad view: the view itself works in the top right quarter; the other three are drawn round it.
+        _viewport = View.Quad ? QuadPane(_viewportArea, 1) : _viewportArea;
         ShortcutSheet.Draw(ImGui.GetIO().DisplaySize);
 
 
@@ -2031,6 +2048,7 @@ public sealed class EditorApplication : IDisposable
         DrawSelectBox();
         DrawEmptyHint();
         DrawCameraFrame();
+        DrawQuadLabels();
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -2144,6 +2162,72 @@ public sealed class EditorApplication : IDisposable
         }
 
         View.Clip = SectionViewport.Default(_session.Scene);
+    }
+
+    /// <summary>
+    /// One quarter of the viewport's area: 0 top left, 1 top right, 2 bottom left, 3 bottom right,
+    /// a pixel short of the middle so a line shows between them.
+    /// </summary>
+    private static ViewportRect QuadPane(ViewportRect area, int pane)
+    {
+        Vector2 half = new(MathF.Floor(area.Size.X * 0.5f), MathF.Floor(area.Size.Y * 0.5f));
+        Vector2 at = area.Position + new Vector2(pane % 2 == 1 ? half.X + 1f : 0f, pane / 2 == 1 ? half.Y + 1f : 0f);
+        Vector2 size = new(pane % 2 == 1 ? area.Size.X - half.X - 1f : half.X, pane / 2 == 1 ? area.Size.Y - half.Y - 1f : half.Y);
+        return new ViewportRect(at, Vector2.Max(size, Vector2.One));
+    }
+
+    /// <summary>
+    /// The quad view's top, front and right views, each looking straight along its axis at the point
+    /// the view looks at, near enough to see the whole level: the view itself is drawn already.
+    /// </summary>
+    private void RenderQuadPanes(Vector2 framebuffer, Vector2 scale)
+    {
+        (Vector3 min, Vector3 max) = SectionViewport.Bounds(_session.Scene);
+        float span = MathF.Max((max - min).Length(), 8f);
+        uint rendered = _renderer!.RenderedImage;
+        _renderer.RenderedImage = 0;
+
+        int[] panes = [0, 2, 3];
+        for (int i = 0; i < QuadViews.Length; i++)
+        {
+            FlyCamera pane = _quadCameras[i];
+            pane.FieldOfView = _camera.FieldOfView;
+            pane.PivotDistance = span * 0.6f / MathF.Tan(pane.FieldOfView * 0.5f);
+            pane.Position = _camera.Pivot;
+            pane.Align(QuadViews[i].View);
+            pane.Position = _camera.Pivot - (pane.Forward * pane.PivotDistance);
+            pane.Orthographic = true;
+
+            ViewportRect rect = QuadPane(_viewportArea, panes[i]);
+            _renderer.Render(_session.Scene, pane, framebuffer, rect.Position * scale, rect.Size * scale, clearAll: false);
+        }
+
+        _renderer.RenderedImage = rendered;
+    }
+
+    /// <summary>The quad view's names in the corners of its views, and the lines between them.</summary>
+    private void DrawQuadLabels()
+    {
+        if (!View.Quad || WelcomeScreen.IsOpen)
+        {
+            return;
+        }
+
+        ImDrawListPtr draw = ImGui.GetBackgroundDrawList();
+        uint text = ImGui.GetColorU32(Theme.Text with { W = 0.8f });
+        int[] panes = [0, 2, 3];
+        for (int i = 0; i < QuadViews.Length; i++)
+        {
+            // Clear of the tool column, which stands over the left of the viewport.
+            ViewportRect rect = QuadPane(_viewportArea, panes[i]);
+            float left = panes[i] % 2 == 0 ? ImGui.GetFontSize() * 3.6f : 10f;
+            draw.AddText(rect.Position + new Vector2(left, 8f), text, $"{QuadViews[i].Name} Orthographic");
+        }
+
+        uint line = ImGui.GetColorU32(Theme.Border);
+        Vector2 middle = _viewportArea.Position + new Vector2(MathF.Floor(_viewportArea.Size.X * 0.5f), MathF.Floor(_viewportArea.Size.Y * 0.5f));
+        draw.AddLine(new Vector2(middle.X + 0.5f, _viewportArea.Position.Y), new Vector2(middle.X + 0.5f, _viewportArea.Position.Y + _viewportArea.Size.Y), line, 1f);
+        draw.AddLine(new Vector2(_viewportArea.Position.X, middle.Y + 0.5f), new Vector2(_viewportArea.Position.X + _viewportArea.Size.X, middle.Y + 0.5f), line, 1f);
     }
 
     /// <summary>What Render Image is seen from: the camera renders are seen from, or the view when there is none.</summary>
