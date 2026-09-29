@@ -123,6 +123,26 @@ public sealed class MainActivity : Activity
         _scene.LightReset += () => { _surface.ConfigureLighting(l => l.ResetAngles()); ShowScene(); };
         _scene.VoxelSizeChanged += size => { _surface.Configure(s => s.SetObjectVoxelSize(s.Scene.FocusId, size)); ShowScene(); };
         _scene.RotateRequested += direction => { _surface.Configure(s => s.RotateFocus(direction)); ShowScene(); };
+        _scene.SubdivideRequested += () =>
+        {
+            // Asked and done under the same lock, so the answer is about the object it is done to.
+            string? problem = null;
+            _surface.Configure(s =>
+            {
+                problem = s.SubdivideProblem(s.Scene.Focus);
+                if (problem is null)
+                {
+                    s.SubdivideFocus();
+                }
+            });
+
+            if (problem is not null)
+            {
+                Toast.MakeText(this, problem, ToastLength.Long)?.Show();
+            }
+
+            ShowScene();
+        };
         _scene.FrameRequested += () => { _surface.FrameLevel(); ShowOnly(null); };
         _scene.ObjectChosen += id => { _surface.Configure(s => s.TryFocus(id)); ShowScene(); };
         _scene.ObjectVisibilityToggled += id => { _surface.ToggleObjectVisible(id); ShowScene(); };

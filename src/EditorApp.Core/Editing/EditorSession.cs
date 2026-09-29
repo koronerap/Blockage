@@ -1171,6 +1171,55 @@ public sealed class EditorSession
     }
 
     /// <summary>
+    /// Why an object cannot be subdivided, in words for a tooltip; null when it can.
+    /// </summary>
+    public string? SubdivideProblem(VoxelObject? target)
+    {
+        if (target is not { IsEmpty: false })
+        {
+            return "There are no voxels to subdivide.";
+        }
+
+        long after = (long)target.Grid.SolidCount * Subdivide.Factor * Subdivide.Factor * Subdivide.Factor;
+        if (after > Subdivide.MaxVoxels)
+        {
+            return $"It would hold {after:N0} voxels, and {Subdivide.MaxVoxels:N0} is the most an object can.";
+        }
+
+        if (target.VoxelSize / Subdivide.Factor < ObjectTransform.MinVoxelSize)
+        {
+            return "Its voxels are already as small as they can be.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Cuts every voxel of the focused object into 2 × 2 × 2 of half the size. It keeps its size and
+    /// place in the world, and its colours, face by face; it holds eight times the voxels, so there
+    /// is room for detail the coarse version had no cells for.
+    /// </summary>
+    public bool SubdivideFocus()
+    {
+        if (Scene.Focus is not { } focus || SubdivideProblem(focus) is not null)
+        {
+            return false;
+        }
+
+        // Any gesture in progress, and the selection, were in the cells as they were a moment ago.
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var command = new SubdivideObjectCommand(focus, Symmetry);
+        command.Redo();
+        History.Push(command);
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>
     /// Turns the focused object a quarter turn, in its voxels rather than in its transform.
     ///
     /// The distinction matters more than it looks. A transform rotation is a placement — the grid

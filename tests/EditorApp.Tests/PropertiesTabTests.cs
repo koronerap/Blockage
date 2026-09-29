@@ -54,6 +54,24 @@ public sealed class PropertiesTabTests : IDisposable
         Assert.Equal(before, Cube.Transform.Position);
     }
 
+    /// <summary>The button under the counts cuts the voxels, keeps the object's size, and says how many there are now.</summary>
+    [Fact]
+    public void TheSubdivideButtonCutsTheVoxelsAndSaysSo()
+    {
+        _ui.WindowSize = new Vector2(600f, 1200f);
+        void Draw() => ObjectPropertiesPanel.DrawContent(_session);
+        Settle(Draw);
+
+        _ui.Click(Centre("voxel-subdivide-0"), Draw);
+
+        Assert.Equal(512 * 8, Cube.Grid.SolidCount);
+        Assert.Equal(0.5f, Cube.VoxelSize);
+        Assert.Equal("Subdivide", _session.History.NextUndoName);
+        Assert.Contains(
+            ReportLog.Shared.Recent,
+            report => report.Text.Contains("512 voxels became 4,096", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void DraggingRotationTurnsTheObject()
     {

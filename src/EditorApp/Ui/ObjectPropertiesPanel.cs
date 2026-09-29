@@ -153,6 +153,21 @@ public static class ObjectPropertiesPanel
         Props.Value("Dimensions", $"{cells.X} × {cells.Y} × {cells.Z} vx");
         Props.Value("In the world", $"{world.X:0.###} × {world.Y:0.###} × {world.Z:0.###}");
         Props.Value("Voxels", $"{focus.Grid.SolidCount:N0}");
+
+        // Beside the counts it changes: the dimensions double, the world size stays.
+        string? problem = session.SubdivideProblem(focus);
+        ImGui.BeginDisabled(problem is not null);
+        if (Props.Buttons(string.Empty, "voxel-subdivide", "Subdivide") == 0)
+        {
+            ObjectMenu.SubdivideFocus(session, ReportLog.Shared);
+        }
+
+        ImGui.EndDisabled();
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            ImGui.SetTooltip(problem ?? ObjectMenu.SubdivideTip);
+        }
     }
 
     private static Vector3 EulerFor(IPlaceable target)

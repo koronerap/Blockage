@@ -7,8 +7,8 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// Operations on the focused object as a whole: duplicating, renaming, hiding and deleting it, and
-/// quarter turns and mirrors of its voxels.
+/// Operations on the focused object as a whole: duplicating, renaming, hiding and deleting it,
+/// subdividing it, and quarter turns and mirrors of its voxels.
 ///
 /// One list, drawn in two places — the Object menu in the menu bar, and the dropdown in the header —
 /// so the two can never disagree about what is on offer. They used to be four loose buttons in the
@@ -62,6 +62,36 @@ public static class ObjectMenu
         session.TransformMode = TransformMode.Move;
         return pasted;
     }
+
+    /// <summary>
+    /// Subdivides the focused object and says what came of it in the status bar — the count is the
+    /// part worth knowing, since it goes up eightfold each time.
+    /// </summary>
+    public static void SubdivideFocus(EditorSession session, ReportLog log)
+    {
+        if (session.Scene.Focus is not { } focus)
+        {
+            return;
+        }
+
+        if (session.SubdivideProblem(focus) is { } problem)
+        {
+            log.Post($"Cannot subdivide {focus.Name}. {problem}", ReportKind.Warning);
+            return;
+        }
+
+        int before = focus.Grid.SolidCount;
+        if (session.SubdivideFocus())
+        {
+            log.Post($"Subdivided {focus.Name}: {before:N0} voxels became {focus.Grid.SolidCount:N0}, each {focus.VoxelSize:0.####} units.");
+        }
+    }
+
+    /// <summary>What Subdivide does, for the menu item and the button alike.</summary>
+    public const string SubdivideTip =
+        "Cuts every voxel into 2 × 2 × 2 of half the size.\n"
+        + "The object keeps its size and place in the world and its colours;\n"
+        + "it holds eight times the voxels, room for finer detail. Ctrl+Z undoes it.";
 
     /// <summary>
     /// "Join into", listing every other object. The ones it cannot join are shown but greyed, with
@@ -133,6 +163,19 @@ public static class ObjectMenu
         if (scene.Focus is { } joined)
         {
             DrawJoinMenu(session, joined);
+        }
+
+        ImGui.Separator();
+
+        string? subdivideProblem = session.SubdivideProblem(scene.Focus);
+        if (ImGui.MenuItem("Subdivide", null, false, subdivideProblem is null))
+        {
+            SubdivideFocus(session, ReportLog.Shared);
+        }
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            ImGui.SetTooltip(subdivideProblem ?? SubdivideTip);
         }
 
         ImGui.Separator();

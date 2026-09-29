@@ -118,6 +118,30 @@ public sealed class Symmetry
     /// <summary>Puts an object's planes back through the middle of what it holds now.</summary>
     public void Recentre(VoxelObject target) => _sums.Remove(target.Id);
 
+    /// <summary>
+    /// Keeps an object's planes where they were through a subdivide. The planes are fixed in cells,
+    /// and the cells just got smaller: a box from min to max becomes f·min to f·max + f - 1, so the
+    /// sum that places a plane becomes f·sum + f - 1 — the same plane, counted in the new cells.
+    /// Recentring instead would move a plane that was deliberately left off-centre.
+    /// </summary>
+    public void Subdivided(VoxelObject target, int factor)
+    {
+        if (_sums.TryGetValue(target.Id, out Int3 sums))
+        {
+            _sums[target.Id] = (sums * factor) + new Int3(factor - 1, factor - 1, factor - 1);
+        }
+    }
+
+    /// <summary>The reverse of <see cref="Subdivided"/>, for its undo.</summary>
+    public void Unsubdivided(VoxelObject target, int factor)
+    {
+        if (_sums.TryGetValue(target.Id, out Int3 sums))
+        {
+            Int3 whole = sums - new Int3(factor - 1, factor - 1, factor - 1);
+            _sums[target.Id] = new Int3(whole.X / factor, whole.Y / factor, whole.Z / factor);
+        }
+    }
+
     /// <summary>Every plane forgotten — the level was replaced, and ids mean other objects now.</summary>
     public void Forget() => _sums.Clear();
 

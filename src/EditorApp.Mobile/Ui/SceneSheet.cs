@@ -75,6 +75,8 @@ public sealed class SceneSheet : FrameLayout, IPage
 
     public event Action<RotateDirection>? RotateRequested;
 
+    public event Action? SubdivideRequested;
+
     public event Action? FrameRequested;
 
     public event Action<int>? ObjectChosen;
@@ -140,11 +142,17 @@ public sealed class SceneSheet : FrameLayout, IPage
         }
 
         Heading("Voxel size of the focused object");
-        Row(Stepper(
-            $"{state.VoxelSize:0.###} units",
-            "Voxel size",
-            () => VoxelSizeChanged?.Invoke(state.VoxelSize / 2f),
-            () => VoxelSizeChanged?.Invoke(state.VoxelSize * 2f)));
+        Row(
+            Stepper(
+                $"{state.VoxelSize:0.###} units",
+                "Voxel size",
+                () => VoxelSizeChanged?.Invoke(state.VoxelSize / 2f),
+                () => VoxelSizeChanged?.Invoke(state.VoxelSize * 2f)),
+            Space(),
+            Toggle(Resource.Drawable.ic_subdivide, "Subdivide", false, () => SubdivideRequested?.Invoke()));
+
+        Note("Subdivide cuts every voxel into 2 × 2 × 2 of half the size: same size in the world, "
+            + "eight times the voxels.");
 
         Note(state.Extent is { } extent
             ? $"The level is {extent.X:0.##} × {extent.Y:0.##} × {extent.Z:0.##} units in the game."
