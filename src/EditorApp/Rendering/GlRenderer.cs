@@ -47,6 +47,12 @@ public sealed class GlRenderer : IDisposable
     /// </summary>
     private readonly Dictionary<ChunkKey, int> _generations = new();
 
+    /// <summary>
+    /// Whether grids have gone that the counts above may still name. They are let go of only once
+    /// nothing is on the workers: a mesh still out there must find its chunk counted past it.
+    /// </summary>
+    private bool _generationsToPrune;
+
     private readonly ConcurrentQueue<MeshedChunk> _meshed = new();
     private readonly ConcurrentBag<MeshBuilder> _spareMeshes = new();
     private readonly ConcurrentBag<ChunkNeighbourhood> _spareCopies = new();
@@ -403,12 +409,15 @@ public sealed class GlRenderer : IDisposable
             }
         }
 
-        if (stale is not null)
+        _generationsToPrune |= stale is not null;
+        if (_generationsToPrune && _onWorkers == 0)
         {
             foreach (ChunkKey key in _generations.Keys.Where(key => !_grids.ContainsKey(key.MeshId)).ToList())
             {
                 _generations.Remove(key);
             }
+
+            _generationsToPrune = false;
         }
 
         foreach (int id in stale ?? [])
@@ -1163,6 +1172,7 @@ public sealed class GlRenderer : IDisposable
         _buffers.Clear();
         _pending.Clear();
         _pendingOrder.Clear();
+        _generationsToPrune = true;
         TotalVertices = 0;
     }
 

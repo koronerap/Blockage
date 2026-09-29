@@ -17,7 +17,11 @@ public static class CrashLog
 {
     private static readonly object Gate = new();
 
-    public static string Path { get; } = System.IO.Path.Combine(
+    /// <summary>
+    /// Where the log is. The tests point it at a folder of their own: they open broken files on
+    /// purpose, and what a user pastes into a bug report is not the place for those.
+    /// </summary>
+    public static string Path { get; set; } = System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "EditorApp",
         "crash.log");
