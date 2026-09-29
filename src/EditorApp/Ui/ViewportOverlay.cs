@@ -153,7 +153,8 @@ public static class ViewportOverlay
         FlyCamera camera,
         ViewportRect viewport)
     {
-        if (session.Scene.Focus is not { } focus || !focus.Grid.TryGetBounds(out Int3 min, out Int3 max))
+        // What it shows, its modifiers' copies too: the same box its outline is drawn round.
+        if (session.Scene.Focus is not { } focus || !focus.Shown.TryGetBounds(out Int3 min, out Int3 max))
         {
             return;
         }

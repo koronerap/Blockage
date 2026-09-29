@@ -63,7 +63,7 @@ public static class MimicraftValidation
             CheckWeapon(objects, problems);
         }
 
-        int voxels = objects.Sum(o => o.Grid.SolidCount);
+        int voxels = objects.Sum(o => o.Shown.SolidCount);
         if (voxels > MimicraftBody.MaxTotalVoxels)
         {
             problems.Add(new MimicraftProblem(
@@ -85,7 +85,7 @@ public static class MimicraftValidation
 
         foreach (VoxelObject o in objects)
         {
-            CheckBox(o.Name, o.Grid, problems);
+            CheckBox(o.Name, o.Shown, problems);
             CheckId(o.Name, problems);
         }
 
@@ -195,7 +195,7 @@ public static class MimicraftValidation
         int largest = 0;
         foreach (VoxelObject o in objects)
         {
-            if (o.Grid.TryGetBounds(out Int3 objectMin, out Int3 objectMax))
+            if (o.Shown.TryGetBounds(out Int3 objectMin, out Int3 objectMax))
             {
                 largest = Math.Max(largest, Largest(objectMax - objectMin + Int3.One));
             }
@@ -232,7 +232,7 @@ public static class MimicraftValidation
 
         foreach (VoxelObject o in objects)
         {
-            if (!o.Grid.TryGetBounds(out Int3 objectMin, out Int3 objectMax))
+            if (!o.Shown.TryGetBounds(out Int3 objectMin, out Int3 objectMax))
             {
                 continue;
             }

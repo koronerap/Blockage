@@ -944,6 +944,11 @@ public sealed partial class EditorSession
                 copyOf.GetValueOrDefault(parent, parent));
 
             command.Redo();
+            if (source.Modifiers.Count > 0)
+            {
+                command.Created!.SetModifiers(source.Modifiers);
+            }
+
             steps.Add(command);
             copies.Add(command.Created!);
             copyOf[source.Id] = command.Created!.Id;
@@ -1944,6 +1949,11 @@ public sealed partial class EditorSession
             Scene.ParentOf(source)?.Id ?? 0);
 
         command.Redo();
+        if (source.Modifiers.Count > 0)
+        {
+            command.Created!.SetModifiers(source.Modifiers);
+        }
+
         History.Push(command);
         SelectOnly([command.Created!.Id]);
 

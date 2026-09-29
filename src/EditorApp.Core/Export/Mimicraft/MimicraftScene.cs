@@ -20,7 +20,7 @@ public static class MimicraftScene
     public static IReadOnlyList<MimicraftPiece> BuildCharacterParts(VoxelScene scene) =>
         [.. scene.Objects
             .Where(o => o.Visible && !o.IsEmpty)
-            .Select(o => new MimicraftPiece(o.Name, o.Grid))];
+            .Select(o => new MimicraftPiece(o.Name, o.Shown))];
 
     /// <summary>
     /// Every visible object flattened into one grid, each one's translation applied.
@@ -41,7 +41,7 @@ public static class MimicraftScene
         // chance to get the copy wrong.
         if (objects.Count == 1 && MimicraftValidation.Offset(objects[0].Transform) == Int3.Zero)
         {
-            return new MimicraftPiece(weaponId, objects[0].Grid);
+            return new MimicraftPiece(weaponId, objects[0].Shown);
         }
 
         var merged = new VoxelWorld();
@@ -49,7 +49,7 @@ public static class MimicraftScene
 
         foreach (VoxelObject o in objects)
         {
-            if (!o.Grid.TryGetBounds(out Int3 min, out Int3 max))
+            if (!o.Shown.TryGetBounds(out Int3 min, out Int3 max))
             {
                 continue;
             }
@@ -62,18 +62,18 @@ public static class MimicraftScene
                 {
                     for (int x = min.X; x <= max.X; x++)
                     {
-                        if (!o.Grid.IsSolid(x, y, z))
+                        if (!o.Shown.IsSolid(x, y, z))
                         {
                             continue;
                         }
 
                         Int3 to = new Int3(x, y, z) + offset;
-                        merged.SetVoxel(to, o.Grid.GetVoxel(x, y, z));
+                        merged.SetVoxel(to, o.Shown.GetVoxel(x, y, z));
 
                         for (int f = 0; f < FaceInfo.Count; f++)
                         {
-                            byte painted = o.Grid.GetFaceColor(x, y, z, (Face)f);
-                            if (painted != o.Grid.GetVoxel(x, y, z))
+                            byte painted = o.Shown.GetFaceColor(x, y, z, (Face)f);
+                            if (painted != o.Shown.GetVoxel(x, y, z))
                             {
                                 merged.SetFaceColor(to, (Face)f, painted);
                             }

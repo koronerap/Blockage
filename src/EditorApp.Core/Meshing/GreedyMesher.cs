@@ -81,7 +81,7 @@ public static class GreedyMesher
             // Each object's own voxel size comes in with its transform: voxels become world units
             // object by object, since two objects need not share a size.
             int first = combined.QuadCount;
-            combined.Append(Build(o.Grid, uvSelector, mergeAcrossColors), o.Transform);
+            combined.Append(Build(o.Shown, uvSelector, mergeAcrossColors), o.Transform);
             combined.BeginPart(o.Name, first, o.VoxelSize);
         }
 

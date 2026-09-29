@@ -667,7 +667,7 @@ public sealed class EditorApplication : IDisposable
     /// The nearest object under a point of the viewport. With <paramref name="selectedOnly"/>, what is
     /// not selected is looked straight through, as if it were not there.
     /// </summary>
-    private ScenePick? PickAt(Vector2 local, bool selectedOnly)
+    private ScenePick? PickAt(Vector2 local, bool selectedOnly, bool shown = false)
     {
         Ray ray = _camera.ScreenPointToRay(local, _viewport.Size);
 
@@ -676,7 +676,7 @@ public sealed class EditorApplication : IDisposable
             ? o => o.Id != edited.Id
             : selectedOnly ? o => !_session.IsSelected(o.Id) : null;
 
-        return _session.Scene.TryPick(ray, out ScenePick pick, skip: skip) ? pick : null;
+        return _session.Scene.TryPick(ray, out ScenePick pick, skip: skip, shown: shown) ? pick : null;
     }
 
     /// <summary>The voxel of the object in Edit Mode under a point of the viewport, or null.</summary>
@@ -695,7 +695,8 @@ public sealed class EditorApplication : IDisposable
             return light.Id;
         }
 
-        return PickAt(local, selectedOnly: false) is { } pick ? pick.Object.Id : 0;
+        // What an object shows is what is clicked on, a modifier's copies too.
+        return PickAt(local, selectedOnly: false, shown: true) is { } pick ? pick.Object.Id : 0;
     }
 
     private IEnumerable<int> ThingsInBox(Vector2 min, Vector2 max) =>

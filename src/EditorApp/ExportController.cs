@@ -134,7 +134,7 @@ public sealed class ExportController(EditorSession session)
                 continue;
             }
 
-            EditMesher.BuildWorldNaive(o.Grid, naive);
+            EditMesher.BuildWorldNaive(o.Shown, naive);
             _naiveVertexCount += naive.VertexCount;
         }
 

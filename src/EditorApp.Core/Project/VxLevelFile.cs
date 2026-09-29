@@ -146,6 +146,15 @@ public static class VxLevelFile
                 Locked = o.Locked,
                 Parent = scene.ParentOf(o)?.Id,
                 Selected = scene.IsSelected(o.Id),
+                Modifiers = o.Modifiers.Count == 0 ? null : [.. o.Modifiers.Select(m => new LevelManifest.ModifierEntry
+                {
+                    Kind = m.Kind.ToString().ToLowerInvariant(),
+                    Axis = m.Axis.ToString().ToLowerInvariant(),
+                    Plane = m.Plane,
+                    Count = m.Count,
+                    Step = m.Step,
+                    Enabled = m.Enabled,
+                })],
             });
 
             foreach (ChunkCoord coord in coordinates)
@@ -319,6 +328,11 @@ public static class VxLevelFile
 
                 added.Visible = entry.Visible;
                 added.Locked = entry.Locked;
+                if (entry.Modifiers is { Length: > 0 } modifiers)
+                {
+                    added.SetModifiers(modifiers.Select(ReadModifier));
+                }
+
                 if (entry.Selected)
                 {
                     scene.Select(added.Id);
@@ -408,6 +422,25 @@ public static class VxLevelFile
             Parent = scene.ParentOf(light)?.Id,
             Selected = scene.IsSelected(light.Id),
         };
+    }
+
+    private static VoxelModifier ReadModifier(LevelManifest.ModifierEntry entry)
+    {
+        ModifierKind kind = entry.Kind.ToLowerInvariant() switch
+        {
+            "mirror" => ModifierKind.Mirror,
+            "array" => ModifierKind.Array,
+            _ => throw new VxLevelFormatException($"A modifier is of an unknown kind '{entry.Kind}'."),
+        };
+
+        Axis axis = entry.Axis.ToLowerInvariant() switch
+        {
+            "y" => Axis.Y,
+            "z" => Axis.Z,
+            _ => Axis.X,
+        };
+
+        return new VoxelModifier(kind, axis, entry.Plane, entry.Count, entry.Step, entry.Enabled);
     }
 
     private static SceneLight ReadLight(VoxelScene scene, LevelManifest.LightEntry entry)

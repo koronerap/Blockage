@@ -66,10 +66,61 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
 
     public bool IsEmpty => Grid.SolidCount == 0;
 
-    /// <summary>Local-space bounds of the solid voxels, in voxels (a cell spans one unit of its own space).</summary>
+    // ---- Modifiers -----------------------------------------------------------------------------
+
+    private IReadOnlyList<VoxelModifier> _modifiers = [];
+    private ModifierEvaluator? _evaluator;
+
+    /// <summary>The modifiers drawn over the voxels, in the order they apply.</summary>
+    public IReadOnlyList<VoxelModifier> Modifiers => _modifiers;
+
+    /// <summary>Goes up whenever the modifiers change, so what draws the object knows to start its drawing over.</summary>
+    public int ModifierGeneration { get; private set; }
+
+    public bool HasModifiers => _modifiers.Any(m => m.Enabled);
+
+    public void SetModifiers(IEnumerable<VoxelModifier> modifiers)
+    {
+        _modifiers = [.. modifiers.Select(m => m.Clamped())];
+        _evaluator = null;
+        ModifierGeneration++;
+
+        // Whichever grid is shown now is drawn afresh, all of it.
+        Grid.MarkAllDirty();
+    }
+
+    /// <summary>
+    /// What the object shows, and what is exported: its voxels, with whatever its modifiers make of
+    /// them — the voxels themselves when it has none. Brought up to date with every change to the
+    /// voxels as it is asked for.
+    /// </summary>
+    public VoxelWorld Shown
+    {
+        get
+        {
+            if (!HasModifiers)
+            {
+                return Grid;
+            }
+
+            if (_evaluator is null)
+            {
+                Grid.ConsumeDirtyChunks();
+                _evaluator = new ModifierEvaluator(Grid, _modifiers);
+            }
+            else if (Grid.DirtyChunks.Count > 0)
+            {
+                _evaluator.Update(Grid, Grid.ConsumeDirtyChunks());
+            }
+
+            return _evaluator.Shown;
+        }
+    }
+
+    /// <summary>Local-space bounds of what it shows, in voxels (a cell spans one unit of its own space).</summary>
     public bool TryGetLocalBounds(out Vector3 min, out Vector3 max)
     {
-        if (!Grid.TryGetBounds(out Int3 minCell, out Int3 maxCell))
+        if (!Shown.TryGetBounds(out Int3 minCell, out Int3 maxCell))
         {
             min = max = Vector3.Zero;
             return false;

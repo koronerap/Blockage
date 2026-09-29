@@ -117,7 +117,14 @@ public sealed class GlRenderer : IDisposable
 
         foreach (VoxelObject o in scene.Objects)
         {
-            foreach (ChunkCoord coord in o.Grid.ConsumeDirtyChunks())
+            // Its modifiers changed: whatever was drawn for it may be of chunks it no longer has.
+            if (_modifierGenerations.GetValueOrDefault(o.Id) != o.ModifierGeneration)
+            {
+                _modifierGenerations[o.Id] = o.ModifierGeneration;
+                DropBuffers(o.Id);
+            }
+
+            foreach (ChunkCoord coord in o.Shown.ConsumeDirtyChunks())
             {
                 var key = new ChunkKey(o.Id, coord);
                 if (_pending.Add(key))
@@ -157,7 +164,7 @@ public sealed class GlRenderer : IDisposable
             }
 
             stepClock.Restart();
-            EditMesher.BuildChunk(owner.Grid, key.Coord, _scratch);
+            EditMesher.BuildChunk(owner.Shown, key.Coord, _scratch);
             LastMeshMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             stepClock.Restart();
@@ -165,6 +172,24 @@ public sealed class GlRenderer : IDisposable
             LastUploadMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             LastRemeshedChunks++;
+        }
+    }
+
+    /// <summary>The modifier generation each object was last drawn at.</summary>
+    private readonly Dictionary<int, int> _modifierGenerations = [];
+
+    /// <summary>Lets go of everything drawn for one object.</summary>
+    private void DropBuffers(int id)
+    {
+        if (!_buffers.Remove(id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+        {
+            return;
+        }
+
+        foreach (ChunkMeshBuffer buffer in chunks.Values)
+        {
+            TotalVertices -= buffer.VertexCount;
+            buffer.Dispose();
         }
     }
 

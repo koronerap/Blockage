@@ -65,6 +65,11 @@ public static class ObjectPropertiesPanel
             DrawVolume(session);
         }
 
+        if (Props.Section("Modifiers", openByDefault: false))
+        {
+            DrawModifiers(session, focus);
+        }
+
         if (Props.Section("Relations", openByDefault: false))
         {
             DrawRelations(session, focus);
@@ -220,6 +225,117 @@ public static class ObjectPropertiesPanel
         }
     }
 
+    /// <summary>The object whose modifiers are being changed live, what they were before, and what to call it.</summary>
+    private static (int ObjectId, IReadOnlyList<VoxelModifier> Before, string Name)? _modifierEdit;
+
+    /// <summary>A modifier's settings changed from here: live now, one undo step once let go.</summary>
+    private static void ChangeModifier(EditorSession session, VoxelObject target, int index, VoxelModifier changed)
+    {
+        if (_modifierEdit is not { } edit || edit.ObjectId != target.Id)
+        {
+            Flush(session);
+            _modifierEdit = (target.Id, target.Modifiers, $"Change {target.Modifiers[index].Label}");
+        }
+
+        session.PreviewModifier(target.Id, index, changed);
+    }
+
+    /// <summary>
+    /// Blender's modifier stack, for voxels: a mirror or a row of copies drawn over the object's own
+    /// voxels, each switched on and off, set, applied — made voxels for good — or taken away.
+    /// </summary>
+    private static void DrawModifiers(EditorSession session, VoxelObject focus)
+    {
+        switch (Props.Buttons("Add", "modifier-add", "Mirror", "Array"))
+        {
+            case 0:
+                Flush(session);
+                session.AddModifier(focus.Id, ModifierKind.Mirror);
+                break;
+
+            case 1:
+                Flush(session);
+                session.AddModifier(focus.Id, ModifierKind.Array);
+                break;
+        }
+
+        Tooltip("Drawn over the voxels and exported, but the voxels the tools edit stay as they are.");
+
+        for (int i = 0; i < focus.Modifiers.Count; i++)
+        {
+            VoxelModifier modifier = focus.Modifiers[i];
+            ImGui.PushID($"modifier-{i}");
+            ImGui.Separator();
+
+            bool enabled = modifier.Enabled;
+            if (ImGui.Checkbox($"{modifier.Label}##enabled", ref enabled))
+            {
+                ChangeModifier(session, focus, i, modifier with { Enabled = enabled });
+            }
+
+            float buttons = ImGui.CalcTextSize("Apply").X + ImGui.CalcTextSize("Remove").X + (ImGui.GetStyle().FramePadding.X * 4f) + ImGui.GetStyle().ItemSpacing.X;
+            ImGui.SameLine(MathF.Max(ImGui.GetContentRegionMax().X - buttons, ImGui.GetCursorPosX()));
+            bool apply = ImGui.SmallButton("Apply");
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Makes it voxels for good - and every modifier above it, which it works on.");
+            }
+
+            ImGui.SameLine();
+            bool remove = ImGui.SmallButton("Remove");
+
+            int axis = Props.Choice("Axis", "axis", [(null, "X"), (null, "Y"), (null, "Z")], (int)modifier.Axis);
+            if (axis != (int)modifier.Axis)
+            {
+                ChangeModifier(session, focus, i, modifier with { Axis = (Axis)axis });
+            }
+
+            if (modifier.Kind == ModifierKind.Mirror)
+            {
+                int plane = modifier.Plane;
+                if (Props.Int("Plane", "plane", ref plane, 0.1f, -VoxelModifier.MaxStep, VoxelModifier.MaxStep, "%d"))
+                {
+                    ChangeModifier(session, focus, i, modifier with { Plane = plane });
+                }
+
+                Tooltip("The lattice line it mirrors across, in voxels: 0 is the object's origin.");
+            }
+            else
+            {
+                int count = modifier.Count;
+                if (Props.Int("Count", "count", ref count, 0.05f, 1, VoxelModifier.MaxCount, "%d"))
+                {
+                    ChangeModifier(session, focus, i, modifier with { Count = count });
+                }
+
+                int step = modifier.Step;
+                if (Props.Int("Step", "step", ref step, 0.1f, -VoxelModifier.MaxStep, VoxelModifier.MaxStep, "%d voxels"))
+                {
+                    ChangeModifier(session, focus, i, modifier with { Step = step });
+                }
+
+                Tooltip("How far one copy stands from the next; negative runs the other way.");
+            }
+
+            ImGui.PopID();
+
+            if (apply || remove)
+            {
+                Flush(session);
+                if (apply)
+                {
+                    session.ApplyModifier(focus.Id, i);
+                }
+                else
+                {
+                    session.RemoveModifier(focus.Id, i);
+                }
+
+                break;
+            }
+        }
+    }
+
     /// <summary>The volume filters and resampling, with their amounts, for the selected objects.</summary>
     private static void DrawVolume(EditorSession session)
     {
@@ -335,7 +451,7 @@ public static class ObjectPropertiesPanel
     /// <summary>The gesture is over once nothing is held: a drag let go, a typed value entered.</summary>
     private static void FinishGesture(EditorSession session)
     {
-        if (_editing is not null && !ImGui.IsAnyItemActive())
+        if ((_editing is not null || _modifierEdit is not null) && !ImGui.IsAnyItemActive())
         {
             Flush(session);
         }
@@ -344,6 +460,12 @@ public static class ObjectPropertiesPanel
     /// <summary>Puts an unfinished edit into history.</summary>
     public static void Flush(EditorSession session)
     {
+        if (_modifierEdit is { } modifiers)
+        {
+            session.PushModifierEdit(modifiers.ObjectId, modifiers.Before, modifiers.Name);
+            _modifierEdit = null;
+        }
+
         if (_editing is { } target)
         {
             if (_alsoEditing.Count == 0)

@@ -495,13 +495,20 @@ public sealed class VoxelScene
         {
             VoxelWorld grid = o.Grid.Copy();
             grid.ReplacePalette(copy.Palette);
-            copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name)
+            var copied = new VoxelObject(o.Id, grid, o.Transform, o.Name)
             {
                 Visible = o.Visible,
                 Locked = o.Locked,
                 ParentId = o.ParentId,
                 ParentOffset = o.ParentOffset,
-            });
+            };
+
+            if (o.Modifiers.Count > 0)
+            {
+                copied.SetModifiers(o.Modifiers);
+            }
+
+            copy._objects.Add(copied);
         }
 
         foreach (SceneLight light in _lights)
@@ -614,12 +621,17 @@ public sealed class VoxelScene
     /// with <paramref name="includeLocked"/>, since a floor is exactly what a light is aimed at.
     /// </summary>
     /// <param name="skip">Objects to see straight through — the one being moved, when snapping it to what is behind.</param>
+    /// <param name="shown">
+    /// Pick what objects show, their modifiers' copies too — for choosing an object. The tools that
+    /// edit voxels pick the voxels themselves, which is all they can change.
+    /// </param>
     public bool TryPick(
         Ray worldRay,
         out ScenePick pick,
         float maxDistance = VoxelRaycaster.DefaultMaxDistance,
         bool includeLocked = false,
-        Func<VoxelObject, bool>? skip = null)
+        Func<VoxelObject, bool>? skip = null,
+        bool shown = false)
     {
         pick = default;
         bool found = false;
@@ -637,7 +649,7 @@ public sealed class VoxelScene
             // would win just for having more cells in the way.
             float scale = o.VoxelSize;
             Ray localRay = o.Transform.InverseTransformRay(worldRay);
-            if (!VoxelRaycaster.TryCast(o.Grid, localRay, out RaycastHit hit, maxDistance / scale))
+            if (!VoxelRaycaster.TryCast(shown ? o.Shown : o.Grid, localRay, out RaycastHit hit, maxDistance / scale))
             {
                 continue;
             }

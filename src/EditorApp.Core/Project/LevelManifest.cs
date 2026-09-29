@@ -107,6 +107,35 @@ public sealed class LevelManifest
         [JsonPropertyName("selected")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool Selected { get; set; }
+
+        /// <summary>Its modifiers, in order; absent for none.</summary>
+        [JsonPropertyName("modifiers")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ModifierEntry[]? Modifiers { get; set; }
+    }
+
+    /// <summary>One modifier of an object.</summary>
+    public sealed class ModifierEntry
+    {
+        /// <summary>"mirror" or "array".</summary>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = "mirror";
+
+        /// <summary>"x", "y" or "z".</summary>
+        [JsonPropertyName("axis")]
+        public string Axis { get; set; } = "x";
+
+        [JsonPropertyName("plane")]
+        public int Plane { get; set; }
+
+        [JsonPropertyName("count")]
+        public int Count { get; set; } = 3;
+
+        [JsonPropertyName("step")]
+        public int Step { get; set; } = 8;
+
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; } = true;
     }
 
     /// <summary>The <see cref="ObjectEntry.Id"/> of the active object; absent when there was none.</summary>
