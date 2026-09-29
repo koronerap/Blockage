@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Project;
 using EditorApp.Core.Voxels;
 using ImGuiNET;
 
@@ -203,6 +204,170 @@ public sealed class PalettePanel
         DrawLibraryEditPopup(session, palette);
     }
 
+    private static readonly FileBrowserDialog Browser = new();
+
+    /// <summary>The file dialog the palette menu opens; drawn at the top level every frame.</summary>
+    public static void DrawDialogs() => Browser.Draw();
+
+    private static readonly (string Extension, string Name)[] Formats =
+    [
+        (".gpl", "GIMP palette (.gpl)"),
+        (".hex", "Hex list (.hex)"),
+        (".png", "Image (.png)"),
+    ];
+
+    /// <summary>
+    /// Palettes in and out (Fullreleaseplan 4.4): a palette loaded over the level's — what was painted
+    /// takes the new colours — or added to the custom slots; the palette written out for other tools;
+    /// a ramp from the colour in hand to the second one; and a library of palettes kept for any level.
+    /// </summary>
+    private static void DrawPaletteMenu(EditorSession session)
+    {
+        if (!ImGui.BeginPopup("##palette-menu"))
+        {
+            return;
+        }
+
+        if (ImGui.BeginMenu("Load Palette"))
+        {
+            ImGui.TextDisabled("Its colours become entries 1, 2, 3...: what is painted recolours.");
+            foreach ((string extension, string name) in Formats)
+            {
+                if (ImGui.MenuItem(name))
+                {
+                    Browser.Show(FileBrowserMode.Open, $"Load a palette ({extension})", extension, null, null, path => Import(session, path, replace: true));
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Add to Custom"))
+        {
+            ImGui.TextDisabled("Its colours go into the free custom slots.");
+            foreach ((string extension, string name) in Formats)
+            {
+                if (ImGui.MenuItem(name))
+                {
+                    Browser.Show(FileBrowserMode.Open, $"Add a palette's colours ({extension})", extension, null, null, path => Import(session, path, replace: false));
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Export Palette"))
+        {
+            foreach ((string extension, string name) in Formats)
+            {
+                if (ImGui.MenuItem(name))
+                {
+                    Browser.Show(FileBrowserMode.Save, $"Export the palette ({extension})", extension, null, session.ProjectName, path => Export(session, path));
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
+        ImGui.Separator();
+        if (ImGui.BeginMenu("Ramp to the Second Colour"))
+        {
+            foreach (int steps in new[] { 3, 4, 5, 6, 8 })
+            {
+                if (ImGui.MenuItem($"{steps} colours"))
+                {
+                    int kept = session.AddRamp(steps);
+                    ReportLog.Shared.Post(kept > 0 ? $"Kept {kept} ramp colours in Custom." : "No room in Custom, or the colours are there already.", kept > 0 ? ReportKind.Info : ReportKind.Warning);
+                }
+            }
+
+            ImGui.TextDisabled("From the colour in hand to the second colour,\nboth ends in, into the free custom slots.");
+            ImGui.EndMenu();
+        }
+
+        ImGui.Separator();
+        if (ImGui.BeginMenu("Library"))
+        {
+            if (ImGui.MenuItem("Keep This Palette..."))
+            {
+                Directory.CreateDirectory(PaletteFiles.LibraryDirectory);
+                Browser.Show(FileBrowserMode.Save, "Keep the palette in the library", ".gpl", PaletteFiles.LibraryDirectory, session.ProjectName, path => Export(session, path));
+            }
+
+            string[] kept = Directory.Exists(PaletteFiles.LibraryDirectory)
+                ? [.. Directory.EnumerateFiles(PaletteFiles.LibraryDirectory).Where(f => PaletteFiles.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant())).Order()]
+                : [];
+
+            if (kept.Length > 0)
+            {
+                ImGui.Separator();
+            }
+
+            foreach (string path in kept)
+            {
+                if (ImGui.BeginMenu(Path.GetFileNameWithoutExtension(path)))
+                {
+                    if (ImGui.MenuItem("Load"))
+                    {
+                        Import(session, path, replace: true);
+                    }
+
+                    if (ImGui.MenuItem("Add to Custom"))
+                    {
+                        Import(session, path, replace: false);
+                    }
+
+                    ImGui.EndMenu();
+                }
+            }
+
+            if (kept.Length == 0)
+            {
+                ImGui.TextDisabled("Nothing kept yet.");
+            }
+
+            ImGui.EndMenu();
+        }
+
+        ImGui.EndPopup();
+    }
+
+    private static void Import(EditorSession session, string path, bool replace)
+    {
+        try
+        {
+            List<Color32> colours = PaletteFiles.Read(path);
+            if (colours.Count == 0)
+            {
+                ReportLog.Shared.Post($"{Path.GetFileName(path)} has no colours in it.", ReportKind.Warning);
+                return;
+            }
+
+            int placed = session.ImportPalette(colours, replace);
+            ReportLog.Shared.Post(replace
+                ? $"Loaded {placed} colours from {Path.GetFileName(path)}."
+                : $"Kept {placed} of {colours.Count} colours from {Path.GetFileName(path)} in Custom.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or Core.Import.ImageDecodeException)
+        {
+            ReportLog.Shared.Post($"Could not read {Path.GetFileName(path)}: {exception.Message}", ReportKind.Error);
+        }
+    }
+
+    private static void Export(EditorSession session, string path)
+    {
+        try
+        {
+            List<Color32> colours = session.PaletteColours();
+            PaletteFiles.Write(path, colours, Path.GetFileNameWithoutExtension(path));
+            ReportLog.Shared.Post($"Wrote {colours.Count} colours to {Path.GetFileName(path)}.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            ReportLog.Shared.Post($"Could not write {Path.GetFileName(path)}: {exception.Message}", ReportKind.Error);
+        }
+    }
+
     /// <summary>The entry a material drag started on, and what its material was then; null between drags.</summary>
     private (int Index, VoxelMaterial Before)? _materialEdit;
 
@@ -282,11 +447,25 @@ public sealed class PalettePanel
         ImGui.TextDisabled(palette[active].ToString());
 
         const float pickWidth = 52f;
-        ImGui.SameLine(ImGui.GetContentRegionMax().X - pickWidth);
+        float more = ImGui.GetFrameHeight();
+        ImGui.SameLine(ImGui.GetContentRegionMax().X - pickWidth - more - ImGui.GetStyle().ItemSpacing.X);
         if (ImGui.Button("Pick", new Vector2(pickWidth, 0f)))
         {
             openPicker = true;
         }
+
+        ImGui.SameLine();
+        if (ImGui.Button("...", new Vector2(more, 0f)))
+        {
+            ImGui.OpenPopup("##palette-menu");
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Palettes in and out, ramps, the library.");
+        }
+
+        DrawPaletteMenu(session);
 
         if (ImGui.IsItemHovered())
         {

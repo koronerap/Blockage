@@ -1832,6 +1832,7 @@ public sealed class EditorApplication : IDisposable
         _export!.Draw();
         _mimicraft!.Draw();
         _referencePanel.DrawDialogs();
+        PalettePanel.DrawDialogs();
         ToolOptions.DrawDialogs();
 
         WelcomeScreen.Draw(_welcomeActions ??= CreateWelcomeActions());
