@@ -27,6 +27,7 @@ public sealed class VoxelScene
 
     private readonly List<VoxelObject> _objects = [];
     private readonly List<SceneLight> _lights = [];
+    private readonly HashSet<int> _selected = [];
 
     // One counter for objects and lights alike, so an id names one thing in the level and nothing else.
     private int _nextId = 1;
@@ -87,6 +88,40 @@ public sealed class VoxelScene
     public int FocusId { get; private set; }
 
     public VoxelObject? Focus => _objects.Find(o => o.Id == FocusId);
+
+    // ---- Selection -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// The objects and lights picked out for the tools to work on, by id. Not part of undo — picking
+    /// things is not an edit — but saved with the level, and kept by the commands that take things out
+    /// and put them back, so an undone delete comes back selected.
+    /// </summary>
+    public IReadOnlyCollection<int> SelectedIds => _selected;
+
+    public int SelectedCount => _selected.Count;
+
+    public bool IsSelected(int id) => _selected.Contains(id);
+
+    /// <summary>The selected objects, in list order.</summary>
+    public IEnumerable<VoxelObject> SelectedObjects => _objects.Where(o => _selected.Contains(o.Id));
+
+    /// <summary>The selected lights, in list order.</summary>
+    public IEnumerable<SceneLight> SelectedLights => _lights.Where(l => _selected.Contains(l.Id));
+
+    /// <summary>
+    /// Whether something may be selected: an object that is shown and not locked, or a light that is
+    /// not locked. Hidden and locked things are out of the tools' reach, which is what hiding and
+    /// locking are for.
+    /// </summary>
+    public bool CanSelect(int id) =>
+        Find(id) is { Visible: true, Locked: false } || FindLight(id) is { Locked: false };
+
+    /// <summary>Adds something to the selection. False when it cannot be selected or already is.</summary>
+    public bool Select(int id) => CanSelect(id) && _selected.Add(id);
+
+    public bool Deselect(int id) => _selected.Remove(id);
+
+    public void DeselectAll() => _selected.Clear();
 
     public int SolidCount
     {
@@ -396,6 +431,7 @@ public sealed class VoxelScene
         // Out of the level, moving it — as an undo holding it might — moves nothing that is in it.
         _lights[index].Moved = null;
         _lights.RemoveAt(index);
+        _selected.Remove(id);
         return true;
     }
 
@@ -453,6 +489,8 @@ public sealed class VoxelScene
             Palette = Palette.Clone(),
         };
 
+        copy._selected.UnionWith(_selected);
+
         foreach (VoxelObject o in _objects)
         {
             VoxelWorld grid = o.Grid.Copy();
@@ -485,6 +523,7 @@ public sealed class VoxelScene
         // Its children keep its id, and so find it again if it is put back; until then they are free.
         _objects[index].Moved = null;
         _objects.RemoveAt(index);
+        _selected.Remove(id);
 
         if (FocusId == id)
         {
@@ -507,12 +546,6 @@ public sealed class VoxelScene
         }
 
         if (empty is null)
-        {
-            return 0;
-        }
-
-        // Never leave the scene with nothing at all: with no Place tool there would be no way back.
-        if (empty.Count == _objects.Count)
         {
             return 0;
         }
@@ -550,6 +583,7 @@ public sealed class VoxelScene
 
         _objects.Clear();
         _lights.Clear();
+        _selected.Clear();
         FocusId = 0;
         _nextId = 1;
     }

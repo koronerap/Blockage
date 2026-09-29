@@ -23,6 +23,25 @@ public enum EditorTool
 
     /// <summary>Camera only — no editing at all.</summary>
     View,
+
+    /// <summary>
+    /// Picks what the other tools work on: a click selects, a drag draws a box. Last in the list so
+    /// the numbers the others were saved under stay theirs; the toolbar shows it first.
+    /// </summary>
+    Select,
+}
+
+/// <summary>What a Transform drag of several things turns about, Blender's pivot point.</summary>
+public enum TransformPivot
+{
+    /// <summary>The middle of everything selected.</summary>
+    MedianPoint,
+
+    /// <summary>The active one's centre.</summary>
+    ActiveElement,
+
+    /// <summary>Each turns about its own centre; a move still moves them all together.</summary>
+    IndividualOrigins,
 }
 
 /// <summary>Transform's two sub-modes, toggled with F.</summary>

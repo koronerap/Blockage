@@ -1,6 +1,7 @@
 using EditorApp.Core.Commands;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Tests;
@@ -246,6 +247,7 @@ public class PaintSessionTests
     private static EditorSession SessionWithPlate(byte index = 5)
     {
         var session = new EditorSession { ActiveTool = EditorTool.Paint };
+        session.Scene.Add(new VoxelWorld(), ObjectTransform.Identity);
         for (int x = 0; x < 5; x++)
         {
             for (int z = 0; z < 5; z++)

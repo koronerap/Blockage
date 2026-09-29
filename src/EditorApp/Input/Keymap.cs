@@ -199,6 +199,10 @@ public sealed class Keymap
             [EditorAction.UnlockAll] = [KeyChord.AltOf(Key.L)],
             [EditorAction.Rename] = [new(Key.F2)],
             [EditorAction.SetParent] = [KeyChord.Ctrl(Key.P)],
+            [EditorAction.SelectAll] = [new(Key.A)],
+            [EditorAction.DeselectAll] = [KeyChord.AltOf(Key.A)],
+            [EditorAction.InvertSelection] = [KeyChord.Ctrl(Key.I)],
+            [EditorAction.Join] = [KeyChord.Ctrl(Key.J)],
             [EditorAction.ClearParent] = [KeyChord.AltOf(Key.P)],
             [EditorAction.Search] = [new(Key.F3)],
             [EditorAction.AddMenu] = [KeyChord.ShiftOf(Key.A)],
@@ -229,6 +233,7 @@ public sealed class Keymap
         if (preset == KeymapPreset.MimicBusters)
         {
             // Exactly the keys the editor had before there was a choice, which are the game's.
+            shared[EditorAction.ToolSelect] = [new(Key.T)];
             shared[EditorAction.ToolTransform] = [new(Key.Q)];
             shared[EditorAction.ToolExtrude] = [new(Key.W)];
             shared[EditorAction.ToolPaint] = [new(Key.E)];
@@ -248,6 +253,7 @@ public sealed class Keymap
         // Default: the keys an editing program is expected to answer to. G grabs and R rotates, as in
         // Blender; E extrudes and B is the brush; Ctrl+R is Blender's own loop cut. F frames what is
         // focused, as it does in every engine editor, and Ctrl+D duplicates, as in most of them.
+        shared[EditorAction.ToolSelect] = [new(Key.W)];
         shared[EditorAction.ToolMove] = [new(Key.G)];
         shared[EditorAction.ToolRotate] = [new(Key.R)];
         shared[EditorAction.ToolExtrude] = [new(Key.E)];

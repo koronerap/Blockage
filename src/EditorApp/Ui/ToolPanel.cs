@@ -31,6 +31,11 @@ public static class ToolPanel
 
         switch (session.ActiveTool)
         {
+            case EditorTool.Select:
+                Wrapped("Click an object or a light to select it; drag for a box around several. Shift adds, and Shift-clicking the active one lets it go; Ctrl takes away. A click on nothing selects nothing. The other tools work only on what is selected.");
+                Props.Value("Selected", ObjectMenu.SelectionSummary(session));
+                break;
+
             case EditorTool.Transform:
                 DrawTransform(session);
                 break;
@@ -69,6 +74,10 @@ public static class ToolPanel
         session.TransformSpace = (TransformSpace)space;
         ImGui.EndDisabled();
         Tooltip("Whether the arrows follow the world or the object's own turn.  (X)");
+
+        int pivot = Props.Choice("Pivot", "transform-pivot", [(Icons.FrameAll, "Median"), (Icons.Select, "Active"), (Icons.Local, "Individual")], (int)session.Pivot);
+        session.Pivot = (TransformPivot)pivot;
+        Tooltip("What several selected things turn about: their middle, the active one's centre, or each its own.");
 
         Props.Value("Snap", "whole voxels, 15°");
         Tooltip("Hold Shift while dragging to move and turn freely.");

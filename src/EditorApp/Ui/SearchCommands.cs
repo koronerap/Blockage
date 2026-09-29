@@ -176,7 +176,7 @@ public static class SearchCommands
         // ---- Object
         foreach ((string name, RotateDirection direction) in Turns)
         {
-            commands.Add(new($"object.turn.{direction}".ToLowerInvariant(), name, "Object", () => session.RotateFocus(direction))
+            commands.Add(new($"object.turn.{direction}".ToLowerInvariant(), name, "Object", () => session.RotateSelected(direction))
             {
                 Keywords = "rotate quarter",
                 Problem = () => NoVoxels(session),
@@ -185,7 +185,7 @@ public static class SearchCommands
 
         foreach ((string name, Axis axis) in Flips)
         {
-            commands.Add(new($"object.flip.{axis}".ToLowerInvariant(), name, "Object", () => session.FlipFocus(axis))
+            commands.Add(new($"object.flip.{axis}".ToLowerInvariant(), name, "Object", () => session.FlipSelected(axis))
             {
                 Keywords = "mirror",
                 Problem = () => NoVoxels(session),
@@ -287,7 +287,12 @@ public static class SearchCommands
     };
 
     private static string? NoVoxels(EditorSession session) =>
-        session.Scene.Focus is { IsEmpty: false } ? null : "Nothing with voxels is focused.";
+        session.SelectedObjects.Any(o => !o.IsEmpty) || (session.CopiesSelection && session.Scene.Focus is { IsEmpty: false })
+            ? null
+            : "Nothing with voxels is selected.";
+
+    private static string? NothingSelected(EditorSession session) =>
+        session.SelectedCount > 0 ? null : "Nothing is selected.";
 
     /// <summary>What stands in the way of an action now, where anything can — shown on its row, greyed.</summary>
     private static Func<string?>? ProblemOf(EditorAction action, EditorSession session) => action switch
@@ -296,15 +301,22 @@ public static class SearchCommands
         EditorAction.Redo => () => session.History.CanRedo ? null : "There is nothing to redo.",
         EditorAction.Paste => () => session.Clipboard is null ? "Nothing has been copied." : null,
         EditorAction.Copy or EditorAction.Cut => () => NoVoxels(session),
-        EditorAction.Subdivide => () => session.SubdivideProblem(session.Scene.Focus),
-        EditorAction.SetParent => () => session.Scene.Objects.Count > 1 || session.SelectedLight is not null
+        EditorAction.Subdivide => () => session.SelectedObjects.FirstOrDefault() is { } first
+            ? session.SelectedObjects.Any(o => session.SubdivideProblem(o) is null) ? null : session.SubdivideProblem(first)
+            : "Nothing is selected.",
+        EditorAction.SetParent => () => session.SelectedCount == 0
+            ? "Nothing is selected."
+            : session.Scene.Objects.Count > 1 || session.SelectedLight is not null
+                ? null
+                : "There is no other object to be its parent.",
+        EditorAction.ClearParent => () => session.SelectedObjects.Cast<IPlaceable>().Concat(session.SelectedLights).Any(t => session.Scene.ParentOf(t) is not null)
             ? null
-            : "There is no other object to be its parent.",
-        EditorAction.ClearParent => () => InHand(session) is { } held && session.Scene.ParentOf(held) is null
-            ? $"{held.Name} has no parent."
-            : null,
+            : "Nothing selected has a parent.",
+        EditorAction.Delete or EditorAction.Duplicate or EditorAction.Hide or EditorAction.Lock or EditorAction.DeselectAll or EditorAction.InvertSelection =>
+            () => NothingSelected(session),
+        EditorAction.Join => () => session.SelectedObjects.Count() > 1 && session.SelectedLightId == 0
+            ? null
+            : "Select two objects or more, the one to join into last.",
         _ => null,
     };
-
-    private static IPlaceable? InHand(EditorSession session) => session.SelectedLight as IPlaceable ?? session.Scene.Focus;
 }

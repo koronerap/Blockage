@@ -104,13 +104,27 @@ public class ReportLogTests
 
     /// <summary>A cut of the last object copies it and keeps it; the report has to say so, or it looks like a cut.</summary>
     [Fact]
-    public void CuttingTheLastObjectSaysItStays()
+    public void CuttingTheLastObjectTakesItAndSaysSo()
     {
         ReportLog log = Log();
+        EditorSession session = Session();
 
-        ClipboardActions.Cut(Session(), log);
+        ClipboardActions.Cut(session, log);
 
-        Assert.Contains("stays", log.Current?.Text, StringComparison.Ordinal);
+        Assert.Empty(session.Scene.Objects);
+        Assert.StartsWith("Cut Object 1", log.Current?.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CopyingNothingSelectedSaysToSelectFirst()
+    {
+        ReportLog log = Log();
+        EditorSession session = Session();
+        session.DeselectAll();
+
+        ClipboardActions.Copy(session, log);
+
+        Assert.Contains("select something", log.Current?.Text, StringComparison.Ordinal);
     }
 
     [Fact]

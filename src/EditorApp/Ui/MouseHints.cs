@@ -1,4 +1,5 @@
 using EditorApp.Core.Editing;
+using EditorApp.Input;
 
 namespace EditorApp.Ui;
 
@@ -46,12 +47,23 @@ public static class MouseHints
         return hints;
     }
 
+    /// <summary>The Select tool's key, or its name when it has none.</summary>
+    private static string SelectKey() => Shortcut.Of(EditorAction.ToolSelect) is { Length: > 0 } key ? key : "the Select tool";
+
     /// <summary>What a left click or drag in the viewport does with the active tool, or null for none.</summary>
     private static string? LeftButton(EditorSession session, bool shift, bool control, bool alt) =>
         session.ActiveTool switch
         {
+            EditorTool.Select when shift => "Add to the selection",
+            EditorTool.Select when control => "Take from the selection",
+            EditorTool.Select => "Select, drag for a box",
+
             EditorTool.Transform when shift => session.Snap.Enabled ? "Drag without snapping" : "Drag with snapping",
             EditorTool.Transform => "Select, drag a handle",
+
+            // The tools that write voxels reach only what is selected.
+            EditorTool.Extrude or EditorTool.Paint or EditorTool.LoopCut when session.SelectedObjects.FirstOrDefault() is null =>
+                $"Nothing selected - {SelectKey()} selects",
 
             EditorTool.Extrude when alt => "Remove from selection",
             EditorTool.Extrude when shift => "Add to selection",

@@ -156,13 +156,25 @@ public sealed class ViewportMenuTests : IDisposable
     [Fact]
     public void WhatCannotBeDoneIsGreyed()
     {
+        // Nothing copied yet, and nothing selected to delete.
+        _session.DeselectAll();
         Open(_session.Scene.Objects[0].Id, 0);
 
-        // Nothing copied yet, and the last object cannot be deleted.
         _ui.Click(Centre(ViewportMenu.ItemRect("Paste")), Draw);
         _ui.Click(Centre(ViewportMenu.ItemRect("Delete")), Draw);
 
         Assert.Empty(_run);
+    }
+
+    [Fact]
+    public void TheLastObjectCanBeDeleted()
+    {
+        _session.ClickSelect(_session.Scene.Objects[0].Id);
+        Open(_session.Scene.Objects[0].Id, 0);
+
+        _ui.Click(Centre(ViewportMenu.ItemRect("Delete")), Draw);
+
+        Assert.Equal([EditorAction.Delete], _run);
     }
 
     [Fact]

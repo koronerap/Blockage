@@ -78,6 +78,10 @@ public sealed class EditorApplication : IDisposable
     private ExtrudeInteraction? _extrude;
     private TransformInteraction? _transform;
     private LightAimInteraction? _aim;
+    private SelectInteraction? _select;
+
+    /// <summary>The object under the pointer, outlined faintly; 0 for none. Never changes what is selected.</summary>
+    private int _hoverObjectId;
 
     /// <summary>The light whose aim line is under the pointer, drawn lit so it is seen to be grabbable.</summary>
     private SceneLight? _aimHover;
@@ -208,10 +212,14 @@ public sealed class EditorApplication : IDisposable
         _extrude = new ExtrudeInteraction(_session);
         _transform = new TransformInteraction(_session);
         _aim = new LightAimInteraction(_session);
+        _select = new SelectInteraction(_session);
 
         // The editor opens on the same thing New gives you: an 8³ white cube to extrude from.
         _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
         _session.ActiveColorIndex = Palette.WhiteIndex;
+
+        // Blender's first tool: choosing what to work on comes before working on it.
+        _session.ActiveTool = EditorTool.Select;
 
         // A smoke or screenshot run leaves the user's recent-files list as it found it.
         _project.RemembersRecent = _smokeFrames <= 0;
@@ -507,7 +515,7 @@ public sealed class EditorApplication : IDisposable
     {
         bool counts = _viewport.Contains(at) && !IsDragging() && !_leftButtonWasDown;
         SceneLight? light = counts && ShowLightIcons ? LightUnder(_viewport.ToLocal(at), _viewport.Size) : null;
-        int objectId = counts && light is null && _pick is { } pick ? pick.Object.Id : 0;
+        int objectId = counts && light is null && PickAt(_viewport.ToLocal(at), selectedOnly: false) is { } pick ? pick.Object.Id : 0;
 
         _rightPress = (objectId, light?.Id ?? 0, _camera.Yaw, _camera.Pitch);
         _rightClick.Press(at, _clock, counts);
@@ -524,13 +532,12 @@ public sealed class EditorApplication : IDisposable
         _camera.Yaw = _rightPress.Yaw;
         _camera.Pitch = _rightPress.Pitch;
 
-        if (_rightPress.LightId != 0)
+        // What the menu is for is selected, if it was not already — then the menu's commands, which
+        // act on the selection, act on it. Something already selected keeps the rest selected with it.
+        int clicked = _rightPress.LightId != 0 ? _rightPress.LightId : _rightPress.ObjectId;
+        if (clicked != 0 && !_session.IsSelected(clicked))
         {
-            _session.SelectLight(_rightPress.LightId);
-        }
-        else if (_rightPress.ObjectId != 0)
-        {
-            _session.ChooseObject(_rightPress.ObjectId);
+            _session.ClickSelect(clicked);
         }
 
         ViewportMenu.Open(at, _rightPress.ObjectId, _rightPress.LightId);
@@ -646,10 +653,40 @@ public sealed class EditorApplication : IDisposable
         Zoom,
     }
 
+    /// <summary>Whether the tool in hand writes voxels, and so reaches only what is selected.</summary>
+    private bool VoxelToolInHand => _session.ActiveTool is EditorTool.Extrude or EditorTool.Paint or EditorTool.LoopCut;
+
+    /// <summary>
+    /// The nearest object under a point of the viewport. With <paramref name="selectedOnly"/>, what is
+    /// not selected is looked straight through, as if it were not there.
+    /// </summary>
+    private ScenePick? PickAt(Vector2 local, bool selectedOnly)
+    {
+        Ray ray = _camera.ScreenPointToRay(local, _viewport.Size);
+        return _session.Scene.TryPick(ray, out ScenePick pick, skip: selectedOnly ? o => !_session.IsSelected(o.Id) : null)
+            ? pick
+            : null;
+    }
+
+    /// <summary>What a selecting click at a point lands on: a light's icon first, then an object; 0 for nothing.</summary>
+    private int ThingUnder(Vector2 local)
+    {
+        if (ShowLightIcons && LightUnder(local, _viewport.Size) is { } light)
+        {
+            return light.Id;
+        }
+
+        return PickAt(local, selectedOnly: false) is { } pick ? pick.Object.Id : 0;
+    }
+
+    private IEnumerable<int> ThingsInBox(Vector2 min, Vector2 max) =>
+        SelectInteraction.InBox(_session.Scene, _camera, _viewport.Size, min, max, IsLightShown);
+
     private void UpdateHover()
     {
         _hover = null;
         _pick = null;
+        _hoverObjectId = 0;
 
         if (_input is null || _input.Mice.Count == 0 || _looking || ImGui.GetIO().WantCaptureMouse)
         {
@@ -663,20 +700,21 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        Ray ray = _camera.ScreenPointToRay(_viewport.ToLocal(mouse), _viewport.Size);
-
-        if (!_session.Scene.TryPick(ray, out ScenePick pick))
+        // The tools that write voxels reach only what is selected, and see through the rest.
+        bool voxelTool = VoxelToolInHand;
+        if (PickAt(_viewport.ToLocal(mouse), selectedOnly: voxelTool) is not { } pick)
         {
             return;
         }
 
         _pick = pick;
+        _hoverObjectId = pick.Object.Id;
 
-        // Focus follows whatever the cursor is over, except while a gesture is running. TryFocus
-        // guards strokes, extrude previews and held selections itself; the drags that have none of
-        // those — a gizmo, and the box-drag that is still deciding what the selection will be — are
-        // guarded here.
-        if (_transform is not { IsDragging: true } && _extrude is not { IsBusy: true } && _aim is not { IsAiming: true })
+        // Among the selected, the one under the pointer is the one a voxel tool writes: focus moves
+        // there, except while a gesture is running. TryFocus guards strokes, extrude previews and held
+        // selections itself; the extrude box-drag that is still deciding its surface is guarded here.
+        // No other tool moves focus by hovering — the gizmo stays with the selection.
+        if (voxelTool && _extrude is not { IsBusy: true })
         {
             _session.TryFocus(pick.Object.Id);
         }
@@ -716,6 +754,10 @@ public sealed class EditorApplication : IDisposable
 
         switch (_session.ActiveTool)
         {
+            case EditorTool.Select:
+                UpdateSelect(local, leftDown, pressed, released);
+                break;
+
             case EditorTool.Transform:
                 UpdateTransform(local, viewport, leftDown, pressed, released, pointing);
                 break;
@@ -773,16 +815,12 @@ public sealed class EditorApplication : IDisposable
 
         if (pressed && !(ToolGizmos && _transform!.OnPress(mouse, viewport, _camera)))
         {
-            // Not a handle: a light's icon picks the light, and anywhere else lets go of one, so the
-            // gizmo goes back to the focused object.
-            if (LightUnder(mouse, viewport) is { } light)
-            {
-                _session.SelectLight(light.Id);
-            }
-            else
-            {
-                _session.ClearLightSelection();
-            }
+            // Not a handle: a click selects and a drag draws a box, as with the Select tool.
+            _select!.OnPress(mouse, IsShiftHeld(), IsControlHeld());
+        }
+        else if (_select!.IsPressed)
+        {
+            UpdateSelect(mouse, leftDown, pressed: false, released);
         }
         else if (leftDown && _transform!.IsDragging)
         {
@@ -793,6 +831,23 @@ public sealed class EditorApplication : IDisposable
         else if (released)
         {
             _transform!.OnRelease();
+        }
+    }
+
+    /// <summary>The Select tool: a click picks, a drag draws a box.</summary>
+    private void UpdateSelect(Vector2 mouse, bool leftDown, bool pressed, bool released)
+    {
+        if (pressed)
+        {
+            _select!.OnPress(mouse, IsShiftHeld(), IsControlHeld());
+        }
+        else if (leftDown)
+        {
+            _select!.OnDrag(mouse);
+        }
+        else if (released)
+        {
+            _select!.OnRelease(ThingUnder, ThingsInBox);
         }
     }
 
@@ -990,7 +1045,13 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.SaveAs: _project?.SaveAs(); break;
             case EditorAction.Export: _export?.Show(); break;
 
+            case EditorAction.ToolSelect: SwitchTool(EditorTool.Select); break;
             case EditorAction.ToolTransform: SwitchTool(EditorTool.Transform); break;
+
+            case EditorAction.SelectAll when !IsDragging(): _session.SelectAll(); break;
+            case EditorAction.DeselectAll when !IsDragging(): _session.DeselectAll(); break;
+            case EditorAction.InvertSelection when !IsDragging(): _session.InvertSelection(); break;
+            case EditorAction.Join when !IsDragging(): ObjectMenu.JoinSelected(_session, ReportLog.Shared); break;
             case EditorAction.ToolExtrude: SwitchTool(EditorTool.Extrude); break;
             case EditorAction.ToolPaint: SwitchTool(EditorTool.Paint); break;
             case EditorAction.ToolLoopCut: SwitchTool(EditorTool.LoopCut); break;
@@ -1025,18 +1086,8 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.Cut when !IsDragging(): ClipboardActions.Cut(_session, ReportLog.Shared); break;
             case EditorAction.Paste when !IsDragging(): ClipboardActions.Paste(_session, _camera, ReportLog.Shared); break;
 
-            // With a light picked, the object keys act on the light.
-            case EditorAction.Duplicate when !IsDragging():
-                if (_session.SelectedLight is { } copied)
-                {
-                    LightMenu.Duplicate(_session, _camera, copied);
-                }
-                else
-                {
-                    ObjectMenu.Duplicate(_session, _camera);
-                }
-
-                break;
+            // The object keys act on everything selected, lights included.
+            case EditorAction.Duplicate when !IsDragging(): ObjectMenu.Duplicate(_session, _camera); break;
 
             case EditorAction.ShowAll:
                 _session.ShowAllObjects();
@@ -1047,30 +1098,8 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case EditorAction.Hide when !IsDragging():
-                if (_session.SelectedLight is { } dimmed)
-                {
-                    _session.SetLightVisible(dimmed.Id, !dimmed.Visible);
-                }
-                else
-                {
-                    _session.SetObjectVisible(_session.Scene.FocusId, false);
-                }
-
-                break;
-
-            case EditorAction.Lock when !IsDragging():
-                if (_session.SelectedLight is { } lamp)
-                {
-                    _session.SetLightLocked(lamp.Id, true);
-                    ReportLog.Shared.Post($"Locked {lamp.Name}. Unlock it in the Outliner.");
-                }
-                else if (_session.Scene.Focus is { Locked: false } held && _session.SetObjectLocked(held.Id, true))
-                {
-                    ReportLog.Shared.Post($"Locked {held.Name}. Unlock it in the Outliner.");
-                }
-
-                break;
+            case EditorAction.Hide when !IsDragging(): _session.HideSelected(); break;
+            case EditorAction.Lock when !IsDragging(): ObjectMenu.LockSelected(_session, ReportLog.Shared); break;
 
             case EditorAction.UnlockAll:
                 if (_session.UnlockAll() is > 0 and var unlocked)
@@ -1080,21 +1109,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case EditorAction.Delete when !IsDragging():
-                if (_session.SelectedLight is { } removed)
-                {
-                    _session.DeleteLight(removed.Id);
-                }
-                else if (_session.Scene.Focus is { Locked: true } locked)
-                {
-                    ReportLog.Shared.Post($"{locked.Name} is locked - unlock it in the Outliner to delete it.", ReportKind.Warning);
-                }
-                else
-                {
-                    _session.DeleteObject(_session.Scene.FocusId);
-                }
-
-                break;
+            case EditorAction.Delete when !IsDragging(): _session.DeleteSelected(); break;
 
             case EditorAction.Rename:
                 if (_session.SelectedLight is { } renamedLight)
@@ -1108,11 +1123,16 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case EditorAction.Subdivide when !IsDragging(): ObjectMenu.SubdivideFocus(_session, ReportLog.Shared); break;
+            case EditorAction.Subdivide when !IsDragging(): ObjectMenu.SubdivideSelected(_session, ReportLog.Shared); break;
 
-            // Whatever is in hand — the picked light, or else the focused object — is the child.
+            // Blender's Ctrl+P: with several selected, the rest go under the active one; with one, a
+            // list of what it could go under.
             case EditorAction.SetParent when !IsDragging():
-                if ((_session.SelectedLight as IPlaceable ?? _session.Scene.Focus) is { } child)
+                if (_session.SelectedCount > 1)
+                {
+                    ObjectMenu.ParentSelected(_session, ReportLog.Shared);
+                }
+                else if (_session.SelectedObjects.Cast<IPlaceable>().Concat(_session.SelectedLights).FirstOrDefault() is { } child)
                 {
                     ParentMenu.Open(child.Id);
                 }
@@ -1127,9 +1147,9 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case EditorAction.ClearParent when !IsDragging():
-                if ((_session.SelectedLight as IPlaceable ?? _session.Scene.Focus) is { } freed)
+                if (_session.ClearParentOfSelected() is > 0 and var freed)
                 {
-                    ParentMenu.Clear(_session, freed);
+                    ReportLog.Shared.Post(freed == 1 ? "Cleared the parent." : $"Cleared the parents of {freed}.");
                 }
 
                 break;
@@ -1223,7 +1243,8 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>A drag is running that an object-level key would pull the object out from under.</summary>
-    private bool IsDragging() => _extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming || _session.IsStrokeActive;
+    private bool IsDragging() =>
+        _extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming || _session.IsStrokeActive || _select!.IsPressed;
 
     /// <summary>Changes tool, unless a drag is running. Returns whether it did.</summary>
     private bool SwitchTool(EditorTool tool)
@@ -1235,6 +1256,7 @@ public sealed class EditorApplication : IDisposable
 
         _extrude.Confirm();
         _session.EndStroke();
+        _select!.Cancel();
 
         // Every tool's transient preview belongs to that tool. Left behind, a cut plane from Loop
         // Cut keeps drawing over the model long after Extrude has taken over.
@@ -1298,9 +1320,9 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        if (_session.SelectedLightId != 0)
+        if (_select!.IsPressed)
         {
-            _session.ClearLightSelection();
+            _select.Cancel();
             return;
         }
 
@@ -1316,7 +1338,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        _session.ActiveTool = EditorTool.Transform;
+        _session.ActiveTool = EditorTool.Select;
     }
 
     private void ToggleSubMode()
@@ -1384,7 +1406,7 @@ public sealed class EditorApplication : IDisposable
         // Off while painting. The highlight is a lie about brightness, and it is a useful one right
         // up until the colours themselves are what is being judged — at which point a face lifted
         // towards white is not the colour that was just put on it.
-        _renderer.FocusHighlight = View.Overlays && View.FocusHighlight && _session.ActiveTool != EditorTool.Paint;
+        _renderer.FocusHighlight = View.Overlays && View.FocusHighlight && _session.ActiveTool != EditorTool.Paint && _session.SelectedCount > 0;
         ApplyViewStyle();
 
         _renderer.Render(
@@ -1505,6 +1527,35 @@ public sealed class EditorApplication : IDisposable
         {
             lines.Transform = listed.Transform.ToMatrix();
             lines.AddBox(listedMin, listedMax, EditorOverlays.Highlight, EditorOverlays.SelectionWidth);
+        }
+
+        // What is selected, boxed in Blender's orange — the active one lighter — and, faintly, what
+        // the pointer is over, which a click would select.
+        if (View.Overlays)
+        {
+            foreach (VoxelObject chosen in _session.SelectedObjects)
+            {
+                if (chosen.TryGetLocalBounds(out Vector3 chosenMin, out Vector3 chosenMax))
+                {
+                    lines.Transform = chosen.Transform.ToMatrix();
+                    lines.AddBox(
+                        chosenMin,
+                        chosenMax,
+                        chosen.Id == _session.ActiveId ? EditorOverlays.ObjectActive : EditorOverlays.ObjectSelected,
+                        EditorOverlays.SelectionWidth);
+                }
+            }
+
+            if (_hoverObjectId != 0
+                && !VoxelToolInHand
+                && _session.ActiveTool != EditorTool.View
+                && !_session.IsSelected(_hoverObjectId)
+                && _session.Scene.Find(_hoverObjectId) is { } pointed
+                && pointed.TryGetLocalBounds(out Vector3 pointedMin, out Vector3 pointedMax))
+            {
+                lines.Transform = pointed.Transform.ToMatrix();
+                lines.AddBox(pointedMin, pointedMax, EditorOverlays.ObjectHovered, 1f);
+            }
         }
 
         // Everything from here on is expressed in the focused object's own space.
@@ -1647,6 +1698,8 @@ public sealed class EditorApplication : IDisposable
         }
 
         ViewportOverlay.Draw(_session, _camera, _viewport, ShowMeasurements, context.DragReadout, CursorMark(), CursorSample(), View.Overlays && View.TextInfo);
+        DrawSelectBox();
+        DrawEmptyHint();
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -1691,6 +1744,44 @@ public sealed class EditorApplication : IDisposable
             _windowTitle = title;
             _window.Title = title;
         }
+    }
+
+    /// <summary>An empty level says how to put something in it, in the middle of the view, under the panels.</summary>
+    private void DrawEmptyHint()
+    {
+        if (_session.Scene.Objects.Count > 0 || WelcomeScreen.IsOpen)
+        {
+            return;
+        }
+
+        string key = Shortcut.Of(EditorAction.AddMenu) is { Length: > 0 } add ? add : "the Add menu";
+        string[] lines = ["The level is empty.", $"{key} adds a shape, a prop or a light."];
+
+        ImDrawListPtr draw = ImGui.GetBackgroundDrawList();
+        float y = _viewport.Position.Y + (_viewport.Size.Y * 0.5f) - ImGui.GetTextLineHeightWithSpacing();
+        foreach (string line in lines)
+        {
+            Vector2 size = ImGui.CalcTextSize(line);
+            draw.AddText(new Vector2(_viewport.Position.X + ((_viewport.Size.X - size.X) * 0.5f), y), ImGui.GetColorU32(Theme.TextDim), line);
+            y += ImGui.GetTextLineHeightWithSpacing();
+        }
+    }
+
+    /// <summary>The box a selecting drag is drawing, in the colour of what it will do.</summary>
+    private void DrawSelectBox()
+    {
+        if (_select?.Box is not { } box)
+        {
+            return;
+        }
+
+        ImDrawListPtr draw = ImGui.GetForegroundDrawList();
+        Vector2 min = _viewport.Position + box.Min;
+        Vector2 max = _viewport.Position + box.Max;
+        Vector4 colour = EditorOverlays.SelectionColour(_select.Operation).ToVector4();
+
+        draw.AddRectFilled(min, max, ImGui.GetColorU32(colour with { W = 0.08f }));
+        draw.AddRect(min, max, ImGui.GetColorU32(colour with { W = 0.9f }), 0f, ImDrawFlags.None, 1f);
     }
 
     private WelcomeActions CreateWelcomeActions() => new()
@@ -1765,9 +1856,34 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
+    /// <summary>Frames what is selected — all of it — or, with nothing selected, the focused object.</summary>
     private void FrameFocused()
     {
-        if (_session.Scene.Focus is { } focus && focus.TryGetWorldBounds(out Vector3 min, out Vector3 max))
+        bool any = false;
+        Vector3 min = Vector3.Zero, max = Vector3.Zero;
+
+        IEnumerable<VoxelObject> framed = _session.SelectedCount > 0
+            ? _session.SelectedObjects
+            : _session.Scene.Focus is { } focus ? [focus] : [];
+
+        foreach (VoxelObject o in framed)
+        {
+            if (o.TryGetWorldBounds(out Vector3 lo, out Vector3 hi))
+            {
+                min = any ? Vector3.Min(min, lo) : lo;
+                max = any ? Vector3.Max(max, hi) : hi;
+                any = true;
+            }
+        }
+
+        foreach (SceneLight light in _session.SelectedLights)
+        {
+            min = any ? Vector3.Min(min, light.Position - Vector3.One) : light.Position - Vector3.One;
+            max = any ? Vector3.Max(max, light.Position + Vector3.One) : light.Position + Vector3.One;
+            any = true;
+        }
+
+        if (any)
         {
             _camera.FrameBox(min, max);
         }

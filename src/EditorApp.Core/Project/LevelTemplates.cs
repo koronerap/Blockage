@@ -18,13 +18,15 @@ public enum LevelTemplate
 
     /// <summary>One voxel, to build up from next to nothing.</summary>
     Voxel,
+
+    /// <summary>Nothing but the sun: everything comes from Shift+A.</summary>
+    Empty,
 }
 
 /// <summary>
-/// The levels New can start from — Blender's templates, for a voxel editor. Each has something to
-/// extrude from, since there is no Place tool and an empty level would be a dead end, and each gets
-/// the sun a new level has. Everything sits on the ground plane, centred on the origin, as the cube
-/// always has.
+/// The levels New can start from — Blender's templates, for a voxel editor. Each gets the sun a new
+/// level has, and all but Empty something to extrude from; Empty is filled from Shift+A. Everything
+/// sits on the ground plane, centred on the origin, as the cube always has.
 /// </summary>
 public static class LevelTemplates
 {
@@ -39,13 +41,14 @@ public static class LevelTemplates
     public const byte FloorIndex = 12;
 
     /// <summary>In the order New lists them, the one Ctrl+N makes first.</summary>
-    public static readonly LevelTemplate[] All = [LevelTemplate.Cube, LevelTemplate.Ground, LevelTemplate.Room, LevelTemplate.Voxel];
+    public static readonly LevelTemplate[] All = [LevelTemplate.Cube, LevelTemplate.Ground, LevelTemplate.Room, LevelTemplate.Voxel, LevelTemplate.Empty];
 
     public static string NameOf(LevelTemplate template) => template switch
     {
         LevelTemplate.Ground => "Ground",
         LevelTemplate.Room => "Room",
         LevelTemplate.Voxel => "Single voxel",
+        LevelTemplate.Empty => "Empty",
         _ => "Cube",
     };
 
@@ -55,6 +58,7 @@ public static class LevelTemplates
         LevelTemplate.Ground => $"{GroundSize}x{GroundSize} floor, one voxel thick, to build a level on",
         LevelTemplate.Room => $"{RoomSize}x{RoomSize} floor walled {RoomWallHeight} high, open at the top",
         LevelTemplate.Voxel => "one white voxel to build up from",
+        LevelTemplate.Empty => "nothing but the sun - Shift+A adds shapes, props and lights",
         _ => $"{EditorSession.StarterCubeSize}x{EditorSession.StarterCubeSize}x{EditorSession.StarterCubeSize} white cube to extrude from",
     };
 
@@ -78,6 +82,9 @@ public static class LevelTemplates
                 var one = new VoxelWorld();
                 one.SetVoxel(0, 0, 0, Palette.WhiteIndex);
                 scene.Add(one, ObjectTransform.Identity, "Voxel");
+                break;
+
+            case LevelTemplate.Empty:
                 break;
 
             default:

@@ -216,10 +216,11 @@ public class LightTests : IDisposable
         Assert.Same(point, session.TransformTarget);
         Assert.Equal("Point", point.Name);
 
+        // Picking is not undone: with the light gone, nothing is left selected to move.
         session.Undo();
         Assert.DoesNotContain(point, session.Scene.Lights);
         Assert.Null(session.SelectedLight);
-        Assert.Same(session.Scene.Focus, session.TransformTarget);
+        Assert.Null(session.TransformTarget);
 
         session.Redo();
         Assert.Contains(point, session.Scene.Lights);

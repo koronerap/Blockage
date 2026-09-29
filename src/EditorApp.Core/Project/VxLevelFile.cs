@@ -118,6 +118,7 @@ public static class VxLevelFile
             SavedCustomSlots = [.. scene.Palette.SavedCustomSlots()],
             Lights = [.. scene.Lights.Select(light => WriteLight(scene, light))],
             Ambient = scene.Ambient,
+            Active = scene.Focus?.Id,
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
 
@@ -144,6 +145,7 @@ public static class VxLevelFile
                 VoxelSize = o.VoxelSize,
                 Locked = o.Locked,
                 Parent = scene.ParentOf(o)?.Id,
+                Selected = scene.IsSelected(o.Id),
             });
 
             foreach (ChunkCoord coord in coordinates)
@@ -300,7 +302,8 @@ public static class VxLevelFile
         var byFileId = new Dictionary<int, VoxelObject>();
         var parented = new List<(IPlaceable Child, int ParentFileId)>();
 
-        if (manifest.Objects is { Length: > 0 } objects)
+        // An empty list is a level with nothing in it; only a missing one is version 1's single grid.
+        if (manifest.Objects is { } objects)
         {
             foreach (LevelManifest.ObjectEntry entry in objects)
             {
@@ -316,6 +319,10 @@ public static class VxLevelFile
 
                 added.Visible = entry.Visible;
                 added.Locked = entry.Locked;
+                if (entry.Selected)
+                {
+                    scene.Select(added.Id);
+                }
 
                 byFileId.TryAdd(entry.Id, added);
                 if (entry.Parent is { } parent)
@@ -339,6 +346,11 @@ public static class VxLevelFile
             foreach (LevelManifest.LightEntry entry in lights)
             {
                 SceneLight light = ReadLight(scene, entry);
+                if (entry.Selected)
+                {
+                    scene.Select(light.Id);
+                }
+
                 if (entry.Parent is { } parent)
                 {
                     parented.Add((light, parent));
@@ -360,6 +372,11 @@ public static class VxLevelFile
         }
 
         scene.Ambient = manifest.Ambient ?? VoxelScene.DefaultAmbient;
+
+        if (manifest.Active is { } active && byFileId.TryGetValue(active, out VoxelObject? focused))
+        {
+            scene.SetFocus(focused.Id);
+        }
 
         scene.MarkAllDirty();
         return scene;
@@ -389,6 +406,7 @@ public static class VxLevelFile
             Visible = light.Visible,
             Locked = light.Locked,
             Parent = scene.ParentOf(light)?.Id,
+            Selected = scene.IsSelected(light.Id),
         };
     }
 

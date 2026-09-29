@@ -10,16 +10,23 @@ public class LevelTemplateTests
 {
     public static TheoryData<LevelTemplate> Templates() => [.. LevelTemplates.All];
 
-    /// <summary>With no Place tool, a level without a voxel in it is a dead end.</summary>
+    /// <summary>Every template but Empty has something to extrude from; every one has the sun.</summary>
     [Theory]
     [MemberData(nameof(Templates))]
     public void EveryTemplateHasSomethingToExtrudeAndTheSun(LevelTemplate template)
     {
         VoxelScene scene = LevelTemplates.Build(template);
 
+        Assert.Single(scene.Lights, l => l.Kind == LightKind.Directional);
+        if (template == LevelTemplate.Empty)
+        {
+            Assert.Empty(scene.Objects);
+            Assert.Equal(0, scene.FocusId);
+            return;
+        }
+
         Assert.NotEmpty(scene.Objects);
         Assert.All(scene.Objects, o => Assert.False(o.IsEmpty));
-        Assert.Single(scene.Lights, l => l.Kind == LightKind.Directional);
         Assert.NotEqual(0, scene.FocusId);
     }
 

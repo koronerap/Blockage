@@ -24,6 +24,14 @@ public static class EditorOverlays
     /// <summary>Whatever the pointer is over right now.</summary>
     public static readonly Color32 Highlight = new(255, 236, 120);
 
+    /// <summary>A selected object's box, in Blender's orange; the active one's is lighter.</summary>
+    public static readonly Color32 ObjectSelected = new(241, 118, 32);
+
+    public static readonly Color32 ObjectActive = new(255, 186, 84);
+
+    /// <summary>What the pointer is over and a click would select: faint, so it never reads as chosen.</summary>
+    public static readonly Color32 ObjectHovered = new(150, 156, 168);
+
     public static readonly Color32 BrushOutline = new(255, 160, 60);
 
     /// <summary>The surface Extrude holds: warm, the colour of the arrow that grows out of it.</summary>

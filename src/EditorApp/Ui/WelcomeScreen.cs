@@ -354,6 +354,7 @@ public static class WelcomeScreen
         LevelTemplate.Ground => Icons.TemplateGround,
         LevelTemplate.Room => Icons.TemplateRoom,
         LevelTemplate.Voxel => Icons.TemplateVoxel,
+        LevelTemplate.Empty => Icons.BoxSelect,
         _ => Icons.TemplateCube,
     };
 

@@ -6,6 +6,7 @@ namespace EditorApp.Core.Commands;
 public sealed class AddLightCommand(VoxelScene scene, SceneLight light, string name) : ICommand
 {
     private int _index = -1;
+    private bool _wasSelected;
 
     public string Name { get; } = name;
 
@@ -13,11 +14,19 @@ public sealed class AddLightCommand(VoxelScene scene, SceneLight light, string n
 
     public SceneLight Light => light;
 
-    public void Redo() => scene.RestoreLight(light, _index >= 0 ? _index : null);
+    public void Redo()
+    {
+        scene.RestoreLight(light, _index >= 0 ? _index : null);
+        if (_wasSelected)
+        {
+            scene.Select(light.Id);
+        }
+    }
 
     public void Undo()
     {
         _index = scene.IndexOfLight(light.Id);
+        _wasSelected = scene.IsSelected(light.Id);
         scene.RemoveLight(light.Id);
     }
 }
@@ -27,6 +36,8 @@ public sealed class DeleteLightCommand(VoxelScene scene, SceneLight light) : ICo
 {
     private int _index = -1;
 
+    private bool _wasSelected;
+
     public string Name => $"Delete {light.Name}";
 
     public int RetainedCells => 1;
@@ -34,10 +45,18 @@ public sealed class DeleteLightCommand(VoxelScene scene, SceneLight light) : ICo
     public void Redo()
     {
         _index = scene.IndexOfLight(light.Id);
+        _wasSelected = scene.IsSelected(light.Id);
         scene.RemoveLight(light.Id);
     }
 
-    public void Undo() => scene.RestoreLight(light, _index >= 0 ? _index : null);
+    public void Undo()
+    {
+        scene.RestoreLight(light, _index >= 0 ? _index : null);
+        if (_wasSelected)
+        {
+            scene.Select(light.Id);
+        }
+    }
 }
 
 /// <summary>Any change to a light's settings, kept as the whole before and after.</summary>

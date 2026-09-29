@@ -132,14 +132,15 @@ public static class MainMenu
             ImGui.Separator();
 
             // What a copy takes is worth saying before it is taken: the selection, or everything.
-            string what = session.CopiesSelection ? "Selection" : "Object";
+            string what = session.CopiesSelection ? "Faces" : session.SelectedObjects.Skip(1).Any() ? "Objects" : "Object";
+            bool copies = session.CopiesSelection || session.SelectedObjects.Any(o => !o.IsEmpty);
 
-            if (ImGui.MenuItem($"Copy {what}", Shortcut.Of(EditorAction.Copy), false, session.Scene.Focus is { IsEmpty: false }))
+            if (ImGui.MenuItem($"Copy {what}", Shortcut.Of(EditorAction.Copy), false, copies))
             {
                 ClipboardActions.Copy(session, ReportLog.Shared);
             }
 
-            if (ImGui.MenuItem($"Cut {what}", Shortcut.Of(EditorAction.Cut), false, session.Scene.Focus is { IsEmpty: false }))
+            if (ImGui.MenuItem($"Cut {what}", Shortcut.Of(EditorAction.Cut), false, copies))
             {
                 ClipboardActions.Cut(session, ReportLog.Shared);
             }
@@ -156,6 +157,34 @@ public static class MainMenu
             if (ImGui.MenuItem("Preferences...", Shortcut.Of(EditorAction.Preferences)))
             {
                 PreferencesWindow.Open();
+            }
+
+            ImGui.EndMenu();
+        }
+
+        // Blender's Select menu: everything, nothing, the rest.
+        if (ImGui.BeginMenu("Select"))
+        {
+            bool anything = session.Scene.Objects.Count > 0 || session.Scene.Lights.Count > 0;
+            if (ImGui.MenuItem("All", Shortcut.Of(EditorAction.SelectAll), false, anything))
+            {
+                session.SelectAll();
+            }
+
+            if (ImGui.MenuItem("None", Shortcut.Of(EditorAction.DeselectAll), false, session.SelectedCount > 0))
+            {
+                session.DeselectAll();
+            }
+
+            if (ImGui.MenuItem("Invert", Shortcut.Of(EditorAction.InvertSelection), false, anything))
+            {
+                session.InvertSelection();
+            }
+
+            ImGui.Separator();
+            if (ImGui.MenuItem("Select Tool", Shortcut.Of(EditorAction.ToolSelect), session.ActiveTool == EditorTool.Select))
+            {
+                session.ActiveTool = EditorTool.Select;
             }
 
             ImGui.EndMenu();

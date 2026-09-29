@@ -93,14 +93,19 @@ public class SessionFocusTests
     }
 
     [Fact]
-    public void TheLastObjectCannotBeDeleted()
+    public void TheLastObjectCanBeDeletedAndComesBackOnUndo()
     {
-        // With no Place tool, an empty scene would leave nothing to extrude from.
+        // Shift+A adds to an empty level, so an empty one is no dead end any more.
         (EditorSession session, VoxelObject a, VoxelObject b) = TwoObjects();
         session.DeleteObject(a.Id);
 
-        Assert.False(session.DeleteObject(b.Id));
-        Assert.Single(session.Scene.Objects);
+        Assert.True(session.DeleteObject(b.Id));
+        Assert.Empty(session.Scene.Objects);
+        Assert.Equal(0, session.Scene.FocusId);
+
+        Assert.True(session.Undo());
+        Assert.Same(b, Assert.Single(session.Scene.Objects));
+        Assert.Equal(b.Id, session.Scene.FocusId);
     }
 
     [Fact]
@@ -115,24 +120,18 @@ public class SessionFocusTests
     }
 
     [Fact]
-    public void AFreshSessionStillHasAGridToWriteInto()
+    public void AnEmptyLevelHasNothingForTheToolsToWriteInto()
     {
-        // The session starts with no objects; touching World must not be a null reference.
-        var session = new EditorSession();
+        // No objects: World can still be read, but nothing is made to write into, and no tool writes.
+        var session = new EditorSession { ActiveTool = EditorTool.Paint };
 
+        Assert.Equal(0, session.World.SolidCount);
         session.BeginStroke();
-        Assert.True(session.PaintOrNothing());
-        Assert.Single(session.Scene.Objects);
-    }
-}
+        Assert.False(session.Paint(new RaycastHit(new Int3(0, 0, 0), Face.PosY, 1f)));
+        session.EndStroke();
 
-file static class SessionTestExtensions
-{
-    /// <summary>Writes one voxel through the session, which forces a focus object into existence.</summary>
-    public static bool PaintOrNothing(this EditorSession session)
-    {
-        session.World.SetVoxel(0, 0, 0, 1);
-        return session.World.SolidCount == 1;
+        Assert.Empty(session.Scene.Objects);
+        Assert.False(session.History.CanUndo);
     }
 }
 
@@ -350,14 +349,15 @@ public class VoxelSceneTests
     }
 
     [Fact]
-    public void TheLastObjectIsNeverPrunedAway()
+    public void EvenTheLastEmptyObjectIsPruned()
     {
-        // With no Place tool, an empty scene would have nothing to extrude from.
+        // An empty level is a level like any other now.
         var scene = new VoxelScene();
         scene.Add(new VoxelWorld(), ObjectTransform.Identity);
 
-        Assert.Equal(0, scene.RemoveEmptyObjects());
-        Assert.Single(scene.Objects);
+        Assert.Equal(1, scene.RemoveEmptyObjects());
+        Assert.Empty(scene.Objects);
+        Assert.Equal(0, scene.FocusId);
     }
 
     [Fact]

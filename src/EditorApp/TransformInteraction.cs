@@ -59,6 +59,10 @@ public sealed class TransformInteraction(EditorSession session)
 
     private IPlaceable? _target;
     private ObjectTransform _startTransform;
+
+    /// <summary>The rest of what is being moved, with where each stood and its centre when the drag began.</summary>
+    private readonly List<(IPlaceable Thing, ObjectTransform Start, Vector3 Centre)> _others = [];
+    private Vector3 _startCentre;
     private GizmoHandle _grabbed;
     private Vector2 _pressPosition;
     private float _pressAngle;
@@ -99,12 +103,16 @@ public sealed class TransformInteraction(EditorSession session)
     /// </summary>
     public IEnumerable<GizmoHandle> Handles(FlyCamera camera)
     {
-        if (session.TransformTarget is not { } focus || focus is VoxelObject { IsEmpty: true })
+        IReadOnlyList<IPlaceable> targets = session.TransformTargets;
+        if (targets.Count == 0 || targets[0] is VoxelObject { IsEmpty: true })
         {
             yield break;
         }
 
-        Vector3 centre = focus.WorldCentre();
+        // Several things: at the pivot, with the active one's axes — and no hinge, which is an edge
+        // of one object's own box.
+        IPlaceable focus = targets[0];
+        Vector3 centre = targets.Count == 1 ? focus.WorldCentre() : session.PivotPoint(targets);
 
         if (session.TransformMode == TransformMode.Rotate)
         {
@@ -124,7 +132,7 @@ public sealed class TransformInteraction(EditorSession session)
             yield return new GizmoHandle(GizmoKind.MoveAxis, axis, centre, AxisDirection(focus, axis, local), centre);
         }
 
-        if (focus is VoxelObject voxels)
+        if (focus is VoxelObject voxels && targets.Count == 1)
         {
             foreach (GizmoHandle edge in EdgeHandles(voxels))
             {
@@ -366,13 +374,21 @@ public sealed class TransformInteraction(EditorSession session)
 
     public bool OnPress(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
-        if (session.TransformTarget is not { } focus || Pick(mouse, viewport, camera) is not { } handle)
+        IReadOnlyList<IPlaceable> targets = session.TransformTargets;
+        if (targets.Count == 0 || Pick(mouse, viewport, camera) is not { } handle)
         {
             return false;
         }
 
+        IPlaceable focus = targets[0];
         _target = focus;
         _startTransform = focus.Transform;
+        _startCentre = focus.WorldCentre();
+        _others.Clear();
+        foreach (IPlaceable other in targets.Skip(1))
+        {
+            _others.Add((other, other.Transform, other.WorldCentre()));
+        }
         _grabbed = handle;
         _pressPosition = mouse;
         _pressAngle = ScreenAngle(handle, mouse, viewport, camera);
@@ -536,6 +552,15 @@ public sealed class TransformInteraction(EditorSession session)
     {
         session.ApplyTransform(_target!, moved);
 
+        // The rest go the same way, as one rigid piece with it: turned as it was turned — standing on
+        // a surface can turn it — about where it stood, and moved as far as it moved.
+        Quaternion turn = moved.Rotation * Quaternion.Conjugate(_startTransform.Rotation);
+        Vector3 shift = moved.Position - _startTransform.Position;
+        foreach ((IPlaceable other, ObjectTransform start, _) in _others)
+        {
+            session.ApplyTransform(other, start.RotatedAbout(_startTransform.Position, turn).Translated(shift));
+        }
+
         Vector3 delta = moved.Position - _startTransform.Position;
         string landed = SnapPoint is null ? string.Empty : $"   snapped to {NameOf(SnapKind)}";
         Readout = $"{delta.X:+0.##;-0.##;0}, {delta.Y:+0.##;-0.##;0}, {delta.Z:+0.##;-0.##;0}{landed}";
@@ -601,9 +626,13 @@ public sealed class TransformInteraction(EditorSession session)
         return null;
     }
 
-    /// <summary>The moved thing itself and its children, which move with it: a snap must see through them all.</summary>
+    /// <summary>The moved things themselves and their children, which move with them: a snap must see through them all.</summary>
     private bool MovesWithTarget(VoxelObject o) =>
-        _target is { } target && (ReferenceEquals(o, target) || session.Scene.IsDescendantOf(o.Id, target.Id));
+        _target is { } target
+        && (Moves(o, target) || _others.Any(other => Moves(o, other.Thing)));
+
+    private bool Moves(VoxelObject o, IPlaceable moved) =>
+        ReferenceEquals(o, moved) || session.Scene.IsDescendantOf(o.Id, moved.Id);
 
     /// <summary>Where the cursor's ray meets the plane the free ring moves in: through the gizmo, facing the camera as it was at the press.</summary>
     private Vector3? PlaneHit(Vector2 mouse, Vector2 viewport, FlyCamera camera)
@@ -634,7 +663,14 @@ public sealed class TransformInteraction(EditorSession session)
 
         // Screen Y runs down, so a clockwise drag has to turn the object the same way it looks.
         Quaternion delta = Quaternion.CreateFromAxisAngle(_grabbed.Direction, -degrees * (MathF.PI / 180f));
-        session.ApplyTransform(_target!, _startTransform.RotatedAbout(_grabbed.Pivot, delta));
+
+        // Individual Origins turns each about its own centre; otherwise all about the gizmo's.
+        bool own = _others.Count > 0 && session.Pivot == TransformPivot.IndividualOrigins && _grabbed.Kind == GizmoKind.RotateRing;
+        session.ApplyTransform(_target!, _startTransform.RotatedAbout(own ? _startCentre : _grabbed.Pivot, delta));
+        foreach ((IPlaceable other, ObjectTransform start, Vector3 centre) in _others)
+        {
+            session.ApplyTransform(other, start.RotatedAbout(own ? centre : _grabbed.Pivot, delta));
+        }
 
         Readout = $"{degrees:0.#}°";
     }
@@ -676,12 +712,15 @@ public sealed class TransformInteraction(EditorSession session)
     {
         if (_target is { } target)
         {
-            string what = target is SceneLight ? "light" : "object";
+            string what = _others.Count > 0
+                ? $"{_others.Count + 1} {(_others.All(o => o.Thing is SceneLight) && target is SceneLight ? "lights" : "objects")}"
+                : target is SceneLight ? "light" : "object";
             string name = _grabbed.Kind is GizmoKind.MoveAxis or GizmoKind.MoveFree ? $"Move {what}" : $"Rotate {what}";
-            session.PushTransformEdit(target, _startTransform, name);
+            session.PushTransformEdits([(target, _startTransform), .. _others.Select(o => (o.Thing, o.Start))], name);
         }
 
         _target = null;
+        _others.Clear();
         SnapPoint = null;
         Readout = string.Empty;
     }
@@ -691,9 +730,14 @@ public sealed class TransformInteraction(EditorSession session)
         if (_target is { } target)
         {
             session.ApplyTransform(target, _startTransform);
+            foreach ((IPlaceable other, ObjectTransform start, _) in _others)
+            {
+                session.ApplyTransform(other, start);
+            }
         }
 
         _target = null;
+        _others.Clear();
         SnapPoint = null;
         Readout = string.Empty;
     }

@@ -71,6 +71,45 @@ public sealed class OutlinerTests : IDisposable
         Assert.Equal(gate.Id, _session.Scene.FocusId);
     }
 
+    /// <summary>A click with a modifier key held down, as the keyboard would send it.</summary>
+    private void ClickWith(ImGuiKey modifier, Vector2 at)
+    {
+        ImGui.GetIO().AddKeyEvent(modifier, true);
+        _ui.Click(at, Draw);
+        ImGui.GetIO().AddKeyEvent(modifier, false);
+        _ui.Frame(Draw);
+    }
+
+    [Fact]
+    public void ARowClickSelectsOnlyThatRow()
+    {
+        Vector2 wall = RowOf(Named("Wall"));
+        Vector2 gate = RowOf(Named("Gate"));
+
+        _ui.Click(wall, Draw);
+        _ui.Click(gate, Draw);
+
+        Assert.Equal(new[] { Named("Gate").Id }, _session.Scene.SelectedIds);
+    }
+
+    [Fact]
+    public void CtrlClickAddsARowAndShiftClickTakesTheRange()
+    {
+        Vector2 wall = RowOf(Named("Wall"));
+        Vector2 gate = RowOf(Named("Gate"));
+
+        _ui.Click(wall, Draw);
+        ClickWith(ImGuiKey.ModCtrl, gate);
+        Assert.True(_session.IsSelected(Named("Wall").Id) && _session.IsSelected(Named("Gate").Id));
+        Assert.False(_session.IsSelected(Named("Tower").Id));
+
+        // From the active row, Gate now, back up to Wall: all three.
+        _ui.Click(gate, Draw);
+        ClickWith(ImGuiKey.ModShift, wall);
+        Assert.Equal(3, _session.SelectedCount);
+        Assert.Equal(Named("Gate").Id, _session.ActiveId);
+    }
+
     /// <summary>A row being pointed at is reported, so the viewport can outline that object.</summary>
     [Fact]
     public void PointingAtARowReportsItAndLeavingIt()

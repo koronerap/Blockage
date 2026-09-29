@@ -11,47 +11,50 @@ namespace EditorApp.Ui;
 /// </summary>
 public static class ClipboardActions
 {
+    /// <summary>What a whole-object copy or cut takes, in words: the one name, or how many.</summary>
+    private static string What(EditorSession session) =>
+        session.SelectedObjects.Take(2).ToList() switch
+        {
+            [var only] => only.Name,
+            _ => $"{session.SelectedObjects.Count()} objects",
+        };
+
     public static void Copy(EditorSession session, ReportLog reports)
     {
         bool region = session.CopiesSelection;
-        string? name = session.Scene.Focus?.Name;
+        string what = What(session);
         int copied = session.Copy();
 
         if (copied == 0)
         {
-            reports.Post("Nothing to copy.", ReportKind.Warning);
+            reports.Post("Nothing to copy - select something first.", ReportKind.Warning);
             return;
         }
 
         reports.Post(region
             ? $"Copied {copied:N0} voxels behind the selection."
-            : $"Copied all of {name}, {copied:N0} voxels.");
+            : $"Copied all of {what}, {copied:N0} voxels.");
     }
 
     public static void Cut(EditorSession session, ReportLog reports)
     {
-        if (session.Scene.Focus is { Locked: true } locked)
+        if (session.CopiesSelection && session.Scene.Focus is { Locked: true } locked)
         {
             reports.Post($"{locked.Name} is locked - unlock it in the Outliner to cut from it.", ReportKind.Warning);
             return;
         }
 
         bool region = session.CopiesSelection;
-        bool last = session.Scene.Objects.Count <= 1;
-        string? name = session.Scene.Focus?.Name;
+        string what = What(session);
         int cut = session.Cut();
 
         if (cut == 0)
         {
-            reports.Post("Nothing to cut.", ReportKind.Warning);
-        }
-        else if (!region && last)
-        {
-            reports.Post($"Copied {name} - the last object stays, so nothing was cut.", ReportKind.Warning);
+            reports.Post("Nothing to cut - select something first.", ReportKind.Warning);
         }
         else
         {
-            reports.Post(region ? $"Cut {cut:N0} voxels." : $"Cut {name}, {cut:N0} voxels.");
+            reports.Post(region ? $"Cut {cut:N0} voxels." : $"Cut {what}, {cut:N0} voxels.");
         }
     }
 
@@ -65,7 +68,8 @@ public static class ClipboardActions
 
         if (ObjectMenu.Paste(session, camera) is { } pasted)
         {
-            reports.Post($"Pasted as {pasted.Name} - drag it where it goes.");
+            int pieces = session.ClipboardPieces.Count;
+            reports.Post(pieces == 1 ? $"Pasted as {pasted.Name} - drag it where it goes." : $"Pasted {pieces} objects - drag them where they go.");
         }
     }
 

@@ -11,10 +11,38 @@ public class MouseHintTests
         bool looking = false,
         bool shift = false,
         bool control = false,
-        bool alt = false)
+        bool alt = false,
+        bool nothingSelected = false)
     {
-        var session = new EditorSession { ActiveTool = tool };
+        // A new level opens with its cube selected, so the tools have something to work on.
+        var session = new EditorSession();
+        session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
+        session.ActiveTool = tool;
+        if (nothingSelected)
+        {
+            session.DeselectAll();
+        }
+
         return MouseHints.For(session, looking, shift, control, alt);
+    }
+
+    /// <summary>The tools that write voxels reach only what is selected, and say so when that is nothing.</summary>
+    [Theory]
+    [InlineData(EditorTool.Extrude)]
+    [InlineData(EditorTool.Paint)]
+    [InlineData(EditorTool.LoopCut)]
+    public void AVoxelToolWithNothingSelectedSaysHowToSelect(EditorTool tool)
+    {
+        Assert.StartsWith("Nothing selected", Left(Hints(tool, nothingSelected: true)));
+        Assert.DoesNotContain("Nothing selected", Left(Hints(tool)));
+    }
+
+    [Fact]
+    public void TheSelectToolSaysWhatShiftAndCtrlDo()
+    {
+        Assert.Equal("Select, drag for a box", Left(Hints(EditorTool.Select)));
+        Assert.Equal("Add to the selection", Left(Hints(EditorTool.Select, shift: true)));
+        Assert.Equal("Take from the selection", Left(Hints(EditorTool.Select, control: true)));
     }
 
     private static string? Left(IReadOnlyList<MouseHint> hints) =>

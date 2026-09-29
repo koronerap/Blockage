@@ -287,7 +287,7 @@ public sealed class GlRenderer : IDisposable
 
         foreach (VoxelObject o in scene.Objects)
         {
-            float target = o.Id == scene.FocusId ? 1f : 0f;
+            float target = scene.IsSelected(o.Id) ? 1f : 0f;
             float current = _focusAmount.GetValueOrDefault(o.Id, target);
             _focusAmount[o.Id] = current + (target - current) * blend;
         }
@@ -456,7 +456,7 @@ public sealed class GlRenderer : IDisposable
             }
 
             _voxelShader.SetMatrix4("uModel", o.Transform.ToMatrix());
-            _voxelShader.SetFloat("uFocus", _focusAmount.GetValueOrDefault(o.Id, o.Id == scene.FocusId ? 1f : 0f));
+            _voxelShader.SetFloat("uFocus", _focusAmount.GetValueOrDefault(o.Id, scene.IsSelected(o.Id) ? 1f : 0f));
             _voxelShader.SetVector3("uObjectColor", ViewportSettings.ObjectColour(o.Id));
             DrawObjectChunks(o, chunks, frustum, count);
         }

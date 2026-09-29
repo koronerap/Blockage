@@ -94,8 +94,10 @@ public static class ViewportMenu
     {
         EditorSession session = actions.Session;
         bool hasVoxels = !target.IsEmpty;
+        bool several = session.SelectedCount > 1;
 
-        ImGui.TextDisabled(target.Name);
+        // The commands act on the selection, which the click made this object part of.
+        ImGui.TextDisabled(several ? ObjectMenu.SelectionSummary(session) : target.Name);
         ImGui.Separator();
 
         Entry(actions, "Duplicate", EditorAction.Duplicate, hasVoxels);
@@ -109,9 +111,18 @@ public static class ViewportMenu
         Entry(actions, "Lock", EditorAction.Lock);
 
         ImGui.Separator();
-        ParentMenu.DrawSubmenu(session, target);
-        ObjectMenu.DrawJoinMenu(session, target);
-        Entry(actions, "Subdivide", EditorAction.Subdivide, session.SubdivideProblem(target) is null);
+        if (several)
+        {
+            Entry(actions, "Parent to Active", EditorAction.SetParent, session.SelectedLightId == 0);
+            Entry(actions, "Join into Active", EditorAction.Join, session.SelectedLightId == 0 && session.SelectedObjects.Count() > 1);
+        }
+        else
+        {
+            ParentMenu.DrawSubmenu(session, target);
+            ObjectMenu.DrawJoinMenu(session, target);
+        }
+
+        Entry(actions, "Subdivide", EditorAction.Subdivide, session.SelectedObjects.Any(o => session.SubdivideProblem(o) is null));
 
         if (ImGui.BeginMenu("Turn and Mirror", hasVoxels))
         {
@@ -124,7 +135,7 @@ public static class ViewportMenu
         DrawAdd();
 
         ImGui.Separator();
-        Entry(actions, "Delete", EditorAction.Delete, session.Scene.Objects.Count > 1);
+        Entry(actions, "Delete", EditorAction.Delete, session.SelectedCount > 0);
     }
 
     private static void DrawLight(ViewportMenuActions actions, SceneLight light)

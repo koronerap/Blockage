@@ -6,9 +6,9 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// The four tools, floating over the top-left of the viewport. The spec fixes the tool set at
-/// exactly four (EditorApp.md, "Araçlar"); View is reachable by its shortcut but has no button,
-/// because the camera already works from inside every other tool.
+/// The tools, floating over the top-left of the viewport: Select first, as in Blender, then the four
+/// that change the level. View is reachable by its shortcut but has no button, because the camera
+/// already works from inside every other tool.
 /// </summary>
 public static class ToolColumn
 {
@@ -16,7 +16,8 @@ public static class ToolColumn
 
     private static readonly (EditorTool Tool, Icons.Painter Icon, string Name, string Help)[] Tools =
     [
-        (EditorTool.Transform, Icons.Move, "Transform", "Move and rotate a whole object."),
+        (EditorTool.Select, Icons.Select, "Select", "Click to pick what the tools work on,\ndrag for a box. Shift adds, Ctrl takes away."),
+        (EditorTool.Transform, Icons.Move, "Transform", "Move and rotate what is selected."),
         (EditorTool.Extrude, Icons.Extrude, "Extrude", "Select a surface, then drag its arrow.\nOut adds voxels, in deletes them."),
         (EditorTool.Paint, Icons.Paint, "Paint", "Recolor existing, visible voxels.\nNever creates or deletes."),
         (EditorTool.LoopCut, Icons.Cut, "Loop Cut", "Split the model at a grid plane\ninto two independent objects."),
@@ -25,6 +26,7 @@ public static class ToolColumn
     /// <summary>The key a tool is on in the active keymap, empty when it has none.</summary>
     public static string KeyFor(EditorTool tool) => tool switch
     {
+        EditorTool.Select => Shortcut.Of(EditorAction.ToolSelect),
         EditorTool.Transform => Shortcut.ForTransform(),
         EditorTool.Extrude => Shortcut.Of(EditorAction.ToolExtrude),
         EditorTool.Paint => Shortcut.Of(EditorAction.ToolPaint),

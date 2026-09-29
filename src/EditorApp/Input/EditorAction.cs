@@ -8,6 +8,7 @@ namespace EditorApp.Input;
 public enum EditorAction
 {
     // Tools
+    ToolSelect,
     ToolTransform,
     ToolMove,
     ToolRotate,
@@ -33,6 +34,10 @@ public enum EditorAction
     UnlockAll,
     Rename,
     Subdivide,
+    SelectAll,
+    DeselectAll,
+    InvertSelection,
+    Join,
     SetParent,
     ClearParent,
     Search,
@@ -92,6 +97,7 @@ public static class EditorActions
 
     public static readonly ActionInfo[] All =
     [
+        new(EditorAction.ToolSelect, "tool.select", "Select tool", Tools),
         new(EditorAction.ToolTransform, "tool.transform", "Transform tool", Tools),
         new(EditorAction.ToolMove, "tool.move", "Move (Transform)", Tools),
         new(EditorAction.ToolRotate, "tool.rotate", "Rotate (Transform)", Tools),
@@ -116,7 +122,11 @@ public static class EditorActions
         new(EditorAction.UnlockAll, "edit.unlockall", "Unlock everything", Edit),
         new(EditorAction.Rename, "edit.rename", "Rename", Edit),
         new(EditorAction.Subdivide, "edit.subdivide", "Subdivide", Edit),
-        new(EditorAction.SetParent, "edit.setparent", "Parent to...", Edit),
+        new(EditorAction.SelectAll, "edit.selectall", "Select all", Edit),
+        new(EditorAction.DeselectAll, "edit.deselectall", "Select none", Edit),
+        new(EditorAction.InvertSelection, "edit.invertselection", "Invert the selection", Edit),
+        new(EditorAction.Join, "edit.join", "Join the selected into the active", Edit),
+        new(EditorAction.SetParent, "edit.setparent", "Parent to... / to the active", Edit),
         new(EditorAction.ClearParent, "edit.clearparent", "Clear parent", Edit),
         new(EditorAction.Search, "edit.search", "Search for a command", Edit),
         new(EditorAction.AddMenu, "edit.add", "Add a shape, prop or light", Edit),

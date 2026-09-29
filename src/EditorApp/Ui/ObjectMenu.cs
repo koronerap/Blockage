@@ -8,8 +8,9 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>
-/// Operations on the focused object as a whole: duplicating, renaming, hiding and deleting it,
-/// subdividing it, and quarter turns and mirrors of its voxels.
+/// Operations on the selected objects as a whole: duplicating, renaming, hiding and deleting them,
+/// subdividing them, and quarter turns and mirrors of their voxels — each one undo step, however
+/// many are selected.
 ///
 /// One list, drawn in two places — the Object menu in the menu bar, and the dropdown in the header —
 /// so the two can never disagree about what is on offer. They used to be four loose buttons in the
@@ -39,17 +40,60 @@ public static class ObjectMenu
     ];
 
     /// <summary>
-    /// Duplicates the focused object and hands the copy to the Transform tool, ready to be dragged to
-    /// where it goes — the nearest thing to Blender's Shift+D, which starts moving the copy at once.
+    /// Duplicates everything selected and hands the copies to the Transform tool, ready to be dragged
+    /// to where they go — the nearest thing to Blender's Shift+D, which starts moving them at once.
     /// </summary>
     public static void Duplicate(EditorSession session, FlyCamera camera)
     {
-        if (session.DuplicateFocus(camera.Right) is not null)
+        if (session.DuplicateSelected(camera.Right).Count > 0)
         {
             session.ActiveTool = EditorTool.Transform;
             session.TransformMode = TransformMode.Move;
         }
     }
+
+    /// <summary>Locks everything selected, saying where to undo it.</summary>
+    public static void LockSelected(EditorSession session, ReportLog log)
+    {
+        string? name = session.SelectedCount == 1 ? Selected(session).First().Name : null;
+        if (session.LockSelected() is > 0 and var locked)
+        {
+            log.Post($"Locked {name ?? $"{locked} things"}. Unlock in the Outliner, or Alt+L for everything.");
+        }
+    }
+
+    /// <summary>Ctrl+P with several selected: the rest go under the active object.</summary>
+    public static void ParentSelected(EditorSession session, ReportLog log)
+    {
+        if (session.SelectedLightId != 0 || session.Scene.Focus is not { } parent)
+        {
+            log.Post("The active one has to be an object to be a parent - click the one to parent to last.", ReportKind.Warning);
+            return;
+        }
+
+        int parented = session.ParentSelectedToActive();
+        log.Post(parented > 0
+            ? $"Parented {parented} to {parent.Name}."
+            : $"Nothing more could go under {parent.Name}.", parented > 0 ? ReportKind.Info : ReportKind.Warning);
+    }
+
+    /// <summary>Ctrl+J: the selected objects' voxels go into the active object's.</summary>
+    public static void JoinSelected(EditorSession session, ReportLog log)
+    {
+        if (session.SelectedLightId != 0 || session.Scene.Focus is not { } target || session.SelectedObjects.Count() < 2)
+        {
+            log.Post("Select two objects or more to join, the one to join into last.", ReportKind.Warning);
+            return;
+        }
+
+        int joined = session.JoinSelectedIntoActive(out int refused);
+        string skipped = refused > 0 ? $" {refused} could not: {(refused == 1 ? "it is" : "they are")} not on its lattice." : string.Empty;
+        log.Post(joined > 0 ? $"Joined {joined} into {target.Name}.{skipped}" : $"Nothing joined into {target.Name}.{skipped}", refused > 0 ? ReportKind.Warning : ReportKind.Info);
+    }
+
+    /// <summary>The selected objects and lights, objects first.</summary>
+    private static IEnumerable<IPlaceable> Selected(EditorSession session) =>
+        session.SelectedObjects.Cast<IPlaceable>().Concat(session.SelectedLights);
 
     /// <summary>Pastes as a new object and hands it to the Transform tool, the same as a duplicate.</summary>
     public static VoxelObject? Paste(EditorSession session, FlyCamera camera)
@@ -85,6 +129,35 @@ public static class ObjectMenu
         if (session.SubdivideFocus())
         {
             log.Post($"Subdivided {focus.Name}: {before:N0} voxels became {focus.Grid.SolidCount:N0}, each {focus.VoxelSize:0.####} units.");
+        }
+    }
+
+    /// <summary>Subdivides every selected object that can be, as one step, saying what came of it.</summary>
+    public static void SubdivideSelected(EditorSession session, ReportLog log)
+    {
+        List<VoxelObject> chosen = [.. session.SelectedObjects];
+        if (chosen.Count == 0)
+        {
+            return;
+        }
+
+        if (chosen.Count == 1 && session.SubdivideProblem(chosen[0]) is { } problem)
+        {
+            log.Post($"Cannot subdivide {chosen[0].Name}. {problem}", ReportKind.Warning);
+            return;
+        }
+
+        int before = chosen.Sum(o => o.Grid.SolidCount);
+        if (session.SubdivideSelected() is > 0 and var done)
+        {
+            int after = chosen.Sum(o => o.Grid.SolidCount);
+            log.Post(chosen.Count == 1
+                ? $"Subdivided {chosen[0].Name}: {before:N0} voxels became {after:N0}, each {chosen[0].VoxelSize:0.####} units."
+                : $"Subdivided {done} of {chosen.Count}: {before:N0} voxels became {after:N0}.");
+        }
+        else
+        {
+            log.Post("None of the selected can be subdivided.", ReportKind.Warning);
         }
     }
 
@@ -127,28 +200,38 @@ public static class ObjectMenu
         ImGui.EndMenu();
     }
 
+    /// <summary>What is selected, in a few words: its name, how many, or that nothing is.</summary>
+    public static string SelectionSummary(EditorSession session) => session.SelectedCount switch
+    {
+        0 => "Nothing selected",
+        1 => Selected(session).First().Name,
+        int count => $"{count} selected",
+    };
+
     /// <summary>The items themselves, for whichever menu or popup is open around them.</summary>
     public static void DrawItems(EditorSession session, FlyCamera camera)
     {
         VoxelScene scene = session.Scene;
-        bool hasVoxels = scene.Focus is { IsEmpty: false };
+        bool any = session.SelectedCount > 0;
+        List<VoxelObject> objects = [.. session.SelectedObjects];
 
-        ImGui.TextDisabled(scene.Focus?.Name ?? "No object");
+        ImGui.TextDisabled(SelectionSummary(session));
         ImGui.Separator();
 
-        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, hasVoxels))
+        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, any))
         {
             Duplicate(session, camera);
         }
 
-        if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename), false, scene.Focus is not null) && scene.Focus is { } focus)
+        IPlaceable? active = (IPlaceable?)session.SelectedLight ?? scene.Focus;
+        if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename), false, active is not null) && active is not null)
         {
-            ObjectListPanel.StartRename(focus);
+            ObjectListPanel.StartRename(active);
         }
 
-        if (ImGui.MenuItem("Hide", Shortcut.Of(EditorAction.Hide), false, scene.Focus is { Visible: true }))
+        if (ImGui.MenuItem("Hide", Shortcut.Of(EditorAction.Hide), false, any))
         {
-            session.SetObjectVisible(scene.FocusId, false);
+            session.HideSelected();
         }
 
         if (ImGui.MenuItem("Show All", Shortcut.Of(EditorAction.ShowAll), false, scene.Objects.Any(o => !o.Visible)))
@@ -156,10 +239,10 @@ public static class ObjectMenu
             session.ShowAllObjects();
         }
 
-        // Locking the focused object moves focus on; the Outliner's padlock is the way back.
-        if (ImGui.MenuItem("Lock", Shortcut.Of(EditorAction.Lock), false, scene.Focus is { Locked: false }) && scene.Focus is { } locked)
+        // Locked, they are let go; the Outliner's padlocks are the way back.
+        if (ImGui.MenuItem("Lock", Shortcut.Of(EditorAction.Lock), false, any))
         {
-            session.SetObjectLocked(locked.Id, true);
+            LockSelected(session, ReportLog.Shared);
         }
 
         if (ImGui.MenuItem("Unlock All", Shortcut.Of(EditorAction.UnlockAll), false, scene.Objects.Any(o => o.Locked) || scene.Lights.Any(l => l.Locked)))
@@ -167,23 +250,44 @@ public static class ObjectMenu
             session.UnlockAll();
         }
 
-        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete), false, scene.Objects.Count > 1))
+        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete), false, any))
         {
-            session.DeleteObject(scene.FocusId);
+            session.DeleteSelected();
         }
 
-        if (scene.Focus is { } joined)
+        // Several: into the active one, Blender's Ctrl+J and Ctrl+P. One: a list to choose from.
+        if (objects.Count > 1)
         {
-            DrawJoinMenu(session, joined);
-            ParentMenu.DrawSubmenu(session, joined);
+            if (ImGui.MenuItem("Join into Active", Shortcut.Of(EditorAction.Join), false, session.SelectedLightId == 0))
+            {
+                JoinSelected(session, ReportLog.Shared);
+            }
+        }
+        else if (objects.Count == 1)
+        {
+            DrawJoinMenu(session, objects[0]);
+        }
+
+        if (session.SelectedCount > 1)
+        {
+            if (ImGui.MenuItem("Parent to Active", Shortcut.Of(EditorAction.SetParent), false, session.SelectedLightId == 0))
+            {
+                ParentSelected(session, ReportLog.Shared);
+            }
+        }
+        else if (Selected(session).FirstOrDefault() is { } only)
+        {
+            ParentMenu.DrawSubmenu(session, only);
         }
 
         ImGui.Separator();
 
-        string? subdivideProblem = session.SubdivideProblem(scene.Focus);
+        string? subdivideProblem = objects.Count == 0
+            ? "Nothing is selected."
+            : objects.Any(o => session.SubdivideProblem(o) is null) ? null : session.SubdivideProblem(objects[0]);
         if (ImGui.MenuItem("Subdivide", Shortcut.Of(EditorAction.Subdivide), false, subdivideProblem is null))
         {
-            SubdivideFocus(session, ReportLog.Shared);
+            SubdivideSelected(session, ReportLog.Shared);
         }
 
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
@@ -196,16 +300,16 @@ public static class ObjectMenu
         DrawTurns(session);
     }
 
-    /// <summary>The quarter turns and the mirrors of the focused object's voxels.</summary>
+    /// <summary>The quarter turns and the mirrors of the selected objects' voxels.</summary>
     public static void DrawTurns(EditorSession session)
     {
-        bool hasVoxels = session.Scene.Focus is { IsEmpty: false };
+        bool hasVoxels = session.SelectedObjects.Any(o => !o.IsEmpty);
 
         foreach ((string label, RotateDirection direction) in Turns)
         {
             if (ImGui.MenuItem(label, null, false, hasVoxels))
             {
-                session.RotateFocus(direction);
+                session.RotateSelected(direction);
             }
         }
 
@@ -215,7 +319,7 @@ public static class ObjectMenu
         {
             if (ImGui.MenuItem(label, null, false, hasVoxels))
             {
-                session.FlipFocus(axis);
+                session.FlipSelected(axis);
             }
         }
 

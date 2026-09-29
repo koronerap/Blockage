@@ -26,6 +26,29 @@ public static class Icons
     // tool its own way, in flat outlines, and at button size they read as a stamp, a lollipop and a
     // battery.
 
+    /// <summary>Select: a pointer over a dashed box — the click and the drag the tool answers to.</summary>
+    public static void Select(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        // The box, behind and to the right of the pointer, dashed as a marquee is.
+        Vector2 min = centre + new Vector2(-r * 0.25f, -r * 0.25f);
+        Vector2 max = centre + new Vector2(r, r);
+        float step = r * 0.34f;
+        for (float t = 0f; t < 1f; t += step / (max.X - min.X))
+        {
+            float end = MathF.Min(t + (step * 0.55f / (max.X - min.X)), 1f);
+            canvas.Line(Vector2.Lerp(min, new Vector2(max.X, min.Y), t), Vector2.Lerp(min, new Vector2(max.X, min.Y), end));
+            canvas.Line(Vector2.Lerp(new Vector2(min.X, max.Y), max, t), Vector2.Lerp(new Vector2(min.X, max.Y), max, end));
+            canvas.Line(Vector2.Lerp(min, new Vector2(min.X, max.Y), t), Vector2.Lerp(min, new Vector2(min.X, max.Y), end));
+            canvas.Line(Vector2.Lerp(new Vector2(max.X, min.Y), max, t), Vector2.Lerp(new Vector2(max.X, min.Y), max, end));
+        }
+
+        // The pointer: a solid head with its tip at the top left, and a short tail.
+        Vector2 tip = centre + new Vector2(-r, -r);
+        float s = r * 1.3f;
+        canvas.FilledTriangle(tip, tip + new Vector2(0f, s), tip + new Vector2(s * 0.72f, s * 0.72f));
+        canvas.Line(tip + new Vector2(s * 0.3f, s * 0.62f), tip + new Vector2(s * 0.55f, s * 1.05f), 2.2f);
+    }
+
     /// <summary>Transform: four solid-headed arrows out of a centre, the universal "move this".</summary>
     public static void Move(IIconCanvas canvas, Vector2 centre, float r)
     {

@@ -56,6 +56,13 @@ public sealed class ExportController(EditorSession session)
 
     public void Show()
     {
+        // An empty level makes an empty file, which an engine takes without a word; better said here.
+        if (!session.Scene.Objects.Any(o => o.Visible && !o.IsEmpty))
+        {
+            Ui.ReportLog.Shared.Post("Nothing to export - the level has no voxels that are shown.", Ui.ReportKind.Warning);
+            return;
+        }
+
         _isOpen = true;
         _shouldOpenPopup = true;
         _status = string.Empty;

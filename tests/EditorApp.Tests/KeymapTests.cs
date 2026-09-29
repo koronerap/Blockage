@@ -23,6 +23,7 @@ public class KeymapTests
         (KeyChord Chord, EditorAction Action)[] expected =
         [
             (K(Key.Q), EditorAction.ToolTransform),
+            (K(Key.T), EditorAction.ToolSelect),
             (K(Key.W), EditorAction.ToolExtrude),
             (K(Key.E), EditorAction.ToolPaint),
             (K(Key.R), EditorAction.ToolLoopCut),
@@ -81,9 +82,13 @@ public class KeymapTests
         Assert.Equal(EditorAction.ViewBack, keymap.ActionFor(KeyChord.Ctrl(Key.Number1)));
         Assert.Equal(EditorAction.ViewFront, keymap.ActionFor(K(Key.Keypad1)));
 
-        // Q W is the game's arrangement, not this one's.
+        // W is Blender's key for the selecting tools; Q, the game's Transform, is left free.
+        Assert.Equal(EditorAction.ToolSelect, keymap.ActionFor(K(Key.W)));
+        Assert.Equal(EditorAction.SelectAll, keymap.ActionFor(K(Key.A)));
+        Assert.Equal(EditorAction.DeselectAll, keymap.ActionFor(KeyChord.AltOf(Key.A)));
+        Assert.Equal(EditorAction.InvertSelection, keymap.ActionFor(KeyChord.Ctrl(Key.I)));
+        Assert.Equal(EditorAction.Join, keymap.ActionFor(KeyChord.Ctrl(Key.J)));
         Assert.Null(keymap.ActionFor(K(Key.Q)));
-        Assert.Null(keymap.ActionFor(K(Key.W)));
     }
 
     /// <summary>Every action the menus offer can be reached from the keyboard in each preset, or has a menu of its own.</summary>

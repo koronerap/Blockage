@@ -20,6 +20,7 @@ public sealed class CreateObjectCommand(
 {
     private VoxelObject? _created;
     private int _previousFocusId;
+    private bool _wasSelected;
 
     public string Name => commandName;
 
@@ -39,6 +40,10 @@ public sealed class CreateObjectCommand(
         else
         {
             scene.Restore(_created, insertAt);
+            if (_wasSelected)
+            {
+                scene.Select(_created.Id);
+            }
         }
 
         scene.SetFocus(_created.Id);
@@ -51,6 +56,7 @@ public sealed class CreateObjectCommand(
             return;
         }
 
+        _wasSelected = scene.IsSelected(_created.Id);
         scene.Remove(_created.Id);
         scene.SetFocus(_previousFocusId);
     }

@@ -28,8 +28,10 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
 - **Shape by extruding.** Drag across a surface to select it — a box, or a whole flat patch in one
   click — then pull the arrow out to add voxels or push it in to carve. Loop Cut splits an object in
   two along a plane.
-- **Objects as a whole.** A Transform gizmo with Blender-style snapping (increments, corners, edge
-  centres, surfaces), parenting, join, duplicate, subdivide, quarter turns and mirrors, hide and lock.
+- **Objects as a whole.** Select by click or box, as in Blender; a Transform gizmo that moves the
+  whole selection, with Blender-style snapping (increments, corners, edge centres, surfaces) and a
+  choice of pivot; parenting and joining into the active object, duplicate, subdivide, quarter turns
+  and mirrors, hide and lock.
 - **Paint face by face.** Brush, bucket and pattern fills, an eyedropper on Alt, a 256-colour palette.
 - **Add with Shift+A.** Cubes, spheres, cylinders, cones, stairs, arches and more; ready-made props
   — crates, barrels, tables, trees — and lights, set down on the surface under the cursor and sized
@@ -57,6 +59,7 @@ changes them.
 | Look round, fly | hold the right mouse button; W A S D, Q E |
 | Orbit, pan, zoom | middle mouse; Shift + middle; the wheel |
 | Frame | Home for the level, F for the object |
+| Select | W, then click; drag for a box. Shift adds, Ctrl takes away · A all · Alt+A none · Ctrl+I invert |
 | Tools | G move · R rotate · E extrude · B paint · Ctrl+R loop cut · V view |
 | Add | Shift+A |
 | Search for any command | F3 |

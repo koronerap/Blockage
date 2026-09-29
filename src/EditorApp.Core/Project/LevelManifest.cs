@@ -102,7 +102,17 @@ public sealed class LevelManifest
         [JsonPropertyName("parent")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? Parent { get; set; }
+
+        /// <summary>Written only when true; absent in files from before there was a selection.</summary>
+        [JsonPropertyName("selected")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Selected { get; set; }
     }
+
+    /// <summary>The <see cref="ObjectEntry.Id"/> of the active object; absent when there was none.</summary>
+    [JsonPropertyName("active")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Active { get; set; }
 
     /// <summary>
     /// The level's lights. Absent in files written before lights were saved, which get the sun the
@@ -161,6 +171,10 @@ public sealed class LevelManifest
         [JsonPropertyName("parent")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? Parent { get; set; }
+
+        [JsonPropertyName("selected")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Selected { get; set; }
     }
 
     [JsonPropertyName("savedUtc")]

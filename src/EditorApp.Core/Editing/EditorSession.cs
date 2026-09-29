@@ -23,10 +23,13 @@ public sealed class EditorSession
     public VoxelScene Scene { get; private set; } = new();
 
     /// <summary>
-    /// The focused object's grid — what every tool edits. The scene guarantees an object always
-    /// exists, so this never has to be null-checked at a call site.
+    /// The focused object's grid — what every tool edits. A level may have no objects at all; then
+    /// this is a grid that belongs to nothing, empty, so that reading it never has to be null-checked
+    /// at a call site. The tools that write refuse before they get here.
     /// </summary>
-    public VoxelWorld World => Scene.Focus?.Grid ?? EnsureFocus();
+    public VoxelWorld World => Scene.Focus?.Grid ?? _nothing;
+
+    private readonly VoxelWorld _nothing = new();
 
     public VoxelObject FocusObject => Scene.Focus ?? throw new InvalidOperationException("The scene has no object.");
 
@@ -68,14 +71,17 @@ public sealed class EditorSession
 
         // A selection belongs to the object it was made on.
         Selection = null;
-        return true;
-    }
 
-    private VoxelWorld EnsureFocus()
-    {
-        VoxelObject created = Scene.Add(new VoxelWorld(), ObjectTransform.Identity);
-        Scene.SetFocus(created.Id);
-        return created.Grid;
+        // Focus on something outside the selection makes it the selection: the one-object-at-a-time
+        // way of the phone, which has no selecting of its own. On the desktop the tools only offer
+        // what is selected already.
+        if (!Scene.IsSelected(objectId))
+        {
+            DeselectAll();
+            Scene.Select(objectId);
+        }
+
+        return true;
     }
 
     public UndoStack History { get; } = new();
@@ -168,7 +174,10 @@ public sealed class EditorSession
     {
         // Bound to the focused grid here, once: focus is locked for the rest of the gesture, and
         // undo has to reach this object even if focus has moved on by then.
-        _stroke ??= NewMirroredEdit(ActiveTool.ToString());
+        if (Scene.Focus is not null)
+        {
+            _stroke ??= NewMirroredEdit(ActiveTool.ToString());
+        }
     }
 
     public void EndStroke()
@@ -201,6 +210,10 @@ public sealed class EditorSession
     private bool RunStep(string name, Func<VoxelEditCommand, int> operation)
     {
         EndStroke();
+        if (Scene.Focus is null)
+        {
+            return false;
+        }
 
         VoxelEditCommand command = NewMirroredEdit(name);
 
@@ -339,6 +352,10 @@ public sealed class EditorSession
         command.Redo();
         History.Push(command);
 
+        // Selected alongside the one it came out of, so the tools can go on with either.
+        Scene.Select(command.Created!.Id);
+        SelectedLightId = 0;
+
         Selection = null;
         HasUnsavedChanges = true;
         return true;
@@ -358,6 +375,10 @@ public sealed class EditorSession
     public bool Paint(RaycastHit hit)
     {
         BeginStroke();
+        if (_stroke is null)
+        {
+            return false;
+        }
 
         return PaintMode switch
         {
@@ -441,16 +462,10 @@ public sealed class EditorSession
     }
 
     /// <summary>
-    /// Removes an object. Refused for the last one: with no Place tool, an empty scene has nothing
-    /// left to extrude from.
+    /// Removes an object, the last one included: Shift+A adds new ones to an empty level.
     /// </summary>
     public bool DeleteObject(int objectId)
     {
-        if (Scene.Objects.Count <= 1)
-        {
-            return false;
-        }
-
         VoxelObject? target = null;
         foreach (VoxelObject candidate in Scene.Objects)
         {
@@ -488,25 +503,660 @@ public sealed class EditorSession
     public bool ChooseObject(int objectId)
     {
         // Refused before anything is let go: a click on a locked row should change nothing at all.
-        if (Scene.Find(objectId) is { Locked: true })
+        if (Scene.Find(objectId) is not { Locked: false } target || IsStrokeActive || IsExtruding)
         {
             return false;
         }
 
-        if (objectId != Scene.FocusId && !IsStrokeActive && !IsExtruding)
+        // A hidden object cannot be selected, but it can still be the one Properties shows.
+        if (!target.Visible)
         {
-            ClearSelection();
+            DeselectAll();
+            MoveFocus(objectId);
+            return true;
         }
 
-        // Choosing an object is choosing it over a light, too.
-        SelectedLightId = 0;
-        return TryFocus(objectId);
+        return ClickSelect(objectId);
     }
+
+    // ---- Selecting objects and lights ----------------------------------------------------------
+
+    /// <summary>
+    /// What the last click made active, Blender's active object: the picked light, else the focused
+    /// object; 0 for neither. Properties shows it, the gizmo takes its axes, and Ctrl+P and Ctrl+J
+    /// gather the rest of the selection into it. It can be active without being selected.
+    /// </summary>
+    public int ActiveId => SelectedLightId != 0 ? SelectedLightId : Scene.FocusId;
+
+    public bool IsSelected(int id) => Scene.IsSelected(id);
+
+    public int SelectedCount => Scene.SelectedCount;
+
+    /// <summary>The selected objects, in list order.</summary>
+    public IEnumerable<VoxelObject> SelectedObjects => Scene.SelectedObjects;
+
+    /// <summary>The selected lights, in list order.</summary>
+    public IEnumerable<SceneLight> SelectedLights => Scene.SelectedLights;
+
+    /// <summary>
+    /// A click on something, Blender's way. On its own it becomes the whole selection and the active
+    /// one. With <paramref name="extend"/> — Shift — something not selected is added and made active,
+    /// something selected is made active, and the active one is let go. False when it cannot be
+    /// selected, locked or hidden or gone, and then nothing changes; refused mid-gesture too.
+    /// </summary>
+    public bool ClickSelect(int id, bool extend = false)
+    {
+        if (IsStrokeActive || IsExtruding || !Scene.CanSelect(id))
+        {
+            return false;
+        }
+
+        if (!extend)
+        {
+            DeselectAll();
+        }
+        else if (Scene.IsSelected(id) && ActiveId == id)
+        {
+            Deselect(id);
+            return true;
+        }
+
+        Scene.Select(id);
+        MakeActive(id);
+        return true;
+    }
+
+    /// <summary>Takes one thing out of the selection. An object stays active, as in Blender; a light does not.</summary>
+    public bool Deselect(int id)
+    {
+        if (!Scene.Deselect(id))
+        {
+            return false;
+        }
+
+        if (id == SelectedLightId)
+        {
+            SelectedLightId = 0;
+        }
+
+        return true;
+    }
+
+    public void DeselectAll()
+    {
+        Scene.DeselectAll();
+        SelectedLightId = 0;
+    }
+
+    /// <summary>Selects everything that can be: every shown, unlocked object, and every unlocked light.</summary>
+    public int SelectAll()
+    {
+        foreach (VoxelObject o in Scene.Objects)
+        {
+            Scene.Select(o.Id);
+        }
+
+        foreach (SceneLight light in Scene.Lights)
+        {
+            Scene.Select(light.Id);
+        }
+
+        KeepActiveSelected();
+        return Scene.SelectedCount;
+    }
+
+    /// <summary>Selects what was not selected, and lets go of what was.</summary>
+    public void InvertSelection()
+    {
+        var before = new HashSet<int>(Scene.SelectedIds);
+        DeselectAll();
+
+        foreach (VoxelObject o in Scene.Objects.Where(o => !before.Contains(o.Id)))
+        {
+            Scene.Select(o.Id);
+        }
+
+        foreach (SceneLight light in Scene.Lights.Where(l => !before.Contains(l.Id)))
+        {
+            Scene.Select(light.Id);
+        }
+
+        KeepActiveSelected();
+    }
+
+    /// <summary>
+    /// A box's worth at once: replaces the selection, adds to it or takes from it. What cannot be
+    /// selected is passed over.
+    /// </summary>
+    public void SelectMany(IEnumerable<int> ids, SelectionOperation operation)
+    {
+        if (IsStrokeActive || IsExtruding)
+        {
+            return;
+        }
+
+        if (operation == SelectionOperation.Replace)
+        {
+            Scene.DeselectAll();
+        }
+
+        foreach (int id in ids)
+        {
+            if (operation == SelectionOperation.Subtract)
+            {
+                Scene.Deselect(id);
+            }
+            else
+            {
+                Scene.Select(id);
+            }
+        }
+
+        if (SelectedLightId != 0 && !Scene.IsSelected(SelectedLightId))
+        {
+            SelectedLightId = 0;
+        }
+
+        KeepActiveSelected();
+    }
+
+    /// <summary>
+    /// When the active thing has dropped out of a selection that still holds something, the first
+    /// selected object — else light — takes over, so what Properties shows is one of the selected.
+    /// </summary>
+    private void KeepActiveSelected()
+    {
+        if (Scene.SelectedCount == 0 || Scene.IsSelected(ActiveId))
+        {
+            return;
+        }
+
+        if (Scene.SelectedObjects.FirstOrDefault() is { } first)
+        {
+            SelectedLightId = 0;
+            MoveFocus(first.Id);
+        }
+        else if (Scene.SelectedLights.FirstOrDefault() is { } light)
+        {
+            SelectedLightId = light.Id;
+        }
+    }
+
+    private void MakeActive(int id)
+    {
+        if (Scene.FindLight(id) is not null)
+        {
+            SelectedLightId = id;
+            return;
+        }
+
+        SelectedLightId = 0;
+        MoveFocus(id);
+    }
+
+    /// <summary>Focus to another object. The Extrude selection belongs to the one being left.</summary>
+    private void MoveFocus(int id)
+    {
+        if (id != Scene.FocusId && Scene.SetFocus(id))
+        {
+            CancelExtrude();
+            Selection = null;
+        }
+    }
+
+    /// <summary>What was just made becomes the selection, and the first of it the active one.</summary>
+    private void SelectOnly(IEnumerable<int> ids)
+    {
+        DeselectAll();
+        int first = 0;
+        foreach (int id in ids)
+        {
+            Scene.Select(id);
+            first = first == 0 ? id : first;
+        }
+
+        if (first != 0)
+        {
+            MakeActive(first);
+        }
+    }
+
+    /// <summary>
+    /// What a Transform drag moves: every selected light, and every selected object with voxels in
+    /// it, that is not locked — less whatever has a parent that is moving too, since it goes along
+    /// with the parent anyway and would otherwise move twice. The active one first: the gizmo's axes
+    /// are its axes.
+    /// </summary>
+    public IReadOnlyList<IPlaceable> TransformTargets
+    {
+        get
+        {
+            var targets = new List<IPlaceable>();
+            targets.AddRange(Scene.SelectedObjects.Where(o => !o.Locked && !o.IsEmpty));
+            targets.AddRange(Scene.SelectedLights.Where(l => !l.Locked));
+
+            targets.RemoveAll(t => targets.Any(other => other.Id != t.Id && Scene.IsDescendantOf(t.Id, other.Id)));
+
+            int active = targets.FindIndex(t => t.Id == ActiveId);
+            if (active > 0)
+            {
+                (targets[0], targets[active]) = (targets[active], targets[0]);
+            }
+
+            return targets;
+        }
+    }
+
+    /// <summary>What a drag of several things turns about. A move moves them all alike whatever it is.</summary>
+    public TransformPivot Pivot { get; set; } = TransformPivot.MedianPoint;
+
+    /// <summary>
+    /// Where the gizmo stands for these targets under <see cref="Pivot"/>: the active one's centre, or
+    /// the middle of all of them. Each's own centre for Individual Origins too — the gizmo has to
+    /// stand somewhere, and the middle is where Blender puts it.
+    /// </summary>
+    public Vector3 PivotPoint(IReadOnlyList<IPlaceable> targets)
+    {
+        if (targets.Count == 0)
+        {
+            return Vector3.Zero;
+        }
+
+        if (Pivot == TransformPivot.ActiveElement && targets[0].Id == ActiveId)
+        {
+            return targets[0].WorldCentre();
+        }
+
+        Vector3 sum = Vector3.Zero;
+        foreach (IPlaceable target in targets)
+        {
+            sum += target.WorldCentre();
+        }
+
+        return sum / targets.Count;
+    }
+
+    /// <summary>Records a finished drag of several things as one undo step.</summary>
+    public bool PushTransformEdits(IReadOnlyList<(IPlaceable Target, ObjectTransform Before)> moved, string name)
+    {
+        List<ICommand> steps = [.. moved
+            .Where(m => m.Before != m.Target.Transform)
+            .Select(m => (ICommand)new TransformCommand(m.Target, m.Before, m.Target.Transform, name))];
+
+        if (steps.Count == 0)
+        {
+            return false;
+        }
+
+        History.Push(CompositeCommand.Of(name, steps));
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    // ---- The selection as a whole ------------------------------------------------------------
+
+    /// <summary>A name for an operation on these: the one thing's own name, else how many.</summary>
+    private static string Several(string verb, IReadOnlyList<IPlaceable> things) =>
+        things.Count == 1 ? $"{verb} {things[0].Name}" : $"{verb} {things.Count} {(things.All(t => t is SceneLight) ? "lights" : "objects")}";
+
+    /// <summary>Deletes everything selected, as one undo step. Returns how many things went.</summary>
+    public int DeleteSelected()
+    {
+        List<IPlaceable> doomed = [.. Scene.SelectedObjects.Where(o => !o.Locked), .. Scene.SelectedLights.Where(l => !l.Locked)];
+        if (doomed.Count == 0)
+        {
+            return 0;
+        }
+
+        EndStroke();
+        CancelExtrude();
+
+        int focus = Scene.FocusId;
+        var steps = new List<ICommand>();
+        foreach (IPlaceable thing in doomed)
+        {
+            ICommand step = thing is VoxelObject o ? new DeleteObjectCommand(Scene, o) : new DeleteLightCommand(Scene, (SceneLight)thing);
+            step.Redo();
+            steps.Add(step);
+        }
+
+        if (Scene.FocusId != focus)
+        {
+            Selection = null;
+        }
+
+        if (SelectedLightId != 0 && Scene.FindLight(SelectedLightId) is null)
+        {
+            SelectedLightId = 0;
+        }
+
+        History.Push(CompositeCommand.Of(Several("Delete", doomed), steps));
+        HasUnsavedChanges = true;
+        return doomed.Count;
+    }
+
+    /// <summary>
+    /// Copies everything selected beside where it is — all by the same step, so they keep their places
+    /// among each other — and selects the copies. A copy of something whose parent is copied too goes
+    /// under the parent's copy; otherwise it keeps the parent. One undo step.
+    /// </summary>
+    public IReadOnlyList<IPlaceable> DuplicateSelected(Vector3 towards)
+    {
+        List<VoxelObject> objects = [.. Scene.SelectedObjects.Where(o => !o.IsEmpty)];
+        List<SceneLight> lights = [.. Scene.SelectedLights];
+        if (objects.Count + lights.Count == 0)
+        {
+            return [];
+        }
+
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        Vector3 offset = SelectionOffset(objects, lights, towards);
+        var copyOf = new Dictionary<int, int>();
+        var steps = new List<ICommand>();
+        var copies = new List<IPlaceable>();
+
+        // Parents before their children, so a child's copy has its parent's copy to go under.
+        foreach (VoxelObject source in ParentsFirst(objects))
+        {
+            int parent = Scene.ParentOf(source)?.Id ?? 0;
+            var command = new CreateObjectCommand(
+                Scene,
+                source.Grid.Copy(),
+                source.Transform.Translated(offset),
+                DuplicateName(source.Name, Scene.Objects.Select(o => o.Name)),
+                $"Duplicate {source.Name}",
+                Scene.IndexOf(source.Id) + 1,
+                copyOf.GetValueOrDefault(parent, parent));
+
+            command.Redo();
+            steps.Add(command);
+            copies.Add(command.Created!);
+            copyOf[source.Id] = command.Created!.Id;
+        }
+
+        foreach (SceneLight source in lights)
+        {
+            SceneLight copy = Scene.CreateLight(source.Kind, source.Name);
+            copy.Apply(source.State with
+            {
+                Name = DuplicateName(source.Name, Scene.Lights.Select(l => l.Name)),
+                Transform = source.Transform.Translated(offset),
+            });
+
+            int parent = Scene.ParentOf(source)?.Id ?? 0;
+            copy.ParentId = copyOf.GetValueOrDefault(parent, parent);
+
+            var command = new AddLightCommand(Scene, copy, $"Duplicate {source.Name}");
+            command.Redo();
+            steps.Add(command);
+            copies.Add(copy);
+        }
+
+        // The active one's copy is the active copy.
+        int active = ActiveId;
+        List<int> ids = [.. copies.Select(c => c.Id)];
+        if (copyOf.TryGetValue(active, out int activeCopy))
+        {
+            ids.Remove(activeCopy);
+            ids.Insert(0, activeCopy);
+        }
+
+        SelectOnly(ids);
+
+        History.Push(CompositeCommand.Of(Several("Duplicate", [.. objects, .. lights]), steps));
+        HasUnsavedChanges = true;
+        return copies;
+    }
+
+    /// <summary>Objects ordered so that each comes after any of its ancestors among them.</summary>
+    private List<VoxelObject> ParentsFirst(List<VoxelObject> objects) =>
+        [.. objects.OrderBy(o => Depth(o))];
+
+    private int Depth(IPlaceable thing)
+    {
+        int depth = 0;
+        for (VoxelObject? parent = Scene.ParentOf(thing); parent is not null && depth <= Scene.Objects.Count; parent = Scene.ParentOf(parent))
+        {
+            depth++;
+        }
+
+        return depth;
+    }
+
+    /// <summary>
+    /// How far a copy of the selection goes: <see cref="DuplicateOffset"/> for the whole of it, in
+    /// voxels of the largest size among it, so that a copy of each lands on its own lattice as often
+    /// as the sizes allow.
+    /// </summary>
+    private static Vector3 SelectionOffset(List<VoxelObject> objects, List<SceneLight> lights, Vector3 towards)
+    {
+        if (objects.Count == 1 && lights.Count == 0)
+        {
+            return DuplicateOffset(objects[0], towards);
+        }
+
+        bool any = false;
+        Vector3 min = Vector3.Zero, max = Vector3.Zero;
+        float voxel = 1f;
+
+        foreach (VoxelObject o in objects)
+        {
+            if (o.TryGetWorldBounds(out Vector3 lo, out Vector3 hi))
+            {
+                min = any ? Vector3.Min(min, lo) : lo;
+                max = any ? Vector3.Max(max, hi) : hi;
+                voxel = any ? MathF.Max(voxel, o.VoxelSize) : o.VoxelSize;
+                any = true;
+            }
+        }
+
+        if (!any)
+        {
+            // Lights alone: a couple of units aside, which is where a copied light is still seen apart.
+            bool x = MathF.Abs(towards.X) >= MathF.Abs(towards.Z);
+            float s = (x ? towards.X : towards.Z) >= 0f ? 1f : -1f;
+            return x ? new Vector3(2f * s, 0f, 0f) : new Vector3(0f, 0f, 2f * s);
+        }
+
+        bool alongX = MathF.Abs(towards.X) >= MathF.Abs(towards.Z);
+        float sign = (alongX ? towards.X : towards.Z) >= 0f ? 1f : -1f;
+        Vector3 size = (max - min) / voxel;
+        float step = (MathF.Ceiling((alongX ? size.X : size.Z) - 1e-3f) + 1f) * voxel;
+        return alongX ? new Vector3(sign * step, 0f, 0f) : new Vector3(0f, 0f, sign * step);
+    }
+
+    /// <summary>Hides the selected objects and switches the selected lights off or back on. Outside undo, as hiding one is.</summary>
+    public int HideSelected()
+    {
+        int changed = 0;
+        foreach (VoxelObject o in Scene.SelectedObjects.ToList())
+        {
+            changed += SetObjectVisible(o.Id, false) ? 1 : 0;
+        }
+
+        foreach (SceneLight light in Scene.SelectedLights.ToList())
+        {
+            changed += SetLightVisible(light.Id, !light.Visible) ? 1 : 0;
+        }
+
+        return changed;
+    }
+
+    /// <summary>Locks everything selected, which lets go of it. Returns how many things were locked.</summary>
+    public int LockSelected()
+    {
+        int locked = 0;
+        foreach (VoxelObject o in Scene.SelectedObjects.ToList())
+        {
+            locked += SetObjectLocked(o.Id, true) ? 1 : 0;
+        }
+
+        foreach (SceneLight light in Scene.SelectedLights.ToList())
+        {
+            locked += SetLightLocked(light.Id, true) ? 1 : 0;
+        }
+
+        return locked;
+    }
+
+    /// <summary>
+    /// Blender's Ctrl+P: every other selected thing becomes the child of the active object, staying
+    /// where it is. What cannot go under it — the active's own parent, say — is passed over. One undo
+    /// step; returns how many were parented.
+    /// </summary>
+    public int ParentSelectedToActive()
+    {
+        if (SelectedLightId != 0 || Scene.Focus is not { } parent)
+        {
+            return 0;
+        }
+
+        EndStroke();
+        CancelExtrude();
+
+        var steps = new List<ICommand>();
+        var children = new List<IPlaceable>();
+        foreach (IPlaceable child in Scene.SelectedObjects.Cast<IPlaceable>().Concat(Scene.SelectedLights).ToList())
+        {
+            if (child.Id == parent.Id || Scene.ParentProblem(child.Id, parent.Id) is not null || Scene.ParentOf(child)?.Id == parent.Id)
+            {
+                continue;
+            }
+
+            var command = new ParentCommand(Scene, child, parent.Id, $"Parent {child.Name} to {parent.Name}");
+            command.Redo();
+            steps.Add(command);
+            children.Add(child);
+        }
+
+        if (steps.Count == 0)
+        {
+            return 0;
+        }
+
+        History.Push(CompositeCommand.Of(children.Count == 1 ? $"Parent {children[0].Name} to {parent.Name}" : $"Parent {children.Count} to {parent.Name}", steps));
+        HasUnsavedChanges = true;
+        return steps.Count;
+    }
+
+    /// <summary>Frees everything selected from its parent, leaving each where it is. One undo step.</summary>
+    public int ClearParentOfSelected()
+    {
+        List<IPlaceable> freed = [.. Scene.SelectedObjects.Cast<IPlaceable>().Concat(Scene.SelectedLights).Where(t => Scene.ParentOf(t) is not null)];
+        if (freed.Count == 0)
+        {
+            return 0;
+        }
+
+        EndStroke();
+        CancelExtrude();
+
+        var steps = new List<ICommand>();
+        foreach (IPlaceable child in freed)
+        {
+            var command = new ParentCommand(Scene, child, 0, $"Clear parent of {child.Name}");
+            command.Redo();
+            steps.Add(command);
+        }
+
+        History.Push(CompositeCommand.Of(Several("Clear parent of", freed), steps));
+        HasUnsavedChanges = true;
+        return steps.Count;
+    }
+
+    /// <summary>
+    /// Blender's Ctrl+J: the voxels of every other selected object go into the active one, and those
+    /// objects out of the level. Only objects on the active one's lattice can; the rest are left as
+    /// they are and counted in <paramref name="refused"/>. One undo step; returns how many were joined.
+    /// </summary>
+    public int JoinSelectedIntoActive(out int refused)
+    {
+        refused = 0;
+        if (SelectedLightId != 0 || Scene.Focus is not { Locked: false } target)
+        {
+            return 0;
+        }
+
+        EndStroke();
+        CancelExtrude();
+
+        var steps = new List<ICommand>();
+        foreach (VoxelObject source in Scene.SelectedObjects.Where(o => o.Id != target.Id).ToList())
+        {
+            if (JoinProblem(source.Id, target.Id) is not null
+                || LatticeMap.Between(source.Transform, target.Transform, out _) is not { } map)
+            {
+                refused++;
+                continue;
+            }
+
+            var command = new JoinCommand(Scene, source, target, map);
+            command.Redo();
+            steps.Add(command);
+        }
+
+        if (steps.Count == 0)
+        {
+            return 0;
+        }
+
+        Selection = null;
+        History.Push(CompositeCommand.Of(steps.Count == 1 ? steps[0].Name : $"Join {steps.Count} into {target.Name}", steps));
+        HasUnsavedChanges = true;
+        return steps.Count;
+    }
+
+    /// <summary>
+    /// One voxel operation done to every selected object that can take it, as one undo step: a flip,
+    /// a quarter turn, a subdivide. Returns how many objects it was done to.
+    /// </summary>
+    private int ForEachSelected(string name, Func<VoxelObject, bool> can, Func<VoxelObject, ICommand> make)
+    {
+        List<VoxelObject> targets = [.. Scene.SelectedObjects.Where(o => !o.IsEmpty && !o.Locked && can(o))];
+        if (targets.Count == 0)
+        {
+            return 0;
+        }
+
+        // Any gesture in progress, and the Extrude selection, were in the cells as they were.
+        EndStroke();
+        CancelExtrude();
+        Selection = null;
+
+        var steps = new List<ICommand>();
+        foreach (VoxelObject target in targets)
+        {
+            ICommand command = make(target);
+            command.Redo();
+            steps.Add(command);
+        }
+
+        History.Push(CompositeCommand.Of(targets.Count == 1 ? $"{name} {targets[0].Name}" : $"{name} {targets.Count} objects", steps));
+        HasUnsavedChanges = true;
+        return targets.Count;
+    }
+
+    public int FlipSelected(Axis axis) =>
+        ForEachSelected("Mirror", _ => true, o => new FlipObjectCommand(o.Grid, axis));
+
+    public int RotateSelected(RotateDirection direction) =>
+        ForEachSelected("Turn", _ => true, o => new RotateObjectCommand(o.Grid, direction));
+
+    public int SubdivideSelected() =>
+        ForEachSelected("Subdivide", o => SubdivideProblem(o) is null, o => new SubdivideObjectCommand(o, Symmetry));
 
     // ---- Clipboard -----------------------------------------------------------------------------
 
-    /// <summary>What was last copied or cut, or null. Kept by the session, not the system clipboard.</summary>
-    public VoxelClipboard? Clipboard { get; private set; }
+    /// <summary>What was last copied or cut, or null: the first piece of it. Kept by the session, not the system clipboard.</summary>
+    public VoxelClipboard? Clipboard => _clipboard.Count > 0 ? _clipboard[0] : null;
+
+    /// <summary>Every piece of what was last copied — one per object, when several were selected.</summary>
+    public IReadOnlyList<VoxelClipboard> ClipboardPieces => _clipboard;
+
+    private List<VoxelClipboard> _clipboard = [];
 
     /// <summary>Pastes since the last copy, so each lands a step further along instead of on the last.</summary>
     private int _pasteCount;
@@ -524,52 +1174,86 @@ public sealed class EditorSession
     /// </summary>
     public int Copy()
     {
-        if (Scene.Focus is not { } focus)
+        // Behind the Extrude selection: the voxels of the one object it is on.
+        if (CopiesSelection && Scene.Focus is { } focus)
+        {
+            VoxelWorld region = ClipboardOperations.Extract(focus.Grid, ClipboardOperations.RegionBehind(Selection!, focus.Grid));
+            if (region.SolidCount == 0)
+            {
+                return 0;
+            }
+
+            _clipboard = [new VoxelClipboard(region, focus.Transform, focus.Name)];
+            _pasteCount = 0;
+            return region.SolidCount;
+        }
+
+        // Otherwise every selected object, whole.
+        List<VoxelClipboard> pieces = [.. CopySources()
+            .Select(o => new VoxelClipboard(ClipboardOperations.Extract(o.Grid, ClipboardOperations.Everything(o.Grid)), o.Transform, o.Name))
+            .Where(piece => piece.Grid.SolidCount > 0)];
+
+        if (pieces.Count == 0)
         {
             return 0;
         }
 
-        IEnumerable<Int3> cells = CopiesSelection
-            ? ClipboardOperations.RegionBehind(Selection!, focus.Grid)
-            : ClipboardOperations.Everything(focus.Grid);
-
-        VoxelWorld grid = ClipboardOperations.Extract(focus.Grid, cells);
-        if (grid.SolidCount == 0)
-        {
-            return 0;
-        }
-
-        Clipboard = new VoxelClipboard(grid, focus.Transform, focus.Name);
+        _clipboard = pieces;
         _pasteCount = 0;
-        return grid.SolidCount;
+        return pieces.Sum(piece => piece.Grid.SolidCount);
     }
 
+    /// <summary>What a copy takes whole: the selected objects. The phone selects what it focuses, so it has them too.</summary>
+    private IEnumerable<VoxelObject> CopySources() => Scene.SelectedObjects;
+
     /// <summary>
-    /// Copies, then takes the copied voxels out, as one undo step. With nothing selected it is the
-    /// whole object that goes — except the last, which cannot, so that is only copied.
+    /// Copies, then takes the copied voxels out, as one undo step. With no Extrude selection it is the
+    /// selected objects that go, whole.
     /// </summary>
     public int Cut()
     {
-        // A locked object is not to be changed; copying it is fine, taking it away is not.
+        EndStroke();
+        CancelExtrude();
+
+        bool region = CopiesSelection;
+        if (!region)
+        {
+            // A locked object is not to be changed; copying it is fine, taking it away is not.
+            List<VoxelObject> sources = [.. CopySources()];
+            if (sources.Count == 0 || sources.Any(o => o.Locked))
+            {
+                return 0;
+            }
+
+            int whole = Copy();
+            if (whole == 0)
+            {
+                return 0;
+            }
+
+            var steps = new List<ICommand>();
+            foreach (VoxelObject o in sources)
+            {
+                var delete = new DeleteObjectCommand(Scene, o);
+                delete.Redo();
+                steps.Add(delete);
+            }
+
+            Selection = null;
+            History.Push(CompositeCommand.Of(sources.Count == 1 ? $"Cut {sources[0].Name}" : $"Cut {sources.Count} objects", steps));
+            HasUnsavedChanges = true;
+            return whole;
+        }
+
         if (Scene.Focus is not { Locked: false } focus)
         {
             return 0;
         }
 
-        EndStroke();
-        CancelExtrude();
-
-        bool region = CopiesSelection;
         int copied = Copy();
         if (copied == 0)
         {
             return 0;
-        }
-
-        if (!region)
-        {
-            DeleteObject(focus.Id);
-            return copied;
         }
 
         var command = new VoxelEditCommand("Cut", focus.Grid);
@@ -592,7 +1276,7 @@ public sealed class EditorSession
     /// </summary>
     public VoxelObject? Paste(Vector3 towards)
     {
-        if (Clipboard is not { } clipboard)
+        if (_clipboard.Count == 0)
         {
             return null;
         }
@@ -600,23 +1284,32 @@ public sealed class EditorSession
         EndStroke();
         CancelExtrude();
         Selection = null;
-        SelectedLightId = 0;
 
+        // All the pieces by one step, so they land as they were copied, among each other.
         _pasteCount++;
-        var where = new VoxelObject(0, clipboard.Grid, clipboard.Transform, clipboard.Name);
-        Vector3 offset = DuplicateOffset(where, towards) * _pasteCount;
+        List<VoxelObject> placed = [.. _clipboard.Select(piece => new VoxelObject(0, piece.Grid, piece.Transform, piece.Name))];
+        Vector3 offset = SelectionOffset(placed, [], towards) * _pasteCount;
 
-        var command = new CreateObjectCommand(
-            Scene,
-            clipboard.Grid.Copy(),
-            clipboard.Transform.Translated(offset),
-            DuplicateName(clipboard.Name, Scene.Objects.Select(o => o.Name)),
-            "Paste");
+        var steps = new List<ICommand>();
+        var pasted = new List<int>();
+        foreach (VoxelClipboard piece in _clipboard)
+        {
+            var command = new CreateObjectCommand(
+                Scene,
+                piece.Grid.Copy(),
+                piece.Transform.Translated(offset),
+                DuplicateName(piece.Name, Scene.Objects.Select(o => o.Name)),
+                "Paste");
 
-        command.Redo();
-        History.Push(command);
+            command.Redo();
+            steps.Add(command);
+            pasted.Add(command.Created!.Id);
+        }
+
+        SelectOnly(pasted);
+        History.Push(CompositeCommand.Of("Paste", steps));
         HasUnsavedChanges = true;
-        return command.Created;
+        return Scene.Find(pasted[0]);
     }
 
     /// <summary>Why one object cannot be joined into another, or null when it can.</summary>
@@ -690,6 +1383,7 @@ public sealed class EditorSession
         var command = new CreateObjectCommand(Scene, grid, Placement.Against(grid, point, normal, size), unique, $"Add {name}");
         command.Redo();
         History.Push(command);
+        SelectOnly([command.Created!.Id]);
 
         HasUnsavedChanges = true;
         return command.Created!;
@@ -770,13 +1464,13 @@ public sealed class EditorSession
     /// <summary>The picked light, or null, including when it has since been deleted or undone away.</summary>
     public SceneLight? SelectedLight => SelectedLightId == 0 ? null : Scene.FindLight(SelectedLightId);
 
-    /// <summary>What the Transform tool works on: the picked light if there is one, else the focused object.</summary>
     /// <summary>
-    /// What the Transform tool's gizmo is on: the picked light, else the focused object — unless that
-    /// is locked, which can happen when every object is, and then nothing.
+    /// The one of <see cref="TransformTargets"/> the gizmo takes its axes from — the active one when it
+    /// is among them — or null when nothing selected can be moved.
     /// </summary>
-    public IPlaceable? TransformTarget => (IPlaceable?)SelectedLight ?? (Scene.Focus is { Locked: false } focus ? focus : null);
+    public IPlaceable? TransformTarget => TransformTargets is [var first, ..] ? first : null;
 
+    /// <summary>A click on a light's icon: the light becomes the selection, and active.</summary>
     public bool SelectLight(int lightId)
     {
         // A locked light is passed over, as a locked object is.
@@ -785,11 +1479,17 @@ public sealed class EditorSession
             return false;
         }
 
-        SelectedLightId = lightId;
-        return true;
+        return ClickSelect(lightId);
     }
 
-    public void ClearLightSelection() => SelectedLightId = 0;
+    /// <summary>Lets go of the active light, if one is.</summary>
+    public void ClearLightSelection()
+    {
+        if (SelectedLightId != 0)
+        {
+            Deselect(SelectedLightId);
+        }
+    }
 
     /// <summary>
     /// Adds a light, picks it, and records it as one undo step. Named after its kind, numbered the
@@ -821,7 +1521,7 @@ public sealed class EditorSession
         command.Redo();
         History.Push(command);
 
-        SelectedLightId = light.Id;
+        SelectOnly([light.Id]);
         HasUnsavedChanges = true;
         return light;
     }
@@ -848,7 +1548,7 @@ public sealed class EditorSession
         command.Redo();
         History.Push(command);
 
-        SelectedLightId = copy.Id;
+        SelectOnly([copy.Id]);
         HasUnsavedChanges = true;
         return copy;
     }
@@ -915,9 +1615,9 @@ public sealed class EditorSession
         }
 
         light.Locked = locked;
-        if (locked && SelectedLightId == lightId)
+        if (locked)
         {
-            SelectedLightId = 0;
+            Deselect(lightId);
         }
 
         HasUnsavedChanges = true;
@@ -994,6 +1694,10 @@ public sealed class EditorSession
         }
 
         target.Visible = visible;
+        if (!visible)
+        {
+            Scene.Deselect(target.Id);
+        }
 
         if (!visible && target.Id == Scene.FocusId)
         {
@@ -1026,6 +1730,10 @@ public sealed class EditorSession
         }
 
         target.Locked = locked;
+        if (locked)
+        {
+            Scene.Deselect(target.Id);
+        }
 
         if (locked && target.Id == Scene.FocusId)
         {
@@ -1146,6 +1854,7 @@ public sealed class EditorSession
 
         command.Redo();
         History.Push(command);
+        SelectOnly([command.Created!.Id]);
 
         HasUnsavedChanges = true;
         return command.Created;
@@ -1242,6 +1951,7 @@ public sealed class EditorSession
         }
 
         RetainSelection();
+        ForgetGoneLight();
         HasUnsavedChanges = true;
         return true;
     }
@@ -1262,6 +1972,15 @@ public sealed class EditorSession
         Selection = kept.IsEmpty ? null : kept;
     }
 
+    /// <summary>An active light that an undo or redo took out of the level is active no longer.</summary>
+    private void ForgetGoneLight()
+    {
+        if (SelectedLightId != 0 && !Scene.IsSelected(SelectedLightId))
+        {
+            SelectedLightId = 0;
+        }
+    }
+
     public bool Redo()
     {
         CancelExtrude();
@@ -1273,6 +1992,7 @@ public sealed class EditorSession
         }
 
         RetainSelection();
+        ForgetGoneLight();
         HasUnsavedChanges = true;
         return true;
     }
@@ -1597,16 +2317,19 @@ public sealed class EditorSession
         Scene = scene;
         SelectedLightId = 0;
         Symmetry.Forget();
-        if (Scene.Objects.Count == 0)
-        {
-            EnsureFocus();
-        }
 
         // A level saved with its first object locked would otherwise open with focus on the one
         // object the tools may not touch.
         if (Scene.Focus is { Locked: true } && Scene.Objects.FirstOrDefault(o => o.Visible && !o.Locked) is { } open)
         {
             Scene.SetFocus(open.Id);
+        }
+
+        // A level that comes with nothing selected opens with its active object selected, as
+        // Blender's does, so the tools have something to work on from the first click.
+        if (Scene.SelectedCount == 0)
+        {
+            Scene.Select(Scene.FocusId);
         }
 
         Scene.MarkAllDirty();

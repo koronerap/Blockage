@@ -22,6 +22,7 @@ public sealed class LoopCutCommand : ICommand
 
     private VoxelObject? _lowObject;
     private VoxelObject? _highObject;
+    private bool _wasSelected;
 
     public LoopCutCommand(VoxelScene scene, VoxelObject original, VoxelWorld low, VoxelWorld high)
     {
@@ -46,6 +47,7 @@ public sealed class LoopCutCommand : ICommand
         IPlaceable[] children = [.. _scene.ChildrenOf(_original.Id)];
         _children.Capture(children);
 
+        _wasSelected = _scene.IsSelected(_original.Id);
         _scene.Remove(_original.Id);
 
         // Both halves inherit the original placement, so nothing moves at the moment of the cut.
@@ -58,6 +60,13 @@ public sealed class LoopCutCommand : ICommand
         foreach (IPlaceable child in children)
         {
             _scene.SetParent(child.Id, _lowObject.Id);
+        }
+
+        // A selected object cut in two is two selected objects.
+        if (_wasSelected)
+        {
+            _scene.Select(_lowObject.Id);
+            _scene.Select(_highObject.Id);
         }
 
         _scene.SetFocus(_highObject.Id);
@@ -78,6 +87,10 @@ public sealed class LoopCutCommand : ICommand
         _scene.Restore(_original);
         _children.Restore();
         _scene.SetFocus(_original.Id);
+        if (_wasSelected)
+        {
+            _scene.Select(_original.Id);
+        }
 
         _lowObject = null;
         _highObject = null;

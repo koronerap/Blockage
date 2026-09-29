@@ -11,6 +11,7 @@ public sealed class DeleteObjectCommand(VoxelScene scene, VoxelObject target) : 
 {
     private int _previousFocusId;
     private int _index = -1;
+    private bool _wasSelected;
 
     public string Name => $"Delete {target.Name}";
 
@@ -20,6 +21,7 @@ public sealed class DeleteObjectCommand(VoxelScene scene, VoxelObject target) : 
     {
         _previousFocusId = scene.FocusId;
         _index = scene.IndexOf(target.Id);
+        _wasSelected = scene.IsSelected(target.Id);
         scene.Remove(target.Id);
     }
 
@@ -27,5 +29,11 @@ public sealed class DeleteObjectCommand(VoxelScene scene, VoxelObject target) : 
     {
         scene.Restore(target, _index >= 0 ? _index : null);
         scene.SetFocus(_previousFocusId == 0 ? target.Id : _previousFocusId);
+
+        // Back as it went: a selected object comes back selected.
+        if (_wasSelected)
+        {
+            scene.Select(target.Id);
+        }
     }
 }

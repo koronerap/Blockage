@@ -73,6 +73,21 @@ public static class ToolOptions
 
         ImGui.EndDisabled();
 
+        // What several things turn about. Named in full in the Tool tab; short here.
+        ImGui.SameLine(0f, 4f);
+        string[] pivots = ["Median", "Active", "Individual"];
+        ImGui.SetNextItemWidth(ImGui.CalcTextSize("Individual").X + (ImGui.GetFrameHeight() * 1.6f));
+        int pivot = (int)session.Pivot;
+        if (ImGui.Combo("##transform-pivot", ref pivot, pivots, pivots.Length))
+        {
+            session.Pivot = (TransformPivot)pivot;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Pivot: what several selected things turn about -\ntheir middle, the active one's centre, or each its own.");
+        }
+
         ImGui.SameLine(0f, Gap);
         SnapMenu.DrawButtons(session.Snap, size);
     }

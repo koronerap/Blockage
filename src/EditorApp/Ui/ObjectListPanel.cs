@@ -89,6 +89,8 @@ public static class ObjectListPanel
 
     public static void StartRename(SceneLight light) => StartRename(light.Id, light.Name);
 
+    public static void StartRename(IPlaceable thing) => StartRename(thing.Id, thing.Name);
+
     private static void StartRename(int id, string name)
     {
         _renamingId = id;
@@ -96,10 +98,16 @@ public static class ObjectListPanel
         _renameJustStarted = true;
     }
 
+    /// <summary>The rows in the order they were last drawn, top to bottom, for a Shift-click's range.</summary>
+    private static List<int> _shownOrder = [];
+
+    private static List<int> _drawingOrder = [];
+
     /// <summary>The Outliner's header and list, filling the space it is given; the list scrolls within it.</summary>
     public static void Draw(EditorSession session, FlyCamera camera, Vector2 size)
     {
         HoveredId = 0;
+        _drawingOrder.Clear();
 
         // Only what is drawn this frame: a row folded away has no place to aim at.
         RowRects.Clear();
@@ -162,6 +170,35 @@ public static class ObjectListPanel
 
         ImGui.EndChild();
         ImGui.PopStyleVar();
+
+        (_shownOrder, _drawingOrder) = (_drawingOrder, _shownOrder);
+    }
+
+    /// <summary>
+    /// A click on a row, as in Blender's outliner: alone it selects only that row's object or light;
+    /// Ctrl adds it, makes it active, or — when it is the active one — lets it go; Shift selects every
+    /// row from the active one to it.
+    /// </summary>
+    private static bool ClickRow(EditorSession session, int id)
+    {
+        ImGuiIOPtr io = ImGui.GetIO();
+
+        if (io.KeyShift
+            && _shownOrder.IndexOf(session.ActiveId) is >= 0 and var from
+            && _shownOrder.IndexOf(id) is >= 0 and var to)
+        {
+            session.SelectMany(
+                _shownOrder.GetRange(Math.Min(from, to), Math.Abs(to - from) + 1),
+                io.KeyCtrl ? SelectionOperation.Add : SelectionOperation.Replace);
+            return true;
+        }
+
+        if (io.KeyCtrl)
+        {
+            return session.ClickSelect(id, extend: true);
+        }
+
+        return session.Scene.Find(id) is not null ? session.ChooseObject(id) : session.SelectLight(id);
     }
 
     /// <summary>An object's row, then — unless folded — its children's, each a step further in.</summary>
@@ -416,11 +453,12 @@ public static class ObjectListPanel
 
     private static void DrawObjectRow(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved, int depth, bool hasChildren)
     {
-        bool focused = o.Id == session.Scene.FocusId;
-
-        // While a light is picked, the focused object is only the one the voxel tools would act on,
-        // so it keeps its mark but gives up the accent to the light.
-        bool emphasised = focused && session.SelectedLightId == 0;
+        // Selected rows are marked, and the active one takes the accent. A hidden object cannot be
+        // selected, but clicked it is still the one Properties shows, and is marked as that.
+        bool active = o.Id == session.ActiveId;
+        bool focused = session.IsSelected(o.Id) || (active && !o.Visible);
+        bool emphasised = focused && active;
+        _drawingOrder.Add(o.Id);
         DrawLead(o.Id, depth, hasChildren, row);
         float width = NameWidth(row);
 
@@ -433,7 +471,7 @@ public static class ObjectListPanel
             if (DrawSelectable(focused, emphasised, row, width))
             {
                 // A locked object is not chosen by a click here either; the tooltip says why.
-                if (session.ChooseObject(o.Id) && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                if (ClickRow(session, o.Id) && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                 {
                     StartRename(o);
                 }
@@ -454,7 +492,7 @@ public static class ObjectListPanel
                 ImGui.SetTooltip(
                     !o.Visible ? "Hidden - not drawn, picked or exported."
                     : o.Locked ? "Locked - drawn and exported, but not picked or changed.\nUnlock it to work on it."
-                    : "Double-click or F2 to rename, right-click for more.");
+                    : "Ctrl-click adds, Shift-click takes a range.\nDouble-click or F2 to rename, right-click for more.");
             }
 
             DrawLabel(Icons.ObjectTab, o.Name, o.Visible, emphasised, $"{o.Grid.SolidCount:N0}");
@@ -476,7 +514,9 @@ public static class ObjectListPanel
 
     private static void DrawLightRow(EditorSession session, FlyCamera camera, SceneLight light, float row, bool lightMoved, int depth)
     {
-        bool picked = light.Id == session.SelectedLightId;
+        bool picked = session.IsSelected(light.Id);
+        bool active = picked && light.Id == session.SelectedLightId;
+        _drawingOrder.Add(light.Id);
         DrawLead(light.Id, depth, hasChildren: false, row);
         float width = NameWidth(row);
 
@@ -486,8 +526,8 @@ public static class ObjectListPanel
         }
         else
         {
-            if (DrawSelectable(picked, picked, row, width)
-                && session.SelectLight(light.Id)
+            if (DrawSelectable(picked, active, row, width)
+                && ClickRow(session, light.Id)
                 && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
             {
                 StartRename(light);
@@ -496,7 +536,7 @@ public static class ObjectListPanel
             RowRects[light.Id] = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
             DragSource(light.Id);
 
-            if (picked && lightMoved)
+            if (active && lightMoved)
             {
                 ImGui.SetScrollHereY(0.5f);
             }
@@ -510,7 +550,7 @@ public static class ObjectListPanel
                     : "A light - move and aim it with the Transform tool.");
             }
 
-            DrawLabel(Icons.For(light.Kind), light.Name, light.Visible, picked, null);
+            DrawLabel(Icons.For(light.Kind), light.Name, light.Visible, active, null);
             DrawLightMenu(session, camera, light);
         }
 
@@ -533,21 +573,15 @@ public static class ObjectListPanel
 
     private static bool DrawSelectable(bool selected, bool emphasised, float row, float width)
     {
-        // The accent is for the one thing the tools act on; anything else selected gets the plain mark.
-        if (emphasised)
-        {
-            ImGui.PushStyleColor(ImGuiCol.Header, Theme.Accent);
-        }
+        // The accent for the active one; the rest of the selection a faint wash of it, so it can be
+        // told from the rows around it at a glance.
+        ImGui.PushStyleColor(ImGuiCol.Header, emphasised ? Theme.Accent : Theme.Accent with { W = 0.32f });
 
         // The label is drawn by hand after the selectable, so the kind can sit as an icon before the
         // name and the name can dim when hidden. Narrower than the row: the switches at its end are
         // buttons of their own, and a selectable under them would take their clicks.
         bool clicked = ImGui.Selectable("##name", selected, ImGuiSelectableFlags.AllowDoubleClick, new Vector2(width, row));
-
-        if (emphasised)
-        {
-            ImGui.PopStyleColor();
-        }
+        ImGui.PopStyleColor();
 
         return clicked;
     }
@@ -630,15 +664,23 @@ public static class ObjectListPanel
             return;
         }
 
+        // The menu acts on the selection, as the viewport's does; a row outside it becomes it.
+        if (ImGui.IsWindowAppearing() && !session.IsSelected(o.Id))
+        {
+            session.ChooseObject(o.Id);
+        }
+
+        if (session.IsSelected(o.Id))
+        {
+            ObjectMenu.DrawItems(session, camera);
+            ImGui.EndPopup();
+            return;
+        }
+
+        // Hidden or locked, it cannot be selected: what can be done to the row itself.
         if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename)))
         {
             StartRename(o);
-        }
-
-        // Duplicating works on the focused object, so the row's object becomes it first.
-        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, !o.IsEmpty) && session.ChooseObject(o.Id))
-        {
-            ObjectMenu.Duplicate(session, camera);
         }
 
         if (ImGui.MenuItem(o.Visible ? "Hide" : "Show", Shortcut.Of(EditorAction.Hide)))
@@ -651,23 +693,14 @@ public static class ObjectListPanel
             session.SetObjectLocked(o.Id, !o.Locked);
         }
 
-        ObjectMenu.DrawJoinMenu(session, o);
-
         ImGui.Separator();
         ParentMenu.DrawSubmenu(session, o);
 
         ImGui.Separator();
 
-        // Refused for the last object: with no Place tool, an empty scene is a dead end.
-        bool isLast = session.Scene.Objects.Count <= 1;
-        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete), false, !isLast))
+        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete)))
         {
             session.DeleteObject(o.Id);
-        }
-
-        if (isLast && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("The last object cannot be deleted - there would be nothing to extrude from.");
         }
 
         ImGui.EndPopup();
@@ -680,6 +713,12 @@ public static class ObjectListPanel
             return;
         }
 
+        // As an object's row: one outside the selection becomes it.
+        if (ImGui.IsWindowAppearing() && !session.IsSelected(light.Id))
+        {
+            session.SelectLight(light.Id);
+        }
+
         if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename)))
         {
             StartRename(light);
@@ -687,7 +726,14 @@ public static class ObjectListPanel
 
         if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate)))
         {
-            LightMenu.Duplicate(session, camera, light);
+            if (session.IsSelected(light.Id))
+            {
+                ObjectMenu.Duplicate(session, camera);
+            }
+            else
+            {
+                LightMenu.Duplicate(session, camera, light);
+            }
         }
 
         if (ImGui.MenuItem(light.Visible ? "Switch off" : "Switch on", Shortcut.Of(EditorAction.Hide)))
@@ -707,7 +753,14 @@ public static class ObjectListPanel
 
         if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete)))
         {
-            session.DeleteLight(light.Id);
+            if (session.IsSelected(light.Id))
+            {
+                session.DeleteSelected();
+            }
+            else
+            {
+                session.DeleteLight(light.Id);
+            }
         }
 
         ImGui.EndPopup();

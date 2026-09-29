@@ -1,6 +1,7 @@
 using EditorApp.Core.Commands;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Tests;
@@ -239,6 +240,7 @@ public class ExtrudeSessionTests
     private static EditorSession SessionWithPlate(int width = 3, int depth = 3, byte index = 5)
     {
         var session = new EditorSession { ActiveTool = EditorTool.Extrude };
+        session.Scene.Add(new VoxelWorld(), ObjectTransform.Identity);
         for (int x = 0; x < width; x++)
         {
             for (int z = 0; z < depth; z++)

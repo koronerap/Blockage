@@ -214,6 +214,7 @@ public sealed class JoinCommand(VoxelScene scene, VoxelObject source, VoxelObjec
     private VoxelEditCommand? _writes;
     private int _index = -1;
     private int _previousFocus;
+    private bool _wasSelected;
 
     public string Name => $"Join {source.Name} into {target.Name}";
 
@@ -238,6 +239,7 @@ public sealed class JoinCommand(VoxelScene scene, VoxelObject source, VoxelObjec
         _children.Capture(children);
 
         _index = scene.IndexOf(source.Id);
+        _wasSelected = scene.IsSelected(source.Id);
         scene.Remove(source.Id);
 
         foreach (IPlaceable child in children)
@@ -254,5 +256,9 @@ public sealed class JoinCommand(VoxelScene scene, VoxelObject source, VoxelObjec
         scene.Restore(source, _index >= 0 ? _index : null);
         _children.Restore();
         scene.SetFocus(_previousFocus);
+        if (_wasSelected)
+        {
+            scene.Select(source.Id);
+        }
     }
 }

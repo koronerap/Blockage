@@ -169,14 +169,17 @@ public class ClipboardTests
 
     /// <summary>With nothing selected a cut takes the object — but never the last one, which is only copied.</summary>
     [Fact]
-    public void CuttingTheLastObjectOnlyCopiesIt()
+    public void CuttingTheLastObjectTakesItAwayAndUndoBringsItBack()
     {
         EditorSession session = House();
 
         Assert.True(session.Cut() > 0);
 
-        Assert.Single(session.Scene.Objects);
+        Assert.Empty(session.Scene.Objects);
         Assert.NotNull(session.Clipboard);
+
+        Assert.True(session.Undo());
+        Assert.Single(session.Scene.Objects);
     }
 
     // ---- Join ---------------------------------------------------------------------------------------
