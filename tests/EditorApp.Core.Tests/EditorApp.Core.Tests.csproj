@@ -22,4 +22,9 @@
     <ProjectReference Include="..\..\src\EditorApp.Core\EditorApp.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Levels saved by every .vxlevel version's own writer, for EveryVersionOpensTests. -->
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

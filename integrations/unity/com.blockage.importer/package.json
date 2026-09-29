@@ -1,6 +1,6 @@
 {
   "name": "com.blockage.importer",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "displayName": "Blockage Importer",
   "description": "Imports Blockage .vxlevel files as prefabs: greedy-meshed objects in their palette's colours and materials, colliders, the parent hierarchy, linked copies sharing one mesh, markers and custom properties for the game, and the level's lights. Saved again in Blockage, the level updates in Unity by itself.",
   "unity": "2021.3",

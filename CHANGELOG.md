@@ -26,6 +26,11 @@ Performance, platforms and the road to 1.0.
   - Faces that look alike are merged into one.
   - Parts of the level are meshed on worker threads.
   - The panels no longer walk every voxel in every frame.
+- The `.vxlevel` format is frozen for 1.0 as version 7, and described in
+  [docs/vxlevel-format.md](docs/vxlevel-format.md). Version 7 marks what came since 6 was first
+  written — linked copies, modifiers, collections, markers and more — so an older build refuses the
+  file rather than opening it with those missing. Files of every earlier version still open, checked
+  against files saved by each version's own writer. The Unity package (0.9.0) reads version 7.
 - ImGui's memory of its windows (`imgui.ini`) is kept with the layout in the settings folder, not in
   whatever folder Blockage was started from. Started from the Finder, Blockage browses and exports
   from the home folder rather than from `/`.

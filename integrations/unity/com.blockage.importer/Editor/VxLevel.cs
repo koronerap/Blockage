@@ -175,8 +175,11 @@ namespace Blockage.Importer
     /// </summary>
     internal static class VxLevel
     {
-        /// <summary>The newest version this importer knows; a newer file wants a newer package.</summary>
-        public const int SupportedVersion = 6;
+        /// <summary>
+        /// The newest version this importer knows; a newer file wants a newer package. 7 is the
+        /// format of Blockage 1.0 (docs/vxlevel-format.md), frozen.
+        /// </summary>
+        public const int SupportedVersion = 7;
 
         public static Level Read(string path)
         {

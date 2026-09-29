@@ -9,7 +9,7 @@ using EditorApp.Core.Voxels;
 namespace EditorApp.Core.Project;
 
 /// <summary>
-/// Reads and writes <c>.vxlevel</c> project files (EditorApp.md, "Proje dosyası formatı"). An
+/// Reads and writes <c>.vxlevel</c> project files, as docs/vxlevel-format.md describes them. An
 /// exported mesh is one-way — it cannot be turned back into voxels — so the editor needs a format
 /// of its own.
 ///
@@ -28,6 +28,14 @@ public static class VxLevelFile
     /// <summary>
     /// 1: a single grid. 2: objects with transforms. 3: per-face colours. 4: voxel size.
     /// 5: hidden objects. 6: voxel size per object, positions in world units; lights and ambient.
+    /// 7: the format of 1.0, frozen — what 6 had, and linked copies, modifiers, collections, markers
+    /// and properties, materials, cameras, render settings and reference images. They came one at a
+    /// time with 6 still written, and a build that reads only 6 would drop or misread each of them:
+    /// a linked copy it would open empty.
+    ///
+    /// Every version stays readable: tests/EditorApp.Core.Tests/Fixtures holds a file each one's
+    /// own writer saved. A field an older build could ignore without harm needs no new version; one
+    /// it would misread does.
     ///
     /// Version 4 is a bump for a field an older build would simply not see. That is exactly why it
     /// is one: it sets the scale of everything exported from the file, so a build that ignored it
@@ -36,7 +44,7 @@ public static class VxLevelFile
     /// and a build that did not know about hiding would quietly put them back in. Version 6 changes
     /// what a position means, which an older build would read as a level flown apart.
     /// </summary>
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 7;
 
     /// <summary>The first version with a voxel size on every object and positions in world units.</summary>
     private const int PerObjectVoxelSizeVersion = 6;
@@ -335,7 +343,7 @@ public static class VxLevelFile
         if (manifest.Version > CurrentVersion)
         {
             throw new VxLevelFormatException(
-                $"This file was written by a newer version of EditorApp (file version {manifest.Version}, "
+                $"This file was written by a newer version of Blockage (file version {manifest.Version}, "
                 + $"this build reads up to {CurrentVersion}).");
         }
 

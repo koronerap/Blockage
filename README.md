@@ -13,8 +13,8 @@ export clean meshes for a game engine.
 It grew out of the level and prop pipeline for the game *Mimic Busters*, and writes that game's
 `.character` and `.weapons` files as well as OBJ and glTF.
 
-> **Status: early — 0.8, with 0.9 in development.** In daily use, but expect rough edges, and file-format
-> changes before 1.0. The downloads below are still the 0.1.0 release.
+> **Status: early — 0.8, with 0.9 in development.** In daily use, but expect rough edges. The file
+> format is frozen for 1.0 from 0.9 on. The downloads below are still the 0.1.0 release.
 
 ## Download
 
@@ -158,7 +158,7 @@ sideloadable APK; `-Run` also installs it on the connected device or emulator an
 | [`EditorCodec.md`](EditorCodec.md) | the Mimicraft `.character` and `.weapons` formats, in Turkish |
 
 Levels are saved as `.vxlevel`: a zip holding a JSON manifest and run-length-encoded chunks of 32³
-voxels.
+voxels, described in [docs/vxlevel-format.md](docs/vxlevel-format.md).
 
 ## Contributing
 
