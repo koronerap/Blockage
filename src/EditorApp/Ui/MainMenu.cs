@@ -257,6 +257,27 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
+        // Blender's: the level made into a picture.
+        if (ImGui.BeginMenu("Render"))
+        {
+            if (ImGui.MenuItem("Render Image", Shortcut.Of(EditorAction.RenderImage)))
+            {
+                view.RenderImage();
+            }
+
+            if (ImGui.MenuItem("Save Viewport Image..."))
+            {
+                view.SaveViewportImage();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("The view as it is now, without the grid, overlays or gizmos, to a PNG.");
+            }
+
+            ImGui.EndMenu();
+        }
+
         if (ImGui.BeginMenu("Help"))
         {
             if (ImGui.MenuItem("Welcome Screen"))

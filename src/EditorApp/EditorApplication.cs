@@ -2,6 +2,7 @@ using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Export;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Rendering;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Input;
@@ -79,6 +80,11 @@ public sealed class EditorApplication : IDisposable
     private TransformInteraction? _transform;
     private LightAimInteraction? _aim;
     private SelectInteraction? _select;
+    private RenderWindow? _renderWindow;
+    private ViewportRender? _viewportRender;
+
+    /// <summary>Where the next frame's viewport is to be saved, overlays and all left out; null when none is asked for.</summary>
+    private string? _viewportShotPath;
 
     /// <summary>The object under the pointer, outlined faintly; 0 for none. Never changes what is selected.</summary>
     private int _hoverObjectId;
@@ -213,6 +219,8 @@ public sealed class EditorApplication : IDisposable
         _transform = new TransformInteraction(_session);
         _aim = new LightAimInteraction(_session);
         _select = new SelectInteraction(_session);
+        _renderWindow = new RenderWindow(_gl);
+        _viewportRender = new ViewportRender(_gl);
 
         // The editor opens on the same thing New gives you: an 8³ white cube to extrude from.
         _session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
@@ -1289,6 +1297,8 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
+            case EditorAction.RenderImage: _renderWindow?.Start(_session, RenderCameraNow()); break;
+
             case EditorAction.ToggleGrid: View.Grid = !View.Grid; break;
             case EditorAction.ToggleMeasurements: View.Measurements = !View.Measurements; break;
             case EditorAction.ToggleXRay: View.XRay = !View.XRay; break;
@@ -1540,6 +1550,16 @@ public sealed class EditorApplication : IDisposable
 
         _renderer.SyncDirtyChunks(_session.Scene);
         _renderer.AdvanceFocusFade(_session.Scene, _lastDelta);
+
+        // A viewport image is the scene alone: no grid, no overlays, no gizmos, for this one frame.
+        string? shot = _viewportShotPath;
+        (bool Overlays, bool Gizmos) viewBefore = (View.Overlays, View.Gizmos);
+        if (shot is not null)
+        {
+            View.Overlays = false;
+            View.Gizmos = false;
+        }
+
         BuildOverlayLines();
 
         var framebuffer = new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y);
@@ -1554,12 +1574,31 @@ public sealed class EditorApplication : IDisposable
         _renderer.FocusHighlight = View.Overlays && View.FocusHighlight && _session.ActiveTool != EditorTool.Paint && _session.SelectedCount > 0;
         ApplyViewStyle();
 
+        // Rendered shading: the path tracer runs under the viewport while it is the shading.
+        if (View.Shading == ShadingMode.Rendered)
+        {
+            _viewportRender!.Update(_session, RenderCameraNow(), _viewport.Size * scale, _clock);
+            _renderer.RenderedImage = _viewportRender.Texture;
+        }
+        else
+        {
+            _viewportRender!.Stop();
+            _renderer.RenderedImage = 0;
+        }
+
         _renderer.Render(
             _session.Scene,
             _camera,
             framebuffer,
             _viewport.Position * scale,
             _viewport.Size * scale);
+
+        if (shot is not null)
+        {
+            CaptureViewport(shot, _viewport.Position * scale, _viewport.Size * scale, framebuffer);
+            (View.Overlays, View.Gizmos) = viewBefore;
+            _viewportShotPath = null;
+        }
 
         // Put the viewport back before ImGui draws. Rendering the scene leaves GL clipped to the
         // 3D view's rectangle, and the UI would otherwise be squeezed into that same rectangle —
@@ -1888,6 +1927,9 @@ public sealed class EditorApplication : IDisposable
             _preferences.RecentCommands);
         ParentMenu.DrawPopup(_session);
         ColourAdjustWindow.Draw(_session);
+        _renderWindow?.Draw(_session, RenderCameraNow);
+        RenderWindow.DrawDialogs();
+        ViewportShotBrowser.Draw();
         AddMenu.DrawPopup();
         ViewportMenu.Draw(new ViewportMenuActions { Session = _session, Run = Run, Viewport = View });
 
@@ -1904,6 +1946,54 @@ public sealed class EditorApplication : IDisposable
         {
             _windowTitle = title;
             _window.Title = title;
+        }
+    }
+
+    private static readonly FileBrowserDialog ViewportShotBrowser = new();
+
+    /// <summary>Where the render looks from: the viewport's own camera, as it stands.</summary>
+    private RenderCamera RenderCameraNow() => new(
+        _camera.Position,
+        _camera.Forward,
+        _camera.Up,
+        _camera.FieldOfView * (180f / MathF.PI),
+        _camera.Orthographic,
+        _camera.OrthographicHeight);
+
+    /// <summary>The viewport's pixels, as the scene alone drew them, to a PNG.</summary>
+    private unsafe void CaptureViewport(string path, Vector2 position, Vector2 size, Vector2 framebuffer)
+    {
+        int width = (int)MathF.Max(size.X, 1f);
+        int height = (int)MathF.Max(size.Y, 1f);
+        int glY = (int)(framebuffer.Y - (position.Y + size.Y));
+        var pixels = new byte[width * height * 4];
+
+        fixed (byte* destination = pixels)
+        {
+            _gl!.ReadPixels((int)position.X, glY, (uint)width, (uint)height, PixelFormat.Rgba, PixelType.UnsignedByte, destination);
+        }
+
+        var flipped = new byte[pixels.Length];
+        int stride = width * 4;
+        for (int row = 0; row < height; row++)
+        {
+            Array.Copy(pixels, (height - 1 - row) * stride, flipped, row * stride, stride);
+        }
+
+        // Opaque: the viewport has no see-through background to keep.
+        for (int i = 3; i < flipped.Length; i += 4)
+        {
+            flipped[i] = 255;
+        }
+
+        try
+        {
+            PngWriter.WriteRgba(path, flipped, width, height);
+            ReportLog.Shared.Post($"Saved the viewport to {Path.GetFileName(path)}.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ReportLog.Shared.Post($"Could not save {Path.GetFileName(path)}: {exception.Message}", ReportKind.Error);
         }
     }
 
@@ -1995,6 +2085,8 @@ public sealed class EditorApplication : IDisposable
     {
         FrameLevel = FrameLevel,
         FrameFocused = FrameFocused,
+        RenderImage = () => _renderWindow?.Start(_session, RenderCameraNow()),
+        SaveViewportImage = () => ViewportShotBrowser.Show(FileBrowserMode.Save, "Save the viewport as an image", ".png", null, _session.ProjectName, path => _viewportShotPath = path),
         LookAtCenter = () => _camera.LookAt(Vector3.Zero),
         ResetCamera = () =>
         {
@@ -2171,6 +2263,8 @@ public sealed class EditorApplication : IDisposable
         }
 
         _imgui?.Dispose();
+        _renderWindow?.Dispose();
+        _viewportRender?.Dispose();
         _renderer?.Dispose();
         _input?.Dispose();
         _gl?.Dispose();

@@ -306,6 +306,13 @@ public static class Icons
         }
     }
 
+    /// <summary>Rendered shading: a ball with its light and its shadow side, as a render shades it.</summary>
+    public static void Rendered(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre, r, 1.25f);
+        canvas.FilledCircle(centre + new Vector2(-r * 0.3f, -r * 0.3f), r * 0.35f);
+    }
+
     /// <summary>Text: a block capital T, in the font's own square pixels.</summary>
     public static void Text(IIconCanvas canvas, Vector2 centre, float r)
     {

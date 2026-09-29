@@ -81,6 +81,9 @@ public enum EditorAction
     ToggleXRay,
     ToggleWireframe,
 
+    // Render
+    RenderImage,
+
     // Help
     ShortcutSheet,
     Preferences,
@@ -173,6 +176,7 @@ public static class EditorActions
         new(EditorAction.ToggleXRay, "view.xray", "X-Ray", View),
         new(EditorAction.ToggleWireframe, "view.wireframe", "Wireframe, and back", View),
 
+        new(EditorAction.RenderImage, "view.render", "Render an image of the level", View),
         new(EditorAction.ShortcutSheet, "help.shortcuts", "This list of shortcuts", Help),
         new(EditorAction.Preferences, "help.preferences", "Preferences", Help),
     ];

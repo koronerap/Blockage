@@ -287,6 +287,21 @@ public static class Shaders
         }
         """;
 
+    /// <summary>A picture laid over the whole viewport: Rendered shading's, rows top first.</summary>
+    public const string ImageFragment = """
+        #version 330 core
+        in vec2 vUv;
+
+        uniform sampler2D uImage;
+
+        out vec4 fragColor;
+
+        void main()
+        {
+            fragColor = vec4(texture(uImage, vec2(vUv.x, 1.0 - vUv.y)).rgb, 1.0);
+        }
+        """;
+
     public const string BackgroundFragment = """
         #version 330 core
         in vec2 vUv;

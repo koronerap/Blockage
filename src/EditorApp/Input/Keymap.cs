@@ -210,6 +210,9 @@ public sealed class Keymap
 
             // Free in both, and the tool's own letter.
             [EditorAction.ToolSculpt] = [new(Key.S)],
+
+            // Blender's F12.
+            [EditorAction.RenderImage] = [new(Key.F12)],
             [EditorAction.Separate] = [new(Key.P)],
             [EditorAction.GrowSelection] = [KeyChord.Ctrl(Key.KeypadAdd), KeyChord.Ctrl(Key.Equal)],
             [EditorAction.ShrinkSelection] = [KeyChord.Ctrl(Key.KeypadSubtract), KeyChord.Ctrl(Key.Minus)],

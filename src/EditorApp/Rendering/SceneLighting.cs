@@ -13,6 +13,9 @@ public enum ShadingMode
 
     /// <summary>Only the voxel lattice, drawn as lines — the desktop's; the phone offers the other two.</summary>
     Wireframe = 2,
+
+    /// <summary>The path tracer's picture, clearing while the view is still — the desktop's, Blender's Rendered.</summary>
+    Rendered = 3,
 }
 
 /// <summary>

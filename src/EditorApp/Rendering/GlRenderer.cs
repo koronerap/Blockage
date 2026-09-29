@@ -32,6 +32,13 @@ public sealed class GlRenderer : IDisposable
 
     /// <summary>Core profile refuses to draw without a bound VAO, even for a vertex-less shader.</summary>
     private readonly uint _emptyVao;
+    private readonly ShaderProgram _imageShader;
+
+    /// <summary>
+    /// Rendered shading's picture, drawn in the voxels' place; 0 draws the voxels. They still go into
+    /// the depth buffer, unseen, so the overlays on top meet the model where they should.
+    /// </summary>
+    public uint RenderedImage { get; set; }
 
     /// <summary>Depth-tested overlays: the grid, selections, the hovered face.</summary>
     public LineBatch Lines { get; }
@@ -90,6 +97,7 @@ public sealed class GlRenderer : IDisposable
         _voxelShader = new ShaderProgram(gl, Shaders.VoxelVertex, Shaders.VoxelFragment);
         _lineShader = new ShaderProgram(gl, Shaders.LineVertex, Shaders.LineFragment);
         _backgroundShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.BackgroundFragment);
+        _imageShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.ImageFragment);
         _emptyVao = gl.GenVertexArray();
         Lines = new LineBatch(gl);
         GizmoLines = new LineBatch(gl);
@@ -435,12 +443,27 @@ public sealed class GlRenderer : IDisposable
             _gl.Disable(EnableCap.CullFace);
         }
 
+        // Rendered shading: the voxels only into the depth buffer, and the picture where they would be.
+        bool rendered = Lighting.Mode == ShadingMode.Rendered && RenderedImage != 0;
+        if (rendered)
+        {
+            _voxelShader.SetInt("uPass", 2);
+            _gl.ColorMask(false, false, false, false);
+            DrawObjects(scene, frustum, count: true);
+            _gl.ColorMask(true, true, true, true);
+            DrawRenderedImage();
+            _voxelShader.Use();
+        }
+
         // Solid faces, then — when anything is see-through — the glass over them, blended and
         // writing no depth, so what is behind it still shows.
         _voxelShader.SetInt("uPass", blended ? 2 : 0);
-        DrawObjects(scene, frustum, count: true);
+        if (!rendered)
+        {
+            DrawObjects(scene, frustum, count: true);
+        }
 
-        if (!blended && scene.Palette.AnyTransparent)
+        if (!rendered && !blended && scene.Palette.AnyTransparent)
         {
             _gl.Enable(EnableCap.Blend);
             _gl.BlendFuncSeparate(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha, BlendingFactor.Zero, BlendingFactor.One);
@@ -485,6 +508,23 @@ public sealed class GlRenderer : IDisposable
     /// because a clear can only be one flat colour, and it writes no depth, so the scene lands on
     /// top of it normally.
     /// </summary>
+    private void DrawRenderedImage()
+    {
+        _imageShader.Use();
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _gl.BindTexture(TextureTarget.Texture2D, RenderedImage);
+        _imageShader.SetInt("uImage", 0);
+
+        _gl.Disable(EnableCap.DepthTest);
+        _gl.DepthMask(false);
+        _gl.BindVertexArray(_emptyVao);
+        _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
+        _gl.BindVertexArray(0);
+        _gl.DepthMask(true);
+        _gl.Enable(EnableCap.DepthTest);
+        _gl.BindTexture(TextureTarget.Texture2D, 0);
+    }
+
     private void DrawBackgroundGradient()
     {
         _backgroundShader.Use();
@@ -636,6 +676,7 @@ public sealed class GlRenderer : IDisposable
         _backgroundShader.Dispose();
         _gl.DeleteVertexArray(_emptyVao);
         _voxelShader.Dispose();
+        _imageShader.Dispose();
         _lineShader.Dispose();
         if (_materialTexture != 0)
         {

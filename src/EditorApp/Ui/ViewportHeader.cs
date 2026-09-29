@@ -62,6 +62,8 @@ public static class ViewportHeader
         ImGui.SameLine(0f, Pair);
         Shading(v, ShadingMode.Lit, Icons.Lit, "Lit  -  by the level's own lights", button);
         ImGui.SameLine(0f, Pair);
+        Shading(v, ShadingMode.Rendered, Icons.Rendered, $"Rendered  -  the render's own picture, clearing while the view is still{Shortcut.Hint(EditorAction.RenderImage)} renders it in full", button);
+        ImGui.SameLine(0f, Pair);
         Dropdown("shading", "Shading options", button, () => DrawShading(v));
     }
 

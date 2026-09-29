@@ -10,6 +10,12 @@ public sealed class ViewActions
 {
     public required Action FrameLevel { get; init; }
 
+    /// <summary>F12: the level rendered from the view, in the Render window.</summary>
+    public Action RenderImage { get; init; } = () => { };
+
+    /// <summary>The viewport as it is, without overlays or gizmos, to a PNG.</summary>
+    public Action SaveViewportImage { get; init; } = () => { };
+
     public required Action FrameFocused { get; init; }
 
     /// <summary>Points the camera at the origin without changing where it stands.</summary>
