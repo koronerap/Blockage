@@ -77,8 +77,11 @@ dotnet test                                                   # the test suites
 dotnet publish src/EditorApp -p:PublishProfile=win-x64        # a standalone build; or osx-arm64
 ```
 
-The Android app needs the .NET Android workload, a JDK and the Android SDK; `build-android.ps1`
-finds them and builds, installs and starts it. [TODO.md](TODO.md#android) has the details.
+The Android app needs the .NET `android` workload, JDK 17 and the Android SDK. `build-android.ps1`
+looks for them in a user-local .NET under `%LOCALAPPDATA%\Microsoft\dotnet`, JDK 17 under
+`%LOCALAPPDATA%\Programs\jdk-17` and the SDK under `%LOCALAPPDATA%\Android\Sdk` — change the three
+paths at its top if yours are elsewhere. `.\build-android.ps1 -Configuration Release` builds a
+sideloadable APK; `-Run` also installs it on the connected device or emulator and starts it.
 
 ## Inside
 
@@ -88,8 +91,7 @@ finds them and builds, installs and starts it. [TODO.md](TODO.md#android) has th
 | `src/EditorApp` | the desktop editor: Silk.NET, OpenGL, Dear ImGui |
 | `src/EditorApp.Mobile` | the Android app on the same core |
 | `tests/` | the xUnit suites for both |
-| [`EditorApp.md`](EditorApp.md) | the design, in Turkish |
-| [`TODO.md`](TODO.md) | the build log: what was done and why, and what is left |
+| [`EditorCodec.md`](EditorCodec.md) | the Mimicraft `.character` and `.weapons` formats, in Turkish |
 
 Levels are saved as `.vxlevel`: a zip holding a JSON manifest and run-length-encoded chunks of 32³
 voxels.
