@@ -23,8 +23,11 @@ public static class ToolPanel
         ImGui.SameLine(0f, 6f);
         ImGui.AlignTextToFramePadding();
         ImGui.TextColored(Theme.Highlight, name);
-        ImGui.SameLine();
-        ImGui.TextDisabled($"({shortcut})");
+        if (shortcut.Length > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled($"({shortcut})");
+        }
 
         switch (session.ActiveTool)
         {

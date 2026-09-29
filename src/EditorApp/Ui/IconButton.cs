@@ -79,7 +79,8 @@ public static class IconButton
             ImGui.PopStyleColor(3);
         }
 
-        Vector4 tint = active || hovered ? Theme.Text : Theme.TextDim;
+        // Over the accent the icon is light whatever the theme; elsewhere it follows the text.
+        Vector4 tint = active ? Theme.TextOnAccent : hovered ? Theme.Text : Theme.TextDim;
         uint colour = ImGui.ColorConvertFloat4ToU32(tint);
         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 

@@ -86,6 +86,11 @@ public static class StatusBar
     /// </summary>
     private static void DrawHints(ShellContext context)
     {
+        if (!context.Preferences.MouseHints)
+        {
+            return;
+        }
+
         ImGuiIOPtr io = ImGui.GetIO();
         IReadOnlyList<MouseHint> hints = MouseHints.For(context.Session, context.Looking, io.KeyShift, io.KeyCtrl, io.KeyAlt);
 

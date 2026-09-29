@@ -194,7 +194,7 @@ public static class Props
         Vector2 min = ImGui.GetItemRectMin();
         Vector2 max = ImGui.GetItemRectMax();
         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-        uint colour = ImGui.ColorConvertFloat4ToU32(on ? Theme.Text : Theme.Text with { W = 0.8f });
+        uint colour = ImGui.ColorConvertFloat4ToU32(on ? Theme.TextOnAccent : Theme.Text with { W = 0.8f });
 
         float height = max.Y - min.Y;
         float iconSize = icon is null ? 0f : height * 0.62f;

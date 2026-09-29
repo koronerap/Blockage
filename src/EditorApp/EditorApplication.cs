@@ -4,6 +4,7 @@ using EditorApp.Core.Export;
 using EditorApp.Core.Raycast;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
+using EditorApp.Input;
 using EditorApp.Rendering;
 using EditorApp.Ui;
 using ImGuiNET;
@@ -80,6 +81,13 @@ public sealed class EditorApplication : IDisposable
     private Int3? _paintShapeStart;
     private Face _paintShapeFace;
     private bool _paintShapeIsBox;
+    private readonly Preferences _preferences;
+
+    // The designed values the preferences scale.
+    private const float BaseLookSensitivity = 0.0035f;
+    private const float BaseMoveSpeed = 16f;
+    private const float BaseLineThickness = 0.0035f;
+
     private bool _showGrid = true;
     private bool _showMeasurements = true;
     private int _frameCount;
@@ -106,6 +114,9 @@ public sealed class EditorApplication : IDisposable
         // A smoke or screenshot run draws the default layout, whatever the user left theirs as, and
         // leaves their file alone.
         _layout = smokeFrames <= 0 && screenshotPath is null ? LayoutSettings.Load(LayoutSettings.DefaultPath) : new LayoutSettings();
+
+        // Smoke and screenshot runs see the defaults, as they do the layout, and write nothing.
+        _preferences = smokeFrames <= 0 && screenshotPath is null ? Preferences.Load(Preferences.DefaultPath) : new Preferences();
         _shell = new EditorShell(_layout);
         _startView = startView;
         _startLevel = startLevel;
@@ -207,6 +218,9 @@ public sealed class EditorApplication : IDisposable
         {
             keyboard.KeyDown += OnKeyDown;
         }
+
+        // Last, once everything they reach into exists.
+        ApplyPreferences();
     }
 
     /// <summary>
@@ -246,7 +260,81 @@ public sealed class EditorApplication : IDisposable
             return new ImGuiController(gl, _window, input);
         }
 
-        return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels));
+        // Every text size goes into the atlas while it is being built, so changing size later is a
+        // pointer swap rather than a rebuilt texture.
+        return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels), () =>
+        {
+            ImFontAtlasPtr atlas = ImGui.GetIO().Fonts;
+            Theme.AddFonts(atlas, fontPath, atlas.Fonts[0]);
+        });
+    }
+
+    /// <summary>Puts the preferences into effect — at start, and after every change in their window.</summary>
+    private void ApplyPreferences()
+    {
+        Preferences p = _preferences;
+
+        Keymap.Active = p.BuildKeymap();
+        Theme.Apply(p.Theme, p.Accent);
+        Theme.UseTextSize(p.TextSize);
+
+        if (_renderer is not null)
+        {
+            _renderer.BackgroundColor = Color32.FromVector4(Theme.Viewport);
+            _renderer.BackgroundTopColor = Color32.FromVector4(Theme.ViewportTop);
+            _renderer.Lines.ThicknessScale = BaseLineThickness * p.LineWidth;
+            _renderer.GizmoLines.ThicknessScale = BaseLineThickness * p.LineWidth;
+        }
+
+        _camera.FieldOfView = p.FieldOfView * (MathF.PI / 180f);
+        _camera.LookSensitivity = BaseLookSensitivity * p.OrbitSpeed;
+        _camera.MoveSpeed = BaseMoveSpeed * p.FlySpeed;
+
+        if (_transform is not null)
+        {
+            _transform.SizeScale = p.GizmoSize;
+            _transform.AngleStep = p.RotationStep;
+        }
+
+        _window.VSync = p.VSync;
+        _session.History.CellBudget = p.UndoMemory * 1_000_000;
+
+        if (_autosave is not null)
+        {
+            _autosave.Every = TimeSpan.FromMinutes(p.AutosaveMinutes);
+        }
+
+        if (_project is not null)
+        {
+            _project.Recent.Capacity = p.RecentFilesKept;
+        }
+
+        _showGrid = p.ShowGrid;
+        _showMeasurements = p.ShowMeasurements;
+        _showLightIcons = p.ShowLightIcons;
+        _showMirrorPlanes = p.ShowMirrorPlanes;
+    }
+
+    /// <summary>Takes in what was changed outside the window — the overlay keys, the keymap — and writes it out.</summary>
+    private void SavePreferences()
+    {
+        if (_smokeFrames > 0 || _screenshotPath is not null)
+        {
+            return;
+        }
+
+        RememberViewState();
+        _preferences.Remember(Keymap.Active);
+        _preferences.Save(Preferences.DefaultPath);
+    }
+
+    /// <summary>The overlay switches as they are now, which the View menu and its keys change too.</summary>
+    private void RememberViewState()
+    {
+        _preferences.ShowGrid = _showGrid;
+        _preferences.ShowMeasurements = _showMeasurements;
+        _preferences.ShowLightIcons = _showLightIcons;
+        _preferences.ShowMirrorPlanes = _showMirrorPlanes;
     }
 
     /// <summary>
@@ -268,7 +356,7 @@ public sealed class EditorApplication : IDisposable
 
         if (_viewport.Contains(mouse.Position))
         {
-            _camera.Zoom(wheel.Y);
+            _camera.Zoom(_preferences.InvertZoom ? -wheel.Y : wheel.Y);
         }
     }
 
@@ -673,14 +761,21 @@ public sealed class EditorApplication : IDisposable
 
     private void OnKeyDown(IKeyboard keyboard, Key key, int _)
     {
-        if (ImGui.GetIO().WantCaptureKeyboard)
+        bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
+        bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
+        bool alt = keyboard.IsKeyPressed(Key.AltLeft) || keyboard.IsKeyPressed(Key.AltRight);
+        var chord = new KeyChord(key, control, shift, alt);
+
+        // A shortcut being rebound in Preferences takes the next press whole, whatever it is.
+        if (KeyCapture.Offer(chord))
         {
             return;
         }
 
-        bool control = keyboard.IsKeyPressed(Key.ControlLeft) || keyboard.IsKeyPressed(Key.ControlRight);
-        bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
-        bool alt = keyboard.IsKeyPressed(Key.AltLeft) || keyboard.IsKeyPressed(Key.AltRight);
+        if (ImGui.GetIO().WantCaptureKeyboard)
+        {
+            return;
+        }
 
         // While the look button is held, the letter keys are flying the camera, not picking tools.
         if (_looking && !control)
@@ -688,79 +783,63 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        switch (key)
+        if (Keymap.Active.ActionFor(chord) is not { } action)
         {
-            case Key.N when control: _project?.NewProject(); break;
-            case Key.O when control: _project?.OpenProject(); break;
-            case Key.S when control && shift: _project?.SaveAs(); break;
-            case Key.S when control: _project?.Save(); break;
-            case Key.E when control: _export?.Show(); break;
+            return;
+        }
 
-            // The four tools plus View. Q W E R V, in the order the spec lists them.
-            case Key.Q when !control: SwitchTool(EditorTool.Transform); break;
-            case Key.W when !control: SwitchTool(EditorTool.Extrude); break;
-            case Key.E when !control: SwitchTool(EditorTool.Paint); break;
-            case Key.R when !control: SwitchTool(EditorTool.LoopCut); break;
-            case Key.V when !control: SwitchTool(EditorTool.View); break;
+        // With Preferences in front, only the keys that close it get through.
+        if (PreferencesWindow.IsFocused && action is not (EditorAction.Cancel or EditorAction.Preferences))
+        {
+            return;
+        }
 
-            // F and X mean "the other sub-mode", and what that is depends on the active tool.
-            case Key.F when !control: ToggleSubMode(); break;
-            case Key.X when !control: CycleMode(); break;
+        Run(action);
+    }
 
-            case Key.Enter or Key.KeypadEnter:
-                _extrude?.Confirm();
-                break;
+    /// <summary>Does what a shortcut stands for. The keys themselves are the keymap's business.</summary>
+    private void Run(EditorAction action)
+    {
+        switch (action)
+        {
+            case EditorAction.NewLevel: _project?.NewProject(); break;
+            case EditorAction.Open: _project?.OpenProject(); break;
+            case EditorAction.Save: _project?.Save(); break;
+            case EditorAction.SaveAs: _project?.SaveAs(); break;
+            case EditorAction.Export: _export?.Show(); break;
 
-            case Key.Escape:
-                OnEscape();
-                break;
+            case EditorAction.ToolTransform: SwitchTool(EditorTool.Transform); break;
+            case EditorAction.ToolExtrude: SwitchTool(EditorTool.Extrude); break;
+            case EditorAction.ToolPaint: SwitchTool(EditorTool.Paint); break;
+            case EditorAction.ToolLoopCut: SwitchTool(EditorTool.LoopCut); break;
+            case EditorAction.ToolView: SwitchTool(EditorTool.View); break;
 
-            case Key.Z when control && shift:
-            case Key.Y when control:
-                _session.Redo();
-                break;
-
-            case Key.Z when control:
-                _session.Undo();
-                break;
-
-            case Key.C when control:
-                if (!IsDragging())
+            // Straight to a Transform mode, where the keymap has a key for each.
+            case EditorAction.ToolMove:
+            case EditorAction.ToolRotate:
+                if (SwitchTool(EditorTool.Transform))
                 {
-                    ClipboardActions.Copy(_session, ReportLog.Shared);
+                    _session.TransformMode = action == EditorAction.ToolMove ? TransformMode.Move : TransformMode.Rotate;
                 }
 
                 break;
 
-            case Key.X when control:
-                if (!IsDragging())
-                {
-                    ClipboardActions.Cut(_session, ReportLog.Shared);
-                }
+            // "The other sub-mode" and "the next mode": what those are depends on the active tool.
+            case EditorAction.ToolOtherMode: ToggleSubMode(); break;
+            case EditorAction.ToolCycleMode: CycleMode(); break;
 
-                break;
+            case EditorAction.KeepExtrude: _extrude?.Confirm(); break;
+            case EditorAction.Cancel: OnEscape(); break;
 
-            case Key.V when control:
-                if (!IsDragging())
-                {
-                    ClipboardActions.Paste(_session, _camera, ReportLog.Shared);
-                }
+            case EditorAction.Undo: _session.Undo(); break;
+            case EditorAction.Redo: _session.Redo(); break;
 
-                break;
+            case EditorAction.Copy when !IsDragging(): ClipboardActions.Copy(_session, ReportLog.Shared); break;
+            case EditorAction.Cut when !IsDragging(): ClipboardActions.Cut(_session, ReportLog.Shared); break;
+            case EditorAction.Paste when !IsDragging(): ClipboardActions.Paste(_session, _camera, ReportLog.Shared); break;
 
-            case Key.G:
-                _showGrid = !_showGrid;
-                break;
-
-            // Blender's object keys: Shift+D duplicates, H hides, Alt+H shows everything again,
-            // Delete deletes, F2 renames. Before plain D, which is the measurements.
-            // With a light picked, they act on the light.
-            case Key.D when shift && !control:
-                if (IsDragging())
-                {
-                    break;
-                }
-
+            // With a light picked, the object keys act on the light.
+            case EditorAction.Duplicate when !IsDragging():
                 if (_session.SelectedLight is { } copied)
                 {
                     LightMenu.Duplicate(_session, _camera, copied);
@@ -772,7 +851,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case Key.H when alt:
+            case EditorAction.ShowAll:
                 _session.ShowAllObjects();
                 foreach (SceneLight light in _session.Scene.Lights)
                 {
@@ -781,12 +860,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case Key.H when !control:
-                if (IsDragging())
-                {
-                    break;
-                }
-
+            case EditorAction.Hide when !IsDragging():
                 if (_session.SelectedLight is { } dimmed)
                 {
                     _session.SetLightVisible(dimmed.Id, !dimmed.Visible);
@@ -798,12 +872,28 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case Key.Delete:
-                if (IsDragging())
+            case EditorAction.Lock when !IsDragging():
+                if (_session.SelectedLight is { } lamp)
                 {
-                    break;
+                    _session.SetLightLocked(lamp.Id, true);
+                    ReportLog.Shared.Post($"Locked {lamp.Name}. Unlock it in the Outliner.");
+                }
+                else if (_session.Scene.Focus is { Locked: false } held && _session.SetObjectLocked(held.Id, true))
+                {
+                    ReportLog.Shared.Post($"Locked {held.Name}. Unlock it in the Outliner.");
                 }
 
+                break;
+
+            case EditorAction.UnlockAll:
+                if (_session.UnlockAll() is > 0 and var unlocked)
+                {
+                    ReportLog.Shared.Post($"Unlocked {unlocked} {(unlocked == 1 ? "thing" : "things")}.");
+                }
+
+                break;
+
+            case EditorAction.Delete when !IsDragging():
                 if (_session.SelectedLight is { } removed)
                 {
                     _session.DeleteLight(removed.Id);
@@ -819,7 +909,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case Key.F2:
+            case EditorAction.Rename:
                 if (_session.SelectedLight is { } renamedLight)
                 {
                     ObjectListPanel.StartRename(renamedLight);
@@ -831,31 +921,32 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case Key.D when !control:
-                _showMeasurements = !_showMeasurements;
+            case EditorAction.Subdivide when !IsDragging(): ObjectMenu.SubdivideFocus(_session, ReportLog.Shared); break;
+
+            case EditorAction.ToggleGrid: _showGrid = !_showGrid; break;
+            case EditorAction.ToggleMeasurements: _showMeasurements = !_showMeasurements; break;
+            case EditorAction.ToggleSidebar: _layout.SidebarVisible = !_layout.SidebarVisible; break;
+            case EditorAction.ShortcutSheet: ShortcutSheet.Toggle(); break;
+            case EditorAction.Preferences when PreferencesWindow.IsOpen:
+                PreferencesWindow.Close();
+                SavePreferences();
                 break;
 
-            case Key.Home:
-                FrameLevel();
-                break;
+            case EditorAction.Preferences: PreferencesWindow.Open(); break;
 
-            case Key.N when !control:
-                _layout.SidebarVisible = !_layout.SidebarVisible;
-                break;
+            case EditorAction.FrameLevel: FrameLevel(); break;
+            case EditorAction.FrameFocused: FrameFocused(); break;
 
-            case Key.F1:
-                ShortcutSheet.Toggle();
-                break;
+            // Blender's numpad views, and the steps round the pivot the way the scene would move under
+            // a drag that way.
+            case EditorAction.ViewFront: _camera.Align(AlignedView.Front); break;
+            case EditorAction.ViewBack: _camera.Align(AlignedView.Back); break;
+            case EditorAction.ViewRight: _camera.Align(AlignedView.Right); break;
+            case EditorAction.ViewLeft: _camera.Align(AlignedView.Left); break;
+            case EditorAction.ViewTop: _camera.Align(AlignedView.Top); break;
+            case EditorAction.ViewBottom: _camera.Align(AlignedView.Bottom); break;
 
-            // Blender's numpad: 1 front, 3 right, 7 top, with Ctrl for the side opposite; 9 turns
-            // an aligned view round; 5 swaps the projection; 2 4 6 8 step the view round the pivot
-            // the way the scene would move under a drag that way; the decimal point frames the
-            // focused object.
-            case Key.Keypad1: _camera.Align(control ? AlignedView.Back : AlignedView.Front); break;
-            case Key.Keypad3: _camera.Align(control ? AlignedView.Left : AlignedView.Right); break;
-            case Key.Keypad7: _camera.Align(control ? AlignedView.Bottom : AlignedView.Top); break;
-
-            case Key.Keypad9:
+            case EditorAction.ViewTurnRound:
                 if (_camera.CurrentAlignedView() is { } aligned)
                 {
                     _camera.Align(FlyCamera.Opposite(aligned));
@@ -863,12 +954,11 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case Key.Keypad5: _camera.Orthographic = !_camera.Orthographic; break;
-            case Key.Keypad4: _camera.OrbitBy(OrbitStep, 0f); break;
-            case Key.Keypad6: _camera.OrbitBy(-OrbitStep, 0f); break;
-            case Key.Keypad8: _camera.OrbitBy(0f, OrbitStep); break;
-            case Key.Keypad2: _camera.OrbitBy(0f, -OrbitStep); break;
-            case Key.KeypadDecimal: FrameFocused(); break;
+            case EditorAction.ToggleOrthographic: _camera.Orthographic = !_camera.Orthographic; break;
+            case EditorAction.OrbitLeft: _camera.OrbitBy(OrbitStep, 0f); break;
+            case EditorAction.OrbitRight: _camera.OrbitBy(-OrbitStep, 0f); break;
+            case EditorAction.OrbitUp: _camera.OrbitBy(0f, OrbitStep); break;
+            case EditorAction.OrbitDown: _camera.OrbitBy(0f, -OrbitStep); break;
         }
     }
 
@@ -907,11 +997,12 @@ public sealed class EditorApplication : IDisposable
     /// <summary>A drag is running that an object-level key would pull the object out from under.</summary>
     private bool IsDragging() => _extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming || _session.IsStrokeActive;
 
-    private void SwitchTool(EditorTool tool)
+    /// <summary>Changes tool, unless a drag is running. Returns whether it did.</summary>
+    private bool SwitchTool(EditorTool tool)
     {
         if (_extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming)
         {
-            return;   // never swap tools out from under a running drag
+            return false;   // never swap tools out from under a running drag
         }
 
         _extrude.Confirm();
@@ -921,6 +1012,7 @@ public sealed class EditorApplication : IDisposable
         // Cut keeps drawing over the model long after Extrude has taken over.
         _session.PreviewCutPlane = null;
         _session.ActiveTool = tool;
+        return true;
     }
 
     /// <summary>Esc cancels a drag if one is running, otherwise it returns to Transform.</summary>
@@ -956,6 +1048,13 @@ public sealed class EditorApplication : IDisposable
         if (ShortcutSheet.IsOpen)
         {
             ShortcutSheet.Close();
+            return;
+        }
+
+        if (PreferencesWindow.IsOpen)
+        {
+            PreferencesWindow.Close();
+            SavePreferences();
             return;
         }
 
@@ -1267,10 +1366,28 @@ public sealed class EditorApplication : IDisposable
             Looking = _looking,
             DragReadout = CurrentDragReadout(),
             FrameSeconds = _lastDelta,
+            Preferences = _preferences,
         };
 
         _viewport = _shell.Draw(context);
         ShortcutSheet.Draw(ImGui.GetIO().DisplaySize);
+
+        // A key rebound between frames is put into effect here; the window's own changes as it draws.
+        if (PreferencesWindow.PendingApply)
+        {
+            PreferencesWindow.PendingApply = false;
+            ApplyPreferences();
+        }
+
+        if (PreferencesWindow.IsOpen)
+        {
+            RememberViewState();
+        }
+
+        if (PreferencesWindow.Draw(_preferences, ApplyPreferences, () => _project!.Recent.Clear()))
+        {
+            SavePreferences();
+        }
 
         ViewportOverlay.Draw(_session, _camera, _viewport, _showMeasurements, context.DragReadout, CursorMark(), CursorSample());
 
@@ -1421,6 +1538,8 @@ public sealed class EditorApplication : IDisposable
         // autosave is nobody's safety net any more. A crash never reaches this line, which is what
         // leaves the copy behind to be offered next time.
         _autosave?.CloseCleanly();
+
+        SavePreferences();
 
         if (_smokeFrames <= 0)
         {

@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Input;
 using EditorApp.Rendering;
 using ImGuiNET;
 
@@ -24,12 +25,12 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("File"))
         {
-            if (ImGui.MenuItem("New", "Ctrl+N"))
+            if (ImGui.MenuItem("New", Shortcut.Of(EditorAction.NewLevel)))
             {
                 project.NewProject();
             }
 
-            if (ImGui.MenuItem("Open...", "Ctrl+O"))
+            if (ImGui.MenuItem("Open...", Shortcut.Of(EditorAction.Open)))
             {
                 project.OpenProject();
             }
@@ -45,19 +46,19 @@ public static class MainMenu
 
             ImGui.Separator();
 
-            if (ImGui.MenuItem("Save", "Ctrl+S"))
+            if (ImGui.MenuItem("Save", Shortcut.Of(EditorAction.Save)))
             {
                 project.Save();
             }
 
-            if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
+            if (ImGui.MenuItem("Save As...", Shortcut.Of(EditorAction.SaveAs)))
             {
                 project.SaveAs();
             }
 
             ImGui.Separator();
 
-            if (ImGui.MenuItem("Export mesh...", "Ctrl+E"))
+            if (ImGui.MenuItem("Export mesh...", Shortcut.Of(EditorAction.Export)))
             {
                 export.Show();
             }
@@ -83,12 +84,12 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("Edit"))
         {
-            if (ImGui.MenuItem($"Undo {session.History.NextUndoName ?? string.Empty}", "Ctrl+Z", false, session.History.CanUndo))
+            if (ImGui.MenuItem($"Undo {session.History.NextUndoName ?? string.Empty}", Shortcut.Of(EditorAction.Undo), false, session.History.CanUndo))
             {
                 session.Undo();
             }
 
-            if (ImGui.MenuItem($"Redo {session.History.NextRedoName ?? string.Empty}", "Ctrl+Y", false, session.History.CanRedo))
+            if (ImGui.MenuItem($"Redo {session.History.NextRedoName ?? string.Empty}", Shortcut.Of(EditorAction.Redo), false, session.History.CanRedo))
             {
                 session.Redo();
             }
@@ -98,20 +99,28 @@ public static class MainMenu
             // What a copy takes is worth saying before it is taken: the selection, or everything.
             string what = session.CopiesSelection ? "Selection" : "Object";
 
-            if (ImGui.MenuItem($"Copy {what}", "Ctrl+C", false, session.Scene.Focus is { IsEmpty: false }))
+            if (ImGui.MenuItem($"Copy {what}", Shortcut.Of(EditorAction.Copy), false, session.Scene.Focus is { IsEmpty: false }))
             {
                 ClipboardActions.Copy(session, ReportLog.Shared);
             }
 
-            if (ImGui.MenuItem($"Cut {what}", "Ctrl+X", false, session.Scene.Focus is { IsEmpty: false }))
+            if (ImGui.MenuItem($"Cut {what}", Shortcut.Of(EditorAction.Cut), false, session.Scene.Focus is { IsEmpty: false }))
             {
                 ClipboardActions.Cut(session, ReportLog.Shared);
             }
 
             string paste = session.Clipboard is { } clipboard ? $"Paste {clipboard.Grid.SolidCount:N0} voxels" : "Paste";
-            if (ImGui.MenuItem(paste, "Ctrl+V", false, session.Clipboard is not null))
+            if (ImGui.MenuItem(paste, Shortcut.Of(EditorAction.Paste), false, session.Clipboard is not null))
             {
                 ClipboardActions.Paste(session, view.Camera, ReportLog.Shared);
+            }
+
+            ImGui.Separator();
+
+            // Where Blender keeps it: the settings of the editor, not of the level.
+            if (ImGui.MenuItem("Preferences...", Shortcut.Of(EditorAction.Preferences)))
+            {
+                PreferencesWindow.Open();
             }
 
             ImGui.EndMenu();
@@ -132,7 +141,7 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("Help"))
         {
-            if (ImGui.MenuItem("Keyboard Shortcuts", "F1", ShortcutSheet.IsOpen))
+            if (ImGui.MenuItem("Keyboard Shortcuts", Shortcut.Of(EditorAction.ShortcutSheet), ShortcutSheet.IsOpen))
             {
                 ShortcutSheet.Toggle();
             }
@@ -152,12 +161,12 @@ public static class MainMenu
             return;
         }
 
-        if (ImGui.MenuItem("Frame Level", "Home"))
+        if (ImGui.MenuItem("Frame Level", Shortcut.Of(EditorAction.FrameLevel)))
         {
             view.FrameLevel();
         }
 
-        if (ImGui.MenuItem("Frame Focused Object", "Numpad ."))
+        if (ImGui.MenuItem("Frame Focused Object", Shortcut.Of(EditorAction.FrameFocused)))
         {
             view.FrameFocused();
         }
@@ -176,19 +185,19 @@ public static class MainMenu
 
         DrawAlignMenu(view.Camera);
 
-        if (ImGui.MenuItem("Orthographic", "Numpad 5", view.Camera.Orthographic))
+        if (ImGui.MenuItem("Orthographic", Shortcut.Of(EditorAction.ToggleOrthographic), view.Camera.Orthographic))
         {
             view.Camera.Orthographic = !view.Camera.Orthographic;
         }
 
         ImGui.Separator();
 
-        if (ImGui.MenuItem("Ground Grid", "G", view.GridVisible()))
+        if (ImGui.MenuItem("Ground Grid", Shortcut.Of(EditorAction.ToggleGrid), view.GridVisible()))
         {
             view.ToggleGrid();
         }
 
-        if (ImGui.MenuItem("Measurements", "D", view.MeasurementsVisible()))
+        if (ImGui.MenuItem("Measurements", Shortcut.Of(EditorAction.ToggleMeasurements), view.MeasurementsVisible()))
         {
             view.ToggleMeasurements();
         }
@@ -198,7 +207,7 @@ public static class MainMenu
             view.ToggleStatistics();
         }
 
-        if (ImGui.MenuItem("Sidebar", "N", view.SidebarVisible()))
+        if (ImGui.MenuItem("Sidebar", Shortcut.Of(EditorAction.ToggleSidebar), view.SidebarVisible()))
         {
             view.ToggleSidebar();
         }
@@ -224,19 +233,19 @@ public static class MainMenu
 
         AlignedView? current = camera.CurrentAlignedView();
 
-        (AlignedView View, string Keys)[] views =
+        (AlignedView View, EditorAction Action)[] views =
         [
-            (AlignedView.Front, "Numpad 1"),
-            (AlignedView.Back, "Ctrl+Numpad 1"),
-            (AlignedView.Right, "Numpad 3"),
-            (AlignedView.Left, "Ctrl+Numpad 3"),
-            (AlignedView.Top, "Numpad 7"),
-            (AlignedView.Bottom, "Ctrl+Numpad 7"),
+            (AlignedView.Front, EditorAction.ViewFront),
+            (AlignedView.Back, EditorAction.ViewBack),
+            (AlignedView.Right, EditorAction.ViewRight),
+            (AlignedView.Left, EditorAction.ViewLeft),
+            (AlignedView.Top, EditorAction.ViewTop),
+            (AlignedView.Bottom, EditorAction.ViewBottom),
         ];
 
-        foreach ((AlignedView view, string keys) in views)
+        foreach ((AlignedView view, EditorAction action) in views)
         {
-            if (ImGui.MenuItem(view.ToString(), keys, current == view))
+            if (ImGui.MenuItem(view.ToString(), Shortcut.Of(action), current == view))
             {
                 camera.Align(view);
             }

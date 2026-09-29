@@ -76,6 +76,16 @@ internal sealed class ImGuiHarness : IDisposable
         Frame(draw, at, pressed: false, inWindow);
     }
 
+    /// <summary>A right click at a point: the second button down on one frame, up on the next.</summary>
+    public void RightClick(Vector2 at, Action draw, bool inWindow = true)
+    {
+        Frame(draw, at, pressed: false, inWindow);
+        ImGui.GetIO().AddMouseButtonEvent(1, true);
+        Frame(draw, at, pressed: false, inWindow);
+        ImGui.GetIO().AddMouseButtonEvent(1, false);
+        Frame(draw, at, pressed: false, inWindow);
+    }
+
     /// <summary>Types text into whatever has keyboard focus, in one frame.</summary>
     public void Type(string text, Action draw)
     {

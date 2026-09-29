@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Input;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -13,26 +14,36 @@ public static class ToolColumn
 {
     private const float ButtonSize = 34f;
 
-    private static readonly (EditorTool Tool, Icons.Painter Icon, string Name, string Shortcut, string Help)[] Tools =
+    private static readonly (EditorTool Tool, Icons.Painter Icon, string Name, string Help)[] Tools =
     [
-        (EditorTool.Transform, Icons.Move, "Transform", "Q", "Move and rotate a whole object."),
-        (EditorTool.Extrude, Icons.Extrude, "Extrude", "W", "Select a surface, then drag its arrow.\nOut adds voxels, in deletes them."),
-        (EditorTool.Paint, Icons.Paint, "Paint", "E", "Recolor existing, visible voxels.\nNever creates or deletes."),
-        (EditorTool.LoopCut, Icons.Cut, "Loop Cut", "R", "Split the model at a grid plane\ninto two independent objects."),
+        (EditorTool.Transform, Icons.Move, "Transform", "Move and rotate a whole object."),
+        (EditorTool.Extrude, Icons.Extrude, "Extrude", "Select a surface, then drag its arrow.\nOut adds voxels, in deletes them."),
+        (EditorTool.Paint, Icons.Paint, "Paint", "Recolor existing, visible voxels.\nNever creates or deletes."),
+        (EditorTool.LoopCut, Icons.Cut, "Loop Cut", "Split the model at a grid plane\ninto two independent objects."),
     ];
+
+    /// <summary>The key a tool is on in the active keymap, empty when it has none.</summary>
+    public static string KeyFor(EditorTool tool) => tool switch
+    {
+        EditorTool.Transform => Shortcut.ForTransform(),
+        EditorTool.Extrude => Shortcut.Of(EditorAction.ToolExtrude),
+        EditorTool.Paint => Shortcut.Of(EditorAction.ToolPaint),
+        EditorTool.LoopCut => Shortcut.Of(EditorAction.ToolLoopCut),
+        _ => Shortcut.Of(EditorAction.ToolView),
+    };
 
     /// <summary>A tool's icon, name and key — the Tool tab and its tab button show the same.</summary>
     public static (Icons.Painter Icon, string Name, string Shortcut) Describe(EditorTool tool)
     {
-        foreach ((EditorTool candidate, Icons.Painter icon, string name, string shortcut, _) in Tools)
+        foreach ((EditorTool candidate, Icons.Painter icon, string name, _) in Tools)
         {
             if (candidate == tool)
             {
-                return (icon, name, shortcut);
+                return (icon, name, KeyFor(tool));
             }
         }
 
-        return (Icons.ViewTool, "View", "V");
+        return (Icons.ViewTool, "View", KeyFor(EditorTool.View));
     }
 
     /// <summary>Where the colour button was drawn last frame — for tests to aim at.</summary>
@@ -45,13 +56,14 @@ public static class ToolColumn
         ImGui.PushStyleColor(ImGuiCol.Button, Theme.SurfaceRaised with { W = 0.82f });
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.ControlHovered with { W = 0.92f });
 
-        foreach ((EditorTool tool, Icons.Painter icon, string name, string shortcut, string help) in Tools)
+        foreach ((EditorTool tool, Icons.Painter icon, string name, string help) in Tools)
         {
+            string key = KeyFor(tool);
             if (IconButton.Draw(
                     tool.ToString(),
                     icon,
                     session.ActiveTool == tool,
-                    $"{name}  ({shortcut})\n\n{help}",
+                    key.Length > 0 ? $"{name}  ({key})\n\n{help}" : $"{name}\n\n{help}",
                     ButtonSize))
             {
                 session.ActiveTool = tool;

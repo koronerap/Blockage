@@ -61,9 +61,21 @@ public sealed class TransformInteraction(EditorSession session)
     /// <summary>Live readout for the panel, e.g. "+3, 0, 0" or "45°".</summary>
     public string Readout { get; private set; } = string.Empty;
 
+    /// <summary>How big the gizmo is drawn, and grabbed, against the size it was designed at. A preference.</summary>
+    public float SizeScale
+    {
+        get => _sizeScale;
+        set => _sizeScale = float.IsFinite(value) ? Math.Clamp(value, 0.25f, 4f) : _sizeScale;
+    }
+
+    private float _sizeScale = 1f;
+
+    /// <summary>What a snapped rotation steps by, in degrees. A preference.</summary>
+    public float AngleStep { get; set; } = ObjectTransform.DefaultAngleStepDegrees;
+
     /// <summary>Gizmo length in world units at the object's distance from the camera.</summary>
-    private static float GizmoScale(FlyCamera camera, Vector3 origin) =>
-        MathF.Max(Vector3.Distance(camera.Position, origin) * ScreenScale, 0.5f);
+    private float GizmoScale(FlyCamera camera, Vector3 origin) =>
+        MathF.Max(Vector3.Distance(camera.Position, origin) * ScreenScale * _sizeScale, 0.5f);
 
     /// <summary>
     /// The handles on offer right now. Move shows arrows plus the bounding-box edges; Rotate shows
@@ -381,7 +393,7 @@ public sealed class TransformInteraction(EditorSession session)
 
         if (!freeform)
         {
-            degrees = ObjectTransform.SnapAngleDegrees(degrees);
+            degrees = ObjectTransform.SnapAngleDegrees(degrees, AngleStep);
         }
 
         // Screen Y runs down, so a clockwise drag has to turn the object the same way it looks.

@@ -82,4 +82,33 @@ public class RecentFilesTests : IDisposable
         Assert.Equal(4, walked);
         Assert.Empty(recent.Paths);
     }
+    /// <summary>Kept to the number the preferences ask for; asking for fewer drops the oldest at once.</summary>
+    [Fact]
+    public void TheListKeepsAsManyAsItIsSetTo()
+    {
+        var recent = new RecentFiles(Store()) { Capacity = 3 };
+        for (int i = 0; i < 5; i++)
+        {
+            recent.Add(Path.Combine(_directory, $"level{i}.vxlevel"));
+        }
+
+        Assert.Equal(3, recent.Paths.Count);
+        Assert.EndsWith("level4.vxlevel", recent.Paths[0], StringComparison.Ordinal);
+
+        recent.Capacity = 1;
+        Assert.Single(recent.Paths);
+        Assert.Single(new RecentFiles(Store()).Paths);
+    }
+
+    [Fact]
+    public void ClearingForgetsEverything()
+    {
+        var recent = new RecentFiles(Store());
+        recent.Add(Path.Combine(_directory, "a.vxlevel"));
+
+        recent.Clear();
+
+        Assert.Empty(recent.Paths);
+        Assert.Empty(new RecentFiles(Store()).Paths);
+    }
 }

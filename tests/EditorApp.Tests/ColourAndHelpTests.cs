@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Input;
 using EditorApp.Ui;
 using ImGuiNET;
 
@@ -90,19 +91,56 @@ public sealed class ColourAndHelpTests : IDisposable
         Assert.False(ShortcutSheet.IsOpen);
     }
 
-    /// <summary>Every tool key and every camera move is written down somewhere on the sheet.</summary>
+    /// <summary>Every tool key and every camera move is written down on the sheet — the keys of the keymap in use.</summary>
     [Theory]
-    [InlineData("Q")]
-    [InlineData("W")]
-    [InlineData("E")]
-    [InlineData("R")]
-    [InlineData("Shift+D")]
-    [InlineData("Middle drag")]
-    [InlineData("Numpad 5")]
-    [InlineData("N")]
-    [InlineData("F1")]
-    public void TheSheetListsTheKey(string keys) =>
-        Assert.Contains(ShortcutSheet.Groups, group => group.Entries.Any(entry => entry.Keys == keys));
+    [InlineData(KeymapPreset.MimicBusters, "Q")]
+    [InlineData(KeymapPreset.MimicBusters, "W")]
+    [InlineData(KeymapPreset.MimicBusters, "E")]
+    [InlineData(KeymapPreset.MimicBusters, "R")]
+    [InlineData(KeymapPreset.MimicBusters, "Shift+D")]
+    [InlineData(KeymapPreset.MimicBusters, "Numpad 5")]
+    [InlineData(KeymapPreset.Default, "G")]
+    [InlineData(KeymapPreset.Default, "B")]
+    [InlineData(KeymapPreset.Default, "Ctrl+R")]
+    [InlineData(KeymapPreset.Default, "Ctrl+D")]
+    [InlineData(KeymapPreset.Default, "Numpad 5")]
+    [InlineData(KeymapPreset.Default, "Middle drag")]
+    [InlineData(KeymapPreset.Default, "N")]
+    [InlineData(KeymapPreset.Default, "F1")]
+    public void TheSheetListsTheKey(KeymapPreset preset, string key)
+    {
+        Keymap before = Keymap.Active;
+        try
+        {
+            Keymap.Active = Keymap.For(preset);
+            Assert.Contains(
+                ShortcutSheet.Groups,
+                group => group.Entries.Any(entry => entry.Keys.Split(',').Select(k => k.Trim()).Contains(key)));
+        }
+        finally
+        {
+            Keymap.Active = before;
+        }
+    }
+
+    /// <summary>A key moved in Preferences is the key the sheet shows, and the old one is gone from it.</summary>
+    [Fact]
+    public void TheSheetFollowsAReboundKey()
+    {
+        Keymap before = Keymap.Active;
+        try
+        {
+            Keymap.Active = Keymap.For(KeymapPreset.MimicBusters);
+            Keymap.Active.Bind(EditorAction.ToolPaint, 0, new KeyChord(Silk.NET.Input.Key.P));
+
+            (string Keys, string Does) paint = ShortcutSheet.Groups.SelectMany(g => g.Entries).Single(e => e.Does == "Paint tool");
+            Assert.Equal("P", paint.Keys);
+        }
+        finally
+        {
+            Keymap.Active = before;
+        }
+    }
 }
 
 public sealed class SidebarVisibilityTests : IDisposable

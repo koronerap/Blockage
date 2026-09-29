@@ -185,4 +185,24 @@ public class RecoveryTests : IDisposable
         Assert.Equal(AutosaveStep.None, schedule.Tick(100, true, 5));
         Assert.Equal(AutosaveStep.Write, schedule.Tick(20, true, 5));
     }
+    /// <summary>Off in the preferences: nothing more is written, however long the work stays unsaved.</summary>
+    [Fact]
+    public void AtZeroNothingIsWritten()
+    {
+        var schedule = new AutosaveSchedule(Interval) { Interval = TimeSpan.Zero };
+
+        Assert.Equal(AutosaveStep.None, schedule.Tick(100_000, hasUnsavedChanges: true, revision: 1));
+    }
+
+    /// <summary>Switched off after a copy was written, the copy still goes once the work is saved.</summary>
+    [Fact]
+    public void SwitchedOffAfterAWriteTheCopyStillGoesWhenSaved()
+    {
+        var schedule = new AutosaveSchedule(Interval);
+        schedule.Tick(120, true, 5);
+        schedule.Written(5);
+        schedule.Interval = TimeSpan.Zero;
+
+        Assert.Equal(AutosaveStep.Delete, schedule.Tick(1, hasUnsavedChanges: false, revision: 5));
+    }
 }

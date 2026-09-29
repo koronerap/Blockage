@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Scene;
+using EditorApp.Input;
 using EditorApp.Rendering;
 using ImGuiNET;
 
@@ -80,7 +81,7 @@ public static class LightPropertiesPanel
                 session.SetLightVisible(light.Id, on);
             }
 
-            Tooltip("Off lights stay in the level but light nothing.  (H)");
+            Tooltip($"Off lights stay in the level but light nothing.{Shortcut.Hint(EditorAction.Hide)}");
         }
 
         if (light.Kind == LightKind.Spot && Props.Section("Spot"))

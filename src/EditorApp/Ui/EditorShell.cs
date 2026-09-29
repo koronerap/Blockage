@@ -318,4 +318,7 @@ public sealed class ShellContext
     public string DragReadout { get; set; } = string.Empty;
 
     public float FrameSeconds { get; set; }
+
+    /// <summary>The editor's own settings, for the few panels that change with them.</summary>
+    public Preferences Preferences { get; init; } = new();
 }

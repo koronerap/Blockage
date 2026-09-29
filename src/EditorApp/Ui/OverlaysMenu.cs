@@ -1,3 +1,4 @@
+using EditorApp.Input;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -31,8 +32,8 @@ public static class OverlaysMenu
         ImGui.TextDisabled("Overlays");
         ImGui.Separator();
 
-        Item("Ground grid", "G", view.GridVisible(), view.ToggleGrid);
-        Item("Measurements", "D", view.MeasurementsVisible(), view.ToggleMeasurements);
+        Item("Ground grid", Shortcut.Of(EditorAction.ToggleGrid), view.GridVisible(), view.ToggleGrid);
+        Item("Measurements", Shortcut.Of(EditorAction.ToggleMeasurements), view.MeasurementsVisible(), view.ToggleMeasurements);
         Item("Light icons", string.Empty, view.LightIconsVisible(), view.ToggleLightIcons);
         Item("Mirror planes", string.Empty, view.MirrorPlanesVisible(), view.ToggleMirrorPlanes);
         Item("Statistics", string.Empty, view.StatisticsVisible(), view.ToggleStatistics);

@@ -201,7 +201,8 @@ public sealed class AutosaveSchedule(TimeSpan interval)
     private long _writtenRevision = -1;
     private bool _onDisk;
 
-    public TimeSpan Interval { get; } = interval;
+    /// <summary>How long unsaved work waits before it is written. Zero switches autosaving off.</summary>
+    public TimeSpan Interval { get; set; } = interval;
 
     public AutosaveStep Tick(double seconds, bool hasUnsavedChanges, long revision)
     {
@@ -216,6 +217,13 @@ public sealed class AutosaveSchedule(TimeSpan interval)
                 return AutosaveStep.Delete;
             }
 
+            return AutosaveStep.None;
+        }
+
+        // Off: nothing more is written. A copy already on disk stays until the work is saved or the
+        // editor closes cleanly — switching autosave off is not asking for it to be deleted.
+        if (Interval <= TimeSpan.Zero)
+        {
             return AutosaveStep.None;
         }
 

@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Scene;
+using EditorApp.Input;
 using EditorApp.Rendering;
 using ImGuiNET;
 
@@ -130,7 +131,7 @@ public static class ObjectListPanel
 
         if (anyHidden)
         {
-            if (IconButton.Draw("show-all", Icons.Eye, active: false, "Show everything hidden  (Alt+H)", button))
+            if (IconButton.Draw("show-all", Icons.Eye, active: false, $"Show everything hidden{Shortcut.Hint(EditorAction.ShowAll)}", button))
             {
                 session.ShowAllObjects();
                 foreach (SceneLight light in session.Scene.Lights)
@@ -144,7 +145,7 @@ public static class ObjectListPanel
 
         if (anyLocked)
         {
-            if (IconButton.Draw("unlock-all", Icons.Unlocked, active: false, "Unlock everything", button))
+            if (IconButton.Draw("unlock-all", Icons.Unlocked, active: false, $"Unlock everything{Shortcut.Hint(EditorAction.UnlockAll)}", button))
             {
                 session.UnlockAll();
             }
@@ -225,13 +226,13 @@ public static class ObjectListPanel
         }
 
         ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X);
-        if (DrawToggle(o.Id, "lock", o.Locked ? Icons.Lock : Icons.Unlocked, o.Locked, row, o.Locked ? "Locked - click to unlock" : "Lock - not picked or changed in the viewport"))
+        if (DrawToggle(o.Id, "lock", o.Locked ? Icons.Lock : Icons.Unlocked, o.Locked, row, o.Locked ? "Locked - click to unlock" : $"Lock - not picked or changed in the viewport{Shortcut.Hint(EditorAction.Lock)}"))
         {
             session.SetObjectLocked(o.Id, !o.Locked);
         }
 
         ImGui.SameLine(0f, ToggleGap);
-        if (DrawToggle(o.Id, "eye", o.Visible ? Icons.Eye : Icons.EyeClosed, !o.Visible, row, o.Visible ? "Hide  (H)" : "Show  (H)"))
+        if (DrawToggle(o.Id, "eye", o.Visible ? Icons.Eye : Icons.EyeClosed, !o.Visible, row, o.Visible ? $"Hide{Shortcut.Hint(EditorAction.Hide)}" : $"Show{Shortcut.Hint(EditorAction.Hide)}"))
         {
             session.SetObjectVisible(o.Id, !o.Visible);
         }
@@ -274,13 +275,13 @@ public static class ObjectListPanel
         }
 
         ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X);
-        if (DrawToggle(light.Id, "lock", light.Locked ? Icons.Lock : Icons.Unlocked, light.Locked, row, light.Locked ? "Locked - click to unlock" : "Lock - not picked, moved or aimed"))
+        if (DrawToggle(light.Id, "lock", light.Locked ? Icons.Lock : Icons.Unlocked, light.Locked, row, light.Locked ? "Locked - click to unlock" : $"Lock - not picked, moved or aimed{Shortcut.Hint(EditorAction.Lock)}"))
         {
             session.SetLightLocked(light.Id, !light.Locked);
         }
 
         ImGui.SameLine(0f, ToggleGap);
-        if (DrawToggle(light.Id, "eye", light.Visible ? Icons.Eye : Icons.EyeClosed, !light.Visible, row, light.Visible ? "Switch off  (H)" : "Switch on  (H)"))
+        if (DrawToggle(light.Id, "eye", light.Visible ? Icons.Eye : Icons.EyeClosed, !light.Visible, row, light.Visible ? $"Switch off{Shortcut.Hint(EditorAction.Hide)}" : $"Switch on{Shortcut.Hint(EditorAction.Hide)}"))
         {
             session.SetLightVisible(light.Id, !light.Visible);
         }
@@ -358,8 +359,11 @@ public static class ObjectListPanel
         float y = min.Y + ((height - ImGui.GetTextLineHeight()) * 0.5f);
         float padding = ImGui.GetStyle().FramePadding.X;
 
-        Vector4 nameColour = !visible ? Theme.TextDim with { W = 0.6f } : emphasised ? Theme.Text : Theme.Text with { W = 0.9f };
-        uint dim = ImGui.ColorConvertFloat4ToU32(Theme.TextDim with { W = emphasised ? 0.95f : visible ? 0.75f : 0.45f });
+        // Over the accent, light whatever the theme; elsewhere the theme's own text.
+        Vector4 nameColour = !visible ? Theme.TextDim with { W = 0.6f } : emphasised ? Theme.TextOnAccent : Theme.Text with { W = 0.9f };
+        uint dim = ImGui.ColorConvertFloat4ToU32(emphasised
+            ? Theme.TextOnAccent with { W = 0.75f }
+            : Theme.TextDim with { W = visible ? 0.75f : 0.45f });
 
         float iconRadius = height * 0.28f;
         var iconCentre = new Vector2(min.X + padding + iconRadius, min.Y + (height * 0.5f));
@@ -386,18 +390,18 @@ public static class ObjectListPanel
             return;
         }
 
-        if (ImGui.MenuItem("Rename", "F2"))
+        if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename)))
         {
             StartRename(o);
         }
 
         // Duplicating works on the focused object, so the row's object becomes it first.
-        if (ImGui.MenuItem("Duplicate", "Shift+D", false, !o.IsEmpty) && session.ChooseObject(o.Id))
+        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, !o.IsEmpty) && session.ChooseObject(o.Id))
         {
             ObjectMenu.Duplicate(session, camera);
         }
 
-        if (ImGui.MenuItem(o.Visible ? "Hide" : "Show", "H"))
+        if (ImGui.MenuItem(o.Visible ? "Hide" : "Show", Shortcut.Of(EditorAction.Hide)))
         {
             session.SetObjectVisible(o.Id, !o.Visible);
         }
@@ -413,7 +417,7 @@ public static class ObjectListPanel
 
         // Refused for the last object: with no Place tool, an empty scene is a dead end.
         bool isLast = session.Scene.Objects.Count <= 1;
-        if (ImGui.MenuItem("Delete", "Del", false, !isLast))
+        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete), false, !isLast))
         {
             session.DeleteObject(o.Id);
         }
@@ -433,17 +437,17 @@ public static class ObjectListPanel
             return;
         }
 
-        if (ImGui.MenuItem("Rename", "F2"))
+        if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename)))
         {
             StartRename(light);
         }
 
-        if (ImGui.MenuItem("Duplicate", "Shift+D"))
+        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate)))
         {
             LightMenu.Duplicate(session, camera, light);
         }
 
-        if (ImGui.MenuItem(light.Visible ? "Switch off" : "Switch on", "H"))
+        if (ImGui.MenuItem(light.Visible ? "Switch off" : "Switch on", Shortcut.Of(EditorAction.Hide)))
         {
             session.SetLightVisible(light.Id, !light.Visible);
         }
@@ -455,7 +459,7 @@ public static class ObjectListPanel
 
         ImGui.Separator();
 
-        if (ImGui.MenuItem("Delete", "Del"))
+        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete)))
         {
             session.DeleteLight(light.Id);
         }

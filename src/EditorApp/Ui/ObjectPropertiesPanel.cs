@@ -2,6 +2,7 @@ using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
+using EditorApp.Input;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -67,7 +68,7 @@ public static class ObjectPropertiesPanel
                 session.SetObjectVisible(focus.Id, visible);
             }
 
-            Tooltip("A hidden object is not drawn, picked or exported.  (H)");
+            Tooltip($"A hidden object is not drawn, picked or exported.{Shortcut.Hint(EditorAction.Hide)}");
         }
 
         FinishGesture(session);

@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Voxels;
+using EditorApp.Input;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -44,7 +45,7 @@ public static class ToolOptions
                 (Icons.Move, "Move"),
                 (Icons.Rotate, "Rotate"),
                 session.TransformMode == TransformMode.Rotate,
-                "F",
+                Shortcut.Of(EditorAction.ToolOtherMode),
                 size))
         {
             session.TransformMode = session.TransformMode == TransformMode.Move
@@ -62,7 +63,7 @@ public static class ToolOptions
                 (Icons.Global, "Global axes"),
                 (Icons.Local, "Local axes"),
                 session.TransformSpace == TransformSpace.Local,
-                "X",
+                Shortcut.Of(EditorAction.ToolCycleMode),
                 size))
         {
             session.TransformSpace = session.TransformSpace == TransformSpace.Global
@@ -82,7 +83,7 @@ public static class ToolOptions
                 (Icons.BoxSelect, "Box select"),
                 (Icons.FaceSelect, "Whole face"),
                 session.ExtrudeSelectionMode == ExtrudeSelectionMode.Face,
-                "F",
+                Shortcut.Of(EditorAction.ToolOtherMode),
                 size))
         {
             session.ExtrudeSelectionMode = session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box
@@ -98,8 +99,8 @@ public static class ToolOptions
                 Icons.NewObject,
                 session.ExtrudeCreatesObject,
                 session.ExtrudeCreatesObject
-                    ? "Pulling out a new object  (X)\nClick to extrude into this one instead"
-                    : "Extruding into this object  (X)\nClick to pull out a new object instead",
+                    ? $"Pulling out a new object{Shortcut.Hint(EditorAction.ToolCycleMode)}\nClick to extrude into this one instead"
+                    : $"Extruding into this object{Shortcut.Hint(EditorAction.ToolCycleMode)}\nClick to pull out a new object instead",
                 size))
         {
             session.ExtrudeCreatesObject = !session.ExtrudeCreatesObject;
@@ -117,7 +118,7 @@ public static class ToolOptions
             "paint-mode",
             [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill")],
             (int)session.PaintMode,
-            "X",
+            Shortcut.Of(EditorAction.ToolCycleMode),
             size,
             value => session.PaintMode = (PaintMode)value);
 

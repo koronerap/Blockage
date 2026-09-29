@@ -1,6 +1,7 @@
 using EditorApp.Core.Editing;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
+using EditorApp.Input;
 using EditorApp.Rendering;
 using ImGuiNET;
 
@@ -135,38 +136,38 @@ public static class ObjectMenu
         ImGui.TextDisabled(scene.Focus?.Name ?? "No object");
         ImGui.Separator();
 
-        if (ImGui.MenuItem("Duplicate", "Shift+D", false, hasVoxels))
+        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, hasVoxels))
         {
             Duplicate(session, camera);
         }
 
-        if (ImGui.MenuItem("Rename", "F2", false, scene.Focus is not null) && scene.Focus is { } focus)
+        if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename), false, scene.Focus is not null) && scene.Focus is { } focus)
         {
             ObjectListPanel.StartRename(focus);
         }
 
-        if (ImGui.MenuItem("Hide", "H", false, scene.Focus is { Visible: true }))
+        if (ImGui.MenuItem("Hide", Shortcut.Of(EditorAction.Hide), false, scene.Focus is { Visible: true }))
         {
             session.SetObjectVisible(scene.FocusId, false);
         }
 
-        if (ImGui.MenuItem("Show All", "Alt+H", false, scene.Objects.Any(o => !o.Visible)))
+        if (ImGui.MenuItem("Show All", Shortcut.Of(EditorAction.ShowAll), false, scene.Objects.Any(o => !o.Visible)))
         {
             session.ShowAllObjects();
         }
 
         // Locking the focused object moves focus on; the Outliner's padlock is the way back.
-        if (ImGui.MenuItem("Lock", null, false, scene.Focus is { Locked: false }) && scene.Focus is { } locked)
+        if (ImGui.MenuItem("Lock", Shortcut.Of(EditorAction.Lock), false, scene.Focus is { Locked: false }) && scene.Focus is { } locked)
         {
             session.SetObjectLocked(locked.Id, true);
         }
 
-        if (ImGui.MenuItem("Unlock All", null, false, scene.Objects.Any(o => o.Locked) || scene.Lights.Any(l => l.Locked)))
+        if (ImGui.MenuItem("Unlock All", Shortcut.Of(EditorAction.UnlockAll), false, scene.Objects.Any(o => o.Locked) || scene.Lights.Any(l => l.Locked)))
         {
             session.UnlockAll();
         }
 
-        if (ImGui.MenuItem("Delete", "Del", false, scene.Objects.Count > 1))
+        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete), false, scene.Objects.Count > 1))
         {
             session.DeleteObject(scene.FocusId);
         }
@@ -179,7 +180,7 @@ public static class ObjectMenu
         ImGui.Separator();
 
         string? subdivideProblem = session.SubdivideProblem(scene.Focus);
-        if (ImGui.MenuItem("Subdivide", null, false, subdivideProblem is null))
+        if (ImGui.MenuItem("Subdivide", Shortcut.Of(EditorAction.Subdivide), false, subdivideProblem is null))
         {
             SubdivideFocus(session, ReportLog.Shared);
         }

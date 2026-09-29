@@ -1,4 +1,5 @@
 using System.Numerics;
+using EditorApp.Input;
 using EditorApp.Rendering;
 using ImGuiNET;
 
@@ -232,7 +233,7 @@ public sealed class NavigationGizmo
                 (Icons.Perspective, "Perspective"),
                 (Icons.Orthographic, "Orthographic"),
                 camera.Orthographic,
-                "Numpad 5",
+                Shortcut.Of(EditorAction.ToggleOrthographic),
                 button))
         {
             camera.Orthographic = !camera.Orthographic;
@@ -251,7 +252,7 @@ public sealed class NavigationGizmo
             camera.Pan(io.MouseDelta, camera.PivotDistance, viewport.Size);
         }
 
-        if (IconButton.Draw("frame", Icons.FrameAll, active: false, "Frame the whole level  (Home)", button))
+        if (IconButton.Draw("frame", Icons.FrameAll, active: false, $"Frame the whole level{Shortcut.Hint(EditorAction.FrameLevel)}", button))
         {
             frameAll();
         }

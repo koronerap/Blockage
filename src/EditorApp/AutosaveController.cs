@@ -39,6 +39,13 @@ public sealed class AutosaveController
         "EditorApp",
         "recovery");
 
+    /// <summary>How often unsaved work is copied out. Zero switches it off. A preference.</summary>
+    public TimeSpan Every
+    {
+        get => _schedule.Interval;
+        set => _schedule.Interval = value < TimeSpan.Zero ? TimeSpan.Zero : value;
+    }
+
     /// <summary>When the last autosave finished, local time, or null when there is none on disk.</summary>
     public DateTime? LastWritten { get; private set; }
 
