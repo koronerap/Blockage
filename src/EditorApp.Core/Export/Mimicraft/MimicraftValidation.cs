@@ -30,7 +30,7 @@ public static class MimicraftValidation
     public static IReadOnlyList<MimicraftProblem> Check(VoxelScene scene, MimicraftTarget target)
     {
         var problems = new List<MimicraftProblem>();
-        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.Visible && !o.IsEmpty)];
+        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.IsExported && !o.IsEmpty)];
 
         if (objects.Count == 0)
         {
@@ -183,7 +183,7 @@ public static class MimicraftValidation
     /// </summary>
     public static int LargestExtent(VoxelScene scene, MimicraftTarget target)
     {
-        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.Visible && !o.IsEmpty)];
+        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.IsExported && !o.IsEmpty)];
 
         if (target == MimicraftTarget.Weapon)
         {

@@ -19,7 +19,7 @@ public static class MimicraftScene
 {
     public static IReadOnlyList<MimicraftPiece> BuildCharacterParts(VoxelScene scene) =>
         [.. scene.Objects
-            .Where(o => o.Visible && !o.IsEmpty)
+            .Where(o => o.IsExported && !o.IsEmpty)
             .Select(o => new MimicraftPiece(o.Name, o.Shown))];
 
     /// <summary>
@@ -31,7 +31,7 @@ public static class MimicraftScene
     /// </summary>
     public static MimicraftPiece? BuildWeaponPiece(VoxelScene scene, string weaponId)
     {
-        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.Visible && !o.IsEmpty)];
+        IReadOnlyList<VoxelObject> objects = [.. scene.Objects.Where(o => o.IsExported && !o.IsEmpty)];
         if (objects.Count == 0)
         {
             return null;

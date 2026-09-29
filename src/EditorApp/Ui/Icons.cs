@@ -812,6 +812,40 @@ public static class Icons
         }
     }
 
+    /// <summary>A collection: a crate with its lid, as Blender draws one.</summary>
+    public static void Collection(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.8f, -r * 0.35f), centre + new Vector2(r * 0.8f, r * 0.75f), r * 0.08f, 1.1f);
+        canvas.Rect(centre + new Vector2(-r * 0.9f, -r * 0.75f), centre + new Vector2(r * 0.9f, -r * 0.35f), r * 0.08f, 1.1f);
+        canvas.Line(centre + new Vector2(-r * 0.3f, r * 0.05f), centre + new Vector2(r * 0.3f, r * 0.05f), 1.1f);
+    }
+
+    /// <summary>Goes into exports: an arrow rising out of a tray.</summary>
+    public static void Export(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.8f, r * 0.15f),
+            centre + new Vector2(-r * 0.8f, r * 0.75f),
+            centre + new Vector2(r * 0.8f, r * 0.75f),
+            centre + new Vector2(r * 0.8f, r * 0.15f),
+        ], 1.1f);
+        canvas.Line(centre + new Vector2(0f, r * 0.4f), centre + new Vector2(0f, -r * 0.8f), 1.1f);
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.4f, -r * 0.4f),
+            centre + new Vector2(0f, -r * 0.8f),
+            centre + new Vector2(r * 0.4f, -r * 0.4f),
+        ], 1.1f);
+    }
+
+    /// <summary>Kept out of exports: the same, struck through.</summary>
+    public static void ExportOff(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Export(canvas, centre, r);
+        canvas.Line(centre + new Vector2(-r * 0.9f, r * 0.9f), centre + new Vector2(r * 0.9f, -r * 0.9f), 1.1f);
+    }
+
     /// <summary>A camera: a body with its lens, and the frustum it sees drawn from it.</summary>
     public static void Camera(IIconCanvas canvas, Vector2 centre, float r)
     {

@@ -57,7 +57,7 @@ public sealed class ExportController(EditorSession session)
     public void Show()
     {
         // An empty level makes an empty file, which an engine takes without a word; better said here.
-        if (!session.Scene.Objects.Any(o => o.Visible && !o.IsEmpty))
+        if (!session.Scene.Objects.Any(o => o.IsExported && !o.IsEmpty))
         {
             Ui.ReportLog.Shared.Post("Nothing to export - the level has no voxels that are shown.", Ui.ReportKind.Warning);
             return;
@@ -129,7 +129,7 @@ public sealed class ExportController(EditorSession session)
         var naive = new MeshBuilder();
         foreach (Core.Scene.VoxelObject o in session.Scene.Objects)
         {
-            if (!o.Visible)
+            if (!o.IsExported)
             {
                 continue;
             }
@@ -327,7 +327,7 @@ public sealed class ExportController(EditorSession session)
                 ImGui.TextColored(Theme.Highlight, $"   at {shared:0.####} per voxel");
             }
         }
-        else if (session.Scene.Objects.Count(o => o.Visible && !o.IsEmpty) > 1)
+        else if (session.Scene.Objects.Count(o => o.IsExported && !o.IsEmpty) > 1)
         {
             ImGui.SameLine();
             ImGui.TextColored(Theme.Highlight, "   voxel sizes differ by object");

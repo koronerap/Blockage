@@ -16,7 +16,8 @@ public sealed class CreateObjectCommand(
     string name,
     string commandName = "Create object",
     int? insertAt = null,
-    int parentId = 0) : ICommand
+    int parentId = 0,
+    int? collectionId = null) : ICommand
 {
     private VoxelObject? _created;
     private int _previousFocusId;
@@ -36,6 +37,10 @@ public sealed class CreateObjectCommand(
         {
             _created = scene.Add(grid, transform, name, insertAt);
             scene.SetParent(_created.Id, parentId);
+            if (collectionId is { } collection)
+            {
+                scene.SetCollection(_created.Id, collection);
+            }
         }
         else
         {

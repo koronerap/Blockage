@@ -28,6 +28,7 @@ public sealed class VoxelScene
     private readonly List<VoxelObject> _objects = [];
     private readonly List<SceneLight> _lights = [];
     private readonly List<SceneCamera> _cameras = [];
+    private readonly List<SceneCollection> _collections = [];
     private readonly HashSet<int> _selected = [];
 
     // One counter for objects and lights alike, so an id names one thing in the level and nothing else.
@@ -75,6 +76,198 @@ public sealed class VoxelScene
 
     /// <summary>The level's lights, in the order the outliner lists them. Never exported.</summary>
     public IReadOnlyList<SceneLight> Lights => _lights;
+
+    /// <summary>The level's collections, in the order the outliner lists them, each after the one it is inside.</summary>
+    public IReadOnlyList<SceneCollection> Collections => _collections;
+
+    private int _activeCollectionId;
+
+    /// <summary>The collection new objects and lights go into — the one last picked in the outliner; 0 for the top.</summary>
+    public int ActiveCollectionId
+    {
+        get => FindCollection(_activeCollectionId) is null ? 0 : _activeCollectionId;
+        set => _activeCollectionId = value;
+    }
+
+    public SceneCollection? FindCollection(int id) => id == 0 ? null : _collections.Find(c => c.Id == id);
+
+    /// <summary>The collections directly inside <paramref name="parentId"/>, in list order; 0 for the top.</summary>
+    public IEnumerable<SceneCollection> CollectionsIn(int parentId) => _collections.Where(c => c.ParentId == parentId);
+
+    /// <summary>Whether <paramref name="id"/> is <paramref name="ancestor"/> or somewhere inside it.</summary>
+    public bool IsInside(int id, int ancestor)
+    {
+        for (int hops = 0; id != 0 && hops <= _collections.Count; hops++)
+        {
+            if (id == ancestor)
+            {
+                return true;
+            }
+
+            id = FindCollection(id)?.ParentId ?? 0;
+        }
+
+        return false;
+    }
+
+    /// <summary>A new collection with a fresh id, inside <paramref name="parentId"/>, put in the level.</summary>
+    public SceneCollection AddCollection(string name, int parentId)
+    {
+        var collection = new SceneCollection(_nextId++, name) { ParentId = FindCollection(parentId) is null ? 0 : parentId };
+        _collections.Add(collection);
+        RefreshCollections();
+        return collection;
+    }
+
+    /// <summary>
+    /// Puts a thing — an object or a light — in a collection; 0 takes it out to the top. A
+    /// collection that is not there is none.
+    /// </summary>
+    public bool SetCollection(int thingId, int collectionId)
+    {
+        collectionId = FindCollection(collectionId) is null ? 0 : collectionId;
+        switch (FindPlaceable(thingId))
+        {
+            case VoxelObject o when o.CollectionId != collectionId:
+                o.CollectionId = collectionId;
+                break;
+            case SceneLight light when light.CollectionId != collectionId:
+                light.CollectionId = collectionId;
+                break;
+            default:
+                return false;
+        }
+
+        RefreshCollections();
+        return true;
+    }
+
+    /// <summary>Moves a collection inside another, or to the top with 0. Refused where it would end up inside itself.</summary>
+    public bool MoveCollection(int id, int parentId)
+    {
+        if (FindCollection(id) is not { } collection || (parentId != 0 && (FindCollection(parentId) is null || IsInside(parentId, id))))
+        {
+            return false;
+        }
+
+        collection.ParentId = parentId;
+        RefreshCollections();
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a collection out. What was in it — things and collections alike — goes up into the
+    /// collection it was in, as deleting one does in Blender.
+    /// </summary>
+    public bool RemoveCollection(int id)
+    {
+        if (FindCollection(id) is not { } collection)
+        {
+            return false;
+        }
+
+        foreach (SceneCollection inner in _collections.Where(c => c.ParentId == id))
+        {
+            inner.ParentId = collection.ParentId;
+        }
+
+        foreach (VoxelObject o in _objects.Where(o => o.CollectionId == id))
+        {
+            o.CollectionId = collection.ParentId;
+        }
+
+        foreach (SceneLight light in _lights.Where(l => l.CollectionId == id))
+        {
+            light.CollectionId = collection.ParentId;
+        }
+
+        _collections.Remove(collection);
+        RefreshCollections();
+        return true;
+    }
+
+    /// <summary>The collections and who is in which, to be put back as they are with <see cref="RestoreCollections"/>.</summary>
+    public CollectionLayout CaptureCollections()
+    {
+        var membership = new Dictionary<int, int>();
+        foreach (VoxelObject o in _objects)
+        {
+            membership[o.Id] = o.CollectionId;
+        }
+
+        foreach (SceneLight light in _lights)
+        {
+            membership[light.Id] = light.CollectionId;
+        }
+
+        return new CollectionLayout([.. _collections.Select(c => c.State)], membership);
+    }
+
+    public void RestoreCollections(CollectionLayout layout)
+    {
+        _collections.Clear();
+        foreach (CollectionState state in layout.Collections)
+        {
+            _collections.Add(state.Create());
+            _nextId = Math.Max(_nextId, state.Id + 1);
+        }
+
+        foreach (VoxelObject o in _objects)
+        {
+            o.CollectionId = layout.Membership.TryGetValue(o.Id, out int collection) ? collection : o.CollectionId;
+        }
+
+        foreach (SceneLight light in _lights)
+        {
+            light.CollectionId = layout.Membership.TryGetValue(light.Id, out int collection) ? collection : light.CollectionId;
+        }
+
+        RefreshCollections();
+    }
+
+    /// <summary>
+    /// Works out again what every collection's switches mean for what is in it: hidden, locked or
+    /// kept out of exports by any collection above. Called after anything about collections changes.
+    /// </summary>
+    public void RefreshCollections()
+    {
+        var hidden = new Dictionary<int, (bool Hidden, bool Locked, bool Excluded)>();
+        (bool Hidden, bool Locked, bool Excluded) Of(int id, int depth)
+        {
+            if (id == 0 || depth > _collections.Count || FindCollection(id) is not { } collection)
+            {
+                return (false, false, false);
+            }
+
+            if (hidden.TryGetValue(id, out var known))
+            {
+                return known;
+            }
+
+            var above = Of(collection.ParentId, depth + 1);
+            var mine = (above.Hidden || !collection.Visible, above.Locked || collection.Locked, above.Excluded || !collection.Export);
+            hidden[id] = mine;
+            return mine;
+        }
+
+        foreach (VoxelObject o in _objects)
+        {
+            (bool isHidden, bool isLocked, bool isExcluded) = Of(o.CollectionId, 0);
+            o.HiddenByCollection = isHidden;
+            o.LockedByCollection = isLocked;
+            o.ExcludedByCollection = isExcluded;
+        }
+
+        foreach (SceneLight light in _lights)
+        {
+            (bool isHidden, bool isLocked, _) = Of(light.CollectionId, 0);
+            light.HiddenByCollection = isHidden;
+            light.LockedByCollection = isLocked;
+        }
+
+        // What can no longer be picked is let go.
+        _selected.RemoveWhere(id => !CanSelect(id));
+    }
 
     /// <summary>The level's cameras, in the order the outliner lists them. Never exported.</summary>
     public IReadOnlyList<SceneCamera> Cameras => _cameras;
@@ -176,7 +369,11 @@ public sealed class VoxelScene
         // Every grid points at the scene's palette, so recoloring an index repaints the whole level.
         grid.ReplacePalette(Palette);
 
-        var created = new VoxelObject(_nextId, grid, transform, name ?? $"Object {_nextId}");
+        var created = new VoxelObject(_nextId, grid, transform, name ?? $"Object {_nextId}")
+        {
+            CollectionId = ActiveCollectionId,
+        };
+
         _nextId++;
 
         Insert(created, insertAt);
@@ -216,7 +413,7 @@ public sealed class VoxelScene
     // ---- Lights --------------------------------------------------------------------------------
 
     /// <summary>A new light with a fresh id, not yet in the level — an add command puts it there.</summary>
-    public SceneLight CreateLight(LightKind kind, string name) => new(_nextId++, kind, name);
+    public SceneLight CreateLight(LightKind kind, string name) => new(_nextId++, kind, name) { CollectionId = ActiveCollectionId };
 
     public SceneLight AddLight(LightKind kind, string name, int? insertAt = null)
     {
@@ -245,6 +442,7 @@ public sealed class VoxelScene
         light.Moved = OnMoved;
         HoldAtCurrentPlace(light);
         _nextId = Math.Max(_nextId, light.Id + 1);
+        (light.HiddenByCollection, light.LockedByCollection, _) = CollectionFlags(light.CollectionId);
     }
 
     // ---- Parents -------------------------------------------------------------------------------
@@ -505,6 +703,23 @@ public sealed class VoxelScene
         {
             _objects.Add(item);
         }
+
+        (item.HiddenByCollection, item.LockedByCollection, item.ExcludedByCollection) = CollectionFlags(item.CollectionId);
+    }
+
+    /// <summary>What the collections a thing is in say about it: hidden, locked, kept out of exports.</summary>
+    private (bool Hidden, bool Locked, bool Excluded) CollectionFlags(int collectionId)
+    {
+        bool hidden = false, locked = false, excluded = false;
+        for (int hops = 0; FindCollection(collectionId) is { } collection && hops <= _collections.Count; hops++)
+        {
+            hidden |= !collection.Visible;
+            locked |= collection.Locked;
+            excluded |= !collection.Export;
+            collectionId = collection.ParentId;
+        }
+
+        return (hidden, locked, excluded);
     }
 
     /// <summary>
@@ -522,9 +737,11 @@ public sealed class VoxelScene
             Palette = Palette.Clone(),
             RenderSettings = RenderSettings,
             ActiveCameraId = ActiveCameraId,
+            _activeCollectionId = _activeCollectionId,
         };
 
         copy._cameras.AddRange(_cameras);
+        copy._collections.AddRange(_collections.Select(c => c.State.Create()));
 
         copy._selected.UnionWith(_selected);
 
@@ -534,10 +751,11 @@ public sealed class VoxelScene
             grid.ReplacePalette(copy.Palette);
             var copied = new VoxelObject(o.Id, grid, o.Transform, o.Name)
             {
-                Visible = o.Visible,
-                Locked = o.Locked,
+                OwnVisible = o.OwnVisible,
+                OwnLocked = o.OwnLocked,
                 ParentId = o.ParentId,
                 ParentOffset = o.ParentOffset,
+                CollectionId = o.CollectionId,
             };
 
             if (o.Modifiers.Count > 0)
@@ -553,6 +771,7 @@ public sealed class VoxelScene
             copy._lights.Add(light.Copy(light.Id));
         }
 
+        copy.RefreshCollections();
         return copy;
     }
 
@@ -628,6 +847,8 @@ public sealed class VoxelScene
         _objects.Clear();
         _lights.Clear();
         _cameras.Clear();
+        _collections.Clear();
+        _activeCollectionId = 0;
         _selected.Clear();
         FocusId = 0;
         ActiveCameraId = 0;

@@ -211,6 +211,9 @@ public sealed class Keymap
             // Free in both, and the tool's own letter.
             [EditorAction.ToolSculpt] = [new(Key.S)],
 
+            // Blender's M.
+            [EditorAction.MoveToCollection] = [new(Key.M)],
+
             // Blender's F12.
             [EditorAction.RenderImage] = [new(Key.F12)],
             [EditorAction.Separate] = [new(Key.P)],

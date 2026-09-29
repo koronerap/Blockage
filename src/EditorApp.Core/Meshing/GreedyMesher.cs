@@ -71,7 +71,7 @@ public static class GreedyMesher
 
         foreach (Scene.VoxelObject o in scene.Objects)
         {
-            if (!o.Visible || o.IsEmpty)
+            if (!o.IsExported || o.IsEmpty)
             {
                 continue;
             }

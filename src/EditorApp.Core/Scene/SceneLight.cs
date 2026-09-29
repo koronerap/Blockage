@@ -125,11 +125,37 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
     /// <summary>Spot: how soft the cone's edge is, from a hard edge at 0 to fading from the centre at 1.</summary>
     public float SpotBlend { get; set; } = 0.15f;
 
-    /// <summary>Off lights stay in the level but light nothing.</summary>
-    public bool Visible { get; set; } = true;
+    /// <summary>
+    /// Off lights stay in the level but light nothing. On by its own switch and by every collection
+    /// above it; setting it sets its own, <see cref="OwnVisible"/>.
+    /// </summary>
+    public bool Visible
+    {
+        get => OwnVisible && !HiddenByCollection;
+        set => OwnVisible = value;
+    }
 
     /// <summary>A locked light still shines, but its icon cannot be picked, moved or aimed.</summary>
-    public bool Locked { get; set; }
+    public bool Locked
+    {
+        get => OwnLocked || LockedByCollection;
+        set => OwnLocked = value;
+    }
+
+    /// <summary>The light's own eye, as the outliner shows it and the file keeps it.</summary>
+    public bool OwnVisible { get; set; } = true;
+
+    /// <summary>Set by the scene: a collection above it is hidden.</summary>
+    public bool HiddenByCollection { get; internal set; }
+
+    /// <summary>The light's own lock, as the outliner shows it and the file keeps it.</summary>
+    public bool OwnLocked { get; set; }
+
+    /// <summary>Set by the scene: a collection above it is locked.</summary>
+    public bool LockedByCollection { get; internal set; }
+
+    /// <summary>The collection it is in; 0 for none, at the level's top.</summary>
+    public int CollectionId { get; internal set; }
 
     public Vector3 Position => Transform.Position;
 
@@ -138,7 +164,7 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
 
     public Vector3 WorldCentre() => Transform.Position;
 
-    public LightState State => new(Name, Kind, Transform, Colour, Intensity, Range, SpotAngle, SpotBlend, Visible);
+    public LightState State => new(Name, Kind, Transform, Colour, Intensity, Range, SpotAngle, SpotBlend, OwnVisible);
 
     /// <summary>Sets everything at once, clamped to what a light can be.</summary>
     public void Apply(LightState state)
@@ -151,7 +177,7 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
         Range = Math.Clamp(Finite(state.Range, Range), MinRange, MaxRange);
         SpotAngle = Math.Clamp(Finite(state.SpotAngle, SpotAngle), MinSpotAngle, MaxSpotAngle);
         SpotBlend = Math.Clamp(Finite(state.SpotBlend, SpotBlend), 0f, 1f);
-        Visible = state.Visible;
+        OwnVisible = state.Visible;
     }
 
     /// <summary>A copy with a new id: every setting, and the same parent at the same offset.</summary>
@@ -163,10 +189,11 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
         Range = Range,
         SpotAngle = SpotAngle,
         SpotBlend = SpotBlend,
-        Visible = Visible,
-        Locked = Locked,
+        OwnVisible = OwnVisible,
+        OwnLocked = OwnLocked,
         ParentId = ParentId,
         ParentOffset = ParentOffset,
+        CollectionId = CollectionId,
     };
 
     /// <summary>The turn that makes a light shine along <paramref name="direction"/>.</summary>

@@ -52,14 +52,48 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
         Moved?.Invoke(this, true);
     }
 
-    public bool Visible { get; set; } = true;
+    /// <summary>
+    /// Drawn and picked: its own eye open, and every collection above it shown. Setting it sets the
+    /// object's own eye, <see cref="OwnVisible"/>; collections have switches of their own.
+    /// </summary>
+    public bool Visible
+    {
+        get => OwnVisible && !HiddenByCollection;
+        set => OwnVisible = value;
+    }
 
     /// <summary>
     /// Locked objects are drawn and exported like any other, but the viewport passes over them: they
     /// cannot be picked, take focus or be edited — a floor that stays put while what stands on it is
-    /// built. Saved with the level; outside undo, like hiding.
+    /// built. Saved with the level; outside undo, like hiding. Locked by its own lock or by a
+    /// collection's; setting it sets its own.
     /// </summary>
-    public bool Locked { get; set; }
+    public bool Locked
+    {
+        get => OwnLocked || LockedByCollection;
+        set => OwnLocked = value;
+    }
+
+    /// <summary>The object's own eye, as the outliner shows it and the file keeps it.</summary>
+    public bool OwnVisible { get; set; } = true;
+
+    /// <summary>Set by the scene: a collection above it is hidden.</summary>
+    public bool HiddenByCollection { get; internal set; }
+
+    /// <summary>The object's own lock, as the outliner shows it and the file keeps it.</summary>
+    public bool OwnLocked { get; set; }
+
+    /// <summary>Set by the scene: a collection above it is locked.</summary>
+    public bool LockedByCollection { get; internal set; }
+
+    /// <summary>The collection it is in; 0 for none, at the level's top.</summary>
+    public int CollectionId { get; internal set; }
+
+    /// <summary>Set by the scene: a collection above it is kept out of exports.</summary>
+    public bool ExcludedByCollection { get; internal set; }
+
+    /// <summary>Goes into exports: shown, and in no collection kept out of them.</summary>
+    public bool IsExported => Visible && !ExcludedByCollection;
 
     /// <summary>World units one of this object's voxels measures — its transform's scale.</summary>
     public float VoxelSize => Transform.VoxelSize;

@@ -47,7 +47,7 @@ public sealed class MimicraftController(EditorSession session)
     public void Show()
     {
         // As the mesh export: an empty level is said to be one, rather than opening onto nothing.
-        if (!session.Scene.Objects.Any(o => o.Visible && !o.IsEmpty))
+        if (!session.Scene.Objects.Any(o => o.IsExported && !o.IsEmpty))
         {
             Ui.ReportLog.Shared.Post("Nothing to save for Mimicraft - the level has no voxels that are shown.", Ui.ReportKind.Warning);
             return;
@@ -178,7 +178,7 @@ public sealed class MimicraftController(EditorSession session)
     private Int3? Size()
     {
         IReadOnlyList<Core.Scene.VoxelObject> objects =
-            [.. session.Scene.Objects.Where(o => o.Visible && !o.IsEmpty)];
+            [.. session.Scene.Objects.Where(o => o.IsExported && !o.IsEmpty)];
 
         if (objects.Count == 0)
         {
@@ -225,7 +225,7 @@ public sealed class MimicraftController(EditorSession session)
                 ImGui.SetTooltip("The rig this character was built for.\nObject names have to match its Part Ids.");
             }
 
-            ImGui.TextDisabled($"Parts: {string.Join(", ", session.Scene.Objects.Where(o => o.Visible && !o.IsEmpty).Select(o => o.Name))}");
+            ImGui.TextDisabled($"Parts: {string.Join(", ", session.Scene.Objects.Where(o => o.IsExported && !o.IsEmpty).Select(o => o.Name))}");
             return;
         }
 

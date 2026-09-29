@@ -130,7 +130,9 @@ public static class ObjectListPanel
         {
             // Children are listed under their parents only while the parents are listed at all.
             _tree = ShowObjects
-                && (scene.Objects.Any(o => scene.ParentOf(o) is not null) || (ShowLights && scene.Lights.Any(l => scene.ParentOf(l) is not null)));
+                && (scene.Collections.Count > 0
+                    || scene.Objects.Any(o => scene.ParentOf(o) is not null)
+                    || (ShowLights && scene.Lights.Any(l => scene.ParentOf(l) is not null)));
 
             // Whatever was picked elsewhere is shown, even if it was folded away under its parent.
             if (focusMoved || lightMoved)
@@ -140,29 +142,15 @@ public static class ObjectListPanel
 
             _dropHint = null;
 
-            if (ShowObjects)
+            if (_tree)
             {
-                foreach (VoxelObject o in scene.Objects.ToArray())
+                foreach (SceneCollection collection in scene.CollectionsIn(0).ToArray())
                 {
-                    if (!_tree || scene.ParentOf(o) is null)
-                    {
-                        DrawObjectBranch(session, camera, o, row, focusMoved, lightMoved, 0);
-                    }
+                    DrawCollectionBranch(session, camera, collection, row, focusMoved, lightMoved, 0);
                 }
             }
 
-            if (ShowLights)
-            {
-                foreach (SceneLight light in scene.Lights.ToArray())
-                {
-                    if (!_tree || scene.ParentOf(light) is null)
-                    {
-                        ImGui.PushID(light.Id);
-                        DrawLightRow(session, camera, light, row, lightMoved, 0);
-                        ImGui.PopID();
-                    }
-                }
-            }
+            DrawThingsIn(session, camera, 0, row, focusMoved, lightMoved, 0);
 
             if (ShowLights)
             {
@@ -211,6 +199,234 @@ public static class ObjectListPanel
         return session.Scene.Find(id) is not null ? session.ChooseObject(id) : session.SelectLight(id);
     }
 
+    /// <summary>
+    /// The objects and lights at the top of a collection — in none, for 0 — each with what is under
+    /// it. Outside tree view, simply everything, in list order.
+    /// </summary>
+    private static void DrawThingsIn(EditorSession session, FlyCamera camera, int collectionId, float row, bool focusMoved, bool lightMoved, int depth)
+    {
+        VoxelScene scene = session.Scene;
+        bool Here(int thingCollection) => !_tree || thingCollection == collectionId || (collectionId == 0 && scene.FindCollection(thingCollection) is null);
+
+        if (ShowObjects)
+        {
+            foreach (VoxelObject o in scene.Objects.ToArray())
+            {
+                if (Here(o.CollectionId) && (!_tree || scene.ParentOf(o) is null))
+                {
+                    DrawObjectBranch(session, camera, o, row, focusMoved, lightMoved, depth);
+                }
+            }
+        }
+
+        if (ShowLights)
+        {
+            foreach (SceneLight light in scene.Lights.ToArray())
+            {
+                if (Here(light.CollectionId) && (!_tree || scene.ParentOf(light) is null))
+                {
+                    ImGui.PushID(light.Id);
+                    DrawLightRow(session, camera, light, row, lightMoved, depth);
+                    ImGui.PopID();
+                }
+            }
+        }
+    }
+
+    /// <summary>A collection's row, then — unless folded — the collections inside it and what is in it.</summary>
+    private static void DrawCollectionBranch(EditorSession session, FlyCamera camera, SceneCollection collection, float row, bool focusMoved, bool lightMoved, int depth)
+    {
+        VoxelScene scene = session.Scene;
+        bool hasChildren = scene.CollectionsIn(collection.Id).Any()
+            || scene.Objects.Any(o => o.CollectionId == collection.Id)
+            || scene.Lights.Any(l => l.CollectionId == collection.Id);
+
+        ImGui.PushID(collection.Id);
+        DrawCollectionRow(session, collection, row, depth, hasChildren);
+        ImGui.PopID();
+
+        if (!hasChildren || Folded.Contains(collection.Id) || depth > scene.Collections.Count)
+        {
+            return;
+        }
+
+        foreach (SceneCollection inner in scene.CollectionsIn(collection.Id).ToArray())
+        {
+            DrawCollectionBranch(session, camera, inner, row, focusMoved, lightMoved, depth + 1);
+        }
+
+        DrawThingsIn(session, camera, collection.Id, row, focusMoved, lightMoved, depth + 1);
+    }
+
+    private static void DrawCollectionRow(EditorSession session, SceneCollection collection, float row, int depth, bool hasChildren)
+    {
+        VoxelScene scene = session.Scene;
+        bool active = scene.ActiveCollectionId == collection.Id;
+        DrawLead(collection.Id, depth, hasChildren, row);
+        float width = NameWidth(row, toggles: 3);
+        bool shown = !IsHiddenAbove(scene, collection);
+
+        if (_renamingId == collection.Id)
+        {
+            DrawRenameField(session, collection.Id, width);
+        }
+        else
+        {
+            if (DrawSelectable(active, active, row, width))
+            {
+                scene.ActiveCollectionId = active && ImGui.GetIO().KeyCtrl ? 0 : collection.Id;
+                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                {
+                    StartRename(collection.Id, collection.Name);
+                }
+            }
+
+            RowRects[collection.Id] = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+            DragSource(collection.Id);
+            DropIntoCollection(session, collection);
+
+            if (ImGui.IsItemHovered())
+            {
+                HoveredId = collection.Id;
+                ImGui.SetTooltip($"A collection - new things go into the one picked here.\nDrag objects onto it to put them in it{CollectionMenu.Hint}; right-click for more.");
+            }
+
+            DrawLabel(Icons.Collection, collection.Name, shown, active, null);
+            DrawCollectionMenu(session, collection);
+        }
+
+        ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X);
+        if (DrawToggle(collection.Id, "export", collection.Export ? Icons.Export : Icons.ExportOff, !collection.Export, row, collection.Export ? "Exported - click to keep what is in it out of exports" : "Kept out of exports - click to export it again"))
+        {
+            session.SetCollectionExported(collection.Id, !collection.Export);
+        }
+
+        ImGui.SameLine(0f, ToggleGap);
+        if (DrawToggle(collection.Id, "lock", collection.Locked ? Icons.Lock : Icons.Unlocked, collection.Locked, row, collection.Locked ? "Locked - click to unlock what is in it" : "Lock everything in it"))
+        {
+            session.SetCollectionLocked(collection.Id, !collection.Locked);
+        }
+
+        ImGui.SameLine(0f, ToggleGap);
+        if (DrawToggle(collection.Id, "eye", collection.Visible ? Icons.Eye : Icons.EyeClosed, !collection.Visible, row, collection.Visible ? "Hide everything in it" : "Show what is in it"))
+        {
+            session.SetCollectionVisible(collection.Id, !collection.Visible);
+        }
+    }
+
+    private static bool IsHiddenAbove(VoxelScene scene, SceneCollection collection)
+    {
+        for (int hops = 0; scene.FindCollection(collection.Id) is not null && hops <= scene.Collections.Count; hops++)
+        {
+            if (!collection.Visible)
+            {
+                return true;
+            }
+
+            if (scene.FindCollection(collection.ParentId) is not { } parent)
+            {
+                return false;
+            }
+
+            collection = parent;
+        }
+
+        return false;
+    }
+
+    /// <summary>A collection's row takes a dragged object, light or collection into it.</summary>
+    private static void DropIntoCollection(EditorSession session, SceneCollection collection)
+    {
+        if (!ImGui.BeginDragDropTarget())
+        {
+            return;
+        }
+
+        VoxelScene scene = session.Scene;
+        if (scene.FindCollection(_draggedId) is { } dragged)
+        {
+            bool inside = scene.IsInside(collection.Id, dragged.Id);
+            _dropHint = inside ? $"{collection.Name} is inside {dragged.Name}." : $"Put {dragged.Name} inside {collection.Name}";
+            if (!inside && dragged.ParentId != collection.Id && Delivered(ImGui.AcceptDragDropPayload(RowPayload)))
+            {
+                session.MoveCollection(dragged.Id, collection.Id);
+            }
+        }
+        else if (scene.FindPlaceable(_draggedId) is { } thing)
+        {
+            // What is dragged goes with the rest of the selection when it is part of it.
+            List<int> moving = session.IsSelected(thing.Id)
+                ? [.. session.SelectedObjects.Select(o => o.Id), .. session.SelectedLights.Select(l => l.Id)]
+                : [thing.Id];
+            _dropHint = moving.Count > 1 ? $"Move {moving.Count} things to {collection.Name}" : $"Move {thing.Name} to {collection.Name}";
+            if (Delivered(ImGui.AcceptDragDropPayload(RowPayload)))
+            {
+                session.MoveToCollection(moving, collection.Id);
+            }
+        }
+
+        ImGui.EndDragDropTarget();
+    }
+
+    private static void DrawCollectionMenu(EditorSession session, SceneCollection collection)
+    {
+        if (!ImGui.BeginPopupContextItem("##collection-menu"))
+        {
+            return;
+        }
+
+        if (ImGui.MenuItem("Select Objects"))
+        {
+            session.SelectCollection(collection.Id);
+        }
+
+        if (ImGui.MenuItem("New Collection Inside"))
+        {
+            session.NewCollection(collection.Id);
+        }
+
+        if (ImGui.MenuItem("Move to the Top", string.Empty, false, collection.ParentId != 0))
+        {
+            session.MoveCollection(collection.Id, 0);
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Rename"))
+        {
+            StartRename(collection.Id, collection.Name);
+        }
+
+        if (ImGui.MenuItem(collection.Visible ? "Hide" : "Show"))
+        {
+            session.SetCollectionVisible(collection.Id, !collection.Visible);
+        }
+
+        if (ImGui.MenuItem(collection.Locked ? "Unlock" : "Lock"))
+        {
+            session.SetCollectionLocked(collection.Id, !collection.Locked);
+        }
+
+        if (ImGui.MenuItem("Exported", string.Empty, collection.Export))
+        {
+            session.SetCollectionExported(collection.Id, !collection.Export);
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Delete"))
+        {
+            session.DeleteCollection(collection.Id);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Takes the collection away; what was in it stays, one step up.");
+        }
+
+        ImGui.EndPopup();
+    }
+
     /// <summary>An object's row, then — unless folded — its children's, each a step further in.</summary>
     private static void DrawObjectBranch(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved, bool lightMoved, int depth)
     {
@@ -244,15 +460,27 @@ public static class ObjectListPanel
         }
     }
 
-    /// <summary>Unfolds every parent above something, so its row can be seen.</summary>
+    /// <summary>Unfolds every parent and every collection above something, so its row can be seen.</summary>
     private static void Reveal(VoxelScene scene, int id)
     {
         IPlaceable? step = scene.FindPlaceable(id);
+        UnfoldCollectionsOf(scene, step);
 
         for (int hops = 0; step is not null && scene.ParentOf(step) is { } parent && hops <= scene.Objects.Count; hops++)
         {
             Folded.Remove(parent.Id);
             step = parent;
+            UnfoldCollectionsOf(scene, step);
+        }
+    }
+
+    private static void UnfoldCollectionsOf(VoxelScene scene, IPlaceable? thing)
+    {
+        SceneCollection? collection = thing is null ? null : CollectionOf(scene, thing);
+        for (int hops = 0; collection is not null && hops <= scene.Collections.Count; hops++)
+        {
+            Folded.Remove(collection.Id);
+            collection = scene.FindCollection(collection.ParentId);
         }
     }
 
@@ -354,6 +582,22 @@ public static class ObjectListPanel
         ImGui.InvisibleButton("##drop-space", new Vector2(MathF.Max(available.X, 1f), MathF.Max(available.Y, row)));
         DropSpaceRect = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
 
+        // A click in the empty space puts new things at the top again; a right click makes a collection.
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+        {
+            session.Scene.ActiveCollectionId = 0;
+        }
+
+        if (ImGui.BeginPopupContextItem("##outliner-space"))
+        {
+            if (ImGui.MenuItem("New Collection"))
+            {
+                session.NewCollection();
+            }
+
+            ImGui.EndPopup();
+        }
+
         if (!ImGui.BeginDragDropTarget())
         {
             return;
@@ -368,19 +612,53 @@ public static class ObjectListPanel
                 ParentMenu.Clear(session, dragged);
             }
         }
+        else if (session.Scene.FindCollection(_draggedId) is { ParentId: not 0 } collection)
+        {
+            _dropHint = $"Move {collection.Name} to the top";
+            if (Delivered(ImGui.AcceptDragDropPayload(RowPayload)))
+            {
+                session.MoveCollection(collection.Id, 0);
+            }
+        }
+        else if (session.Scene.FindPlaceable(_draggedId) is { } loose && CollectionOf(session.Scene, loose) is { } holder)
+        {
+            _dropHint = $"Take {loose.Name} out of {holder.Name}";
+            if (Delivered(ImGui.AcceptDragDropPayload(RowPayload)))
+            {
+                session.MoveToCollection([loose.Id], 0);
+            }
+        }
 
         ImGui.EndDragDropTarget();
     }
 
+    private static SceneCollection? CollectionOf(VoxelScene scene, IPlaceable thing) => thing switch
+    {
+        VoxelObject o => scene.FindCollection(o.CollectionId),
+        SceneLight light => scene.FindCollection(light.CollectionId),
+        _ => null,
+    };
+
     /// <summary>While a row is dragged, what letting go would do, beside the mouse.</summary>
     private static void DrawDragHint(EditorSession session)
     {
-        if (_draggedFrame != ImGui.GetFrameCount() || session.Scene.FindPlaceable(_draggedId) is not { } dragged)
+        if (_draggedFrame != ImGui.GetFrameCount())
         {
             return;
         }
 
-        ImGui.SetTooltip(_dropHint ?? $"{dragged.Name}\nDrop it on an object to make that its parent,\nor below the list to free it.");
+        if (session.Scene.FindCollection(_draggedId) is { } collection)
+        {
+            ImGui.SetTooltip(_dropHint ?? $"{collection.Name}\nDrop it on a collection to put it inside,\nor below the list to move it to the top.");
+            return;
+        }
+
+        if (session.Scene.FindPlaceable(_draggedId) is not { } dragged)
+        {
+            return;
+        }
+
+        ImGui.SetTooltip(_dropHint ?? $"{dragged.Name}\nDrop it on an object to make that its parent, on a collection\nto put it in it, or below the list to free it.");
     }
 
     private static unsafe bool Delivered(ImGuiPayloadPtr payload) => payload.NativePtr != null && payload.Delivery;
@@ -454,6 +732,12 @@ public static class ObjectListPanel
 
         if (ImGui.BeginPopup("##outliner-add"))
         {
+            if (IconMenu.Item(Icons.Collection, "Collection"))
+            {
+                session.NewCollection(session.Scene.ActiveCollectionId);
+            }
+
+            ImGui.Separator();
             AddMenu.DrawItems(at: null);
             ImGui.EndPopup();
         }
@@ -500,7 +784,9 @@ public static class ObjectListPanel
             {
                 HoveredId = o.Id;
                 ImGui.SetTooltip(
-                    !o.Visible ? "Hidden - not drawn, picked or exported."
+                    o.HiddenByCollection ? "Hidden by its collection - not drawn, picked or exported."
+                    : !o.Visible ? "Hidden - not drawn, picked or exported."
+                    : o.LockedByCollection ? "Locked by its collection - drawn and exported, but not picked or changed."
                     : o.Locked ? "Locked - drawn and exported, but not picked or changed.\nUnlock it to work on it."
                     : "Ctrl-click adds, Shift-click takes a range.\nDouble-click or F2 to rename, right-click for more.");
             }
@@ -510,15 +796,15 @@ public static class ObjectListPanel
         }
 
         ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X);
-        if (DrawToggle(o.Id, "lock", o.Locked ? Icons.Lock : Icons.Unlocked, o.Locked, row, o.Locked ? "Locked - click to unlock" : $"Lock - not picked or changed in the viewport{Shortcut.Hint(EditorAction.Lock)}"))
+        if (DrawToggle(o.Id, "lock", o.OwnLocked ? Icons.Lock : Icons.Unlocked, o.OwnLocked, row, o.OwnLocked ? "Locked - click to unlock" : $"Lock - not picked or changed in the viewport{Shortcut.Hint(EditorAction.Lock)}"))
         {
-            session.SetObjectLocked(o.Id, !o.Locked);
+            session.SetObjectLocked(o.Id, !o.OwnLocked);
         }
 
         ImGui.SameLine(0f, ToggleGap);
-        if (DrawToggle(o.Id, "eye", o.Visible ? Icons.Eye : Icons.EyeClosed, !o.Visible, row, o.Visible ? $"Hide{Shortcut.Hint(EditorAction.Hide)}" : $"Show{Shortcut.Hint(EditorAction.Hide)}"))
+        if (DrawToggle(o.Id, "eye", o.OwnVisible ? Icons.Eye : Icons.EyeClosed, !o.OwnVisible, row, o.OwnVisible ? $"Hide{Shortcut.Hint(EditorAction.Hide)}" : $"Show{Shortcut.Hint(EditorAction.Hide)}"))
         {
-            session.SetObjectVisible(o.Id, !o.Visible);
+            session.SetObjectVisible(o.Id, !o.OwnVisible);
         }
     }
 
@@ -565,15 +851,15 @@ public static class ObjectListPanel
         }
 
         ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X);
-        if (DrawToggle(light.Id, "lock", light.Locked ? Icons.Lock : Icons.Unlocked, light.Locked, row, light.Locked ? "Locked - click to unlock" : $"Lock - not picked, moved or aimed{Shortcut.Hint(EditorAction.Lock)}"))
+        if (DrawToggle(light.Id, "lock", light.OwnLocked ? Icons.Lock : Icons.Unlocked, light.OwnLocked, row, light.OwnLocked ? "Locked - click to unlock" : $"Lock - not picked, moved or aimed{Shortcut.Hint(EditorAction.Lock)}"))
         {
-            session.SetLightLocked(light.Id, !light.Locked);
+            session.SetLightLocked(light.Id, !light.OwnLocked);
         }
 
         ImGui.SameLine(0f, ToggleGap);
-        if (DrawToggle(light.Id, "eye", light.Visible ? Icons.Eye : Icons.EyeClosed, !light.Visible, row, light.Visible ? $"Switch off{Shortcut.Hint(EditorAction.Hide)}" : $"Switch on{Shortcut.Hint(EditorAction.Hide)}"))
+        if (DrawToggle(light.Id, "eye", light.OwnVisible ? Icons.Eye : Icons.EyeClosed, !light.OwnVisible, row, light.OwnVisible ? $"Switch off{Shortcut.Hint(EditorAction.Hide)}" : $"Switch on{Shortcut.Hint(EditorAction.Hide)}"))
         {
-            session.SetLightVisible(light.Id, !light.Visible);
+            session.SetLightVisible(light.Id, !light.OwnVisible);
         }
     }
 
@@ -666,8 +952,8 @@ public static class ObjectListPanel
     }
 
     /// <summary>What is left of a row for the name, once the switches have their place at the end.</summary>
-    private static float NameWidth(float row) =>
-        MathF.Max(ImGui.GetContentRegionAvail().X - (row * 2f) - ToggleGap - ImGui.GetStyle().ItemSpacing.X, row);
+    private static float NameWidth(float row, int toggles = 2) =>
+        MathF.Max(ImGui.GetContentRegionAvail().X - (row * toggles) - (ToggleGap * (toggles - 1)) - ImGui.GetStyle().ItemSpacing.X, row);
 
     private static bool DrawSelectable(bool selected, bool emphasised, float row, float width)
     {
@@ -793,6 +1079,7 @@ public static class ObjectListPanel
 
         ImGui.Separator();
         ParentMenu.DrawSubmenu(session, o);
+        CollectionMenu.DrawSubmenu(session);
 
         ImGui.Separator();
 
@@ -846,6 +1133,7 @@ public static class ObjectListPanel
 
         ImGui.Separator();
         ParentMenu.DrawSubmenu(session, light);
+        CollectionMenu.DrawSubmenu(session);
 
         ImGui.Separator();
 
@@ -892,6 +1180,10 @@ public static class ObjectListPanel
                 else if (session.Scene.FindCamera(id) is not null)
                 {
                     session.RenameCamera(id, _renameBuffer);
+                }
+                else if (session.Scene.FindCollection(id) is not null)
+                {
+                    session.RenameCollection(id, _renameBuffer);
                 }
                 else
                 {

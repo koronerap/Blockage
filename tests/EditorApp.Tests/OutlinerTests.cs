@@ -233,4 +233,39 @@ public sealed class OutlinerTests : IDisposable
 
         Assert.Equal(tower.Id, _session.Scene.FocusId);
     }
+
+    [Fact]
+    public void ARowDraggedOntoACollectionGoesIntoIt()
+    {
+        SceneCollection walls = _session.NewCollection(moving: [Named("Wall").Id]);
+        _ui.Frame(Draw);
+        _ui.Frame(Draw);
+
+        Vector2 gate = Centre(ObjectListPanel.RowRect(Named("Gate").Id));
+        Vector2 collection = Centre(ObjectListPanel.RowRect(walls.Id));
+        // A drag and drop wants the button held over several frames, moving, before it is let go.
+        _ui.Frame(Draw, gate, pressed: false);
+        _ui.Frame(Draw, gate, pressed: true);
+        _ui.Frame(Draw, (gate + collection) * 0.5f, pressed: true);
+        _ui.Frame(Draw, collection, pressed: true);
+        _ui.Frame(Draw, collection, pressed: true);
+        _ui.Frame(Draw, collection, pressed: false);
+
+        Assert.Equal(walls.Id, Named("Gate").CollectionId);
+    }
+
+    [Fact]
+    public void ACollectionsEyeHidesWhatIsInIt()
+    {
+        SceneCollection walls = _session.NewCollection(moving: [Named("Wall").Id]);
+        _ui.Frame(Draw);
+        _ui.Frame(Draw);
+
+        _ui.Click(Centre(ObjectListPanel.ToggleRect(walls.Id, "eye")), Draw);
+
+        Assert.False(walls.Visible);
+        Assert.False(Named("Wall").Visible);
+        Assert.True(Named("Wall").OwnVisible);
+        Assert.True(Named("Gate").Visible);
+    }
 }

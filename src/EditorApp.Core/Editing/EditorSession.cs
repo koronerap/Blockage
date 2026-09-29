@@ -401,7 +401,8 @@ public sealed partial class EditorSession
             grid,
             source.Transform,
             source.Name + " (extruded)",
-            parentId: Scene.ParentOf(source)?.Id ?? 0);
+            parentId: Scene.ParentOf(source)?.Id ?? 0,
+            collectionId: source.CollectionId);
         command.Redo();
         History.Push(command);
 
@@ -997,7 +998,8 @@ public sealed partial class EditorSession
                 DuplicateName(source.Name, Scene.Objects.Select(o => o.Name)),
                 $"Duplicate {source.Name}",
                 Scene.IndexOf(source.Id) + 1,
-                copyOf.GetValueOrDefault(parent, parent));
+                copyOf.GetValueOrDefault(parent, parent),
+                source.CollectionId);
 
             command.Redo();
             if (source.Modifiers.Count > 0)
@@ -1021,6 +1023,7 @@ public sealed partial class EditorSession
 
             int parent = Scene.ParentOf(source)?.Id ?? 0;
             copy.ParentId = copyOf.GetValueOrDefault(parent, parent);
+            copy.CollectionId = source.CollectionId;
 
             var command = new AddLightCommand(Scene, copy, $"Duplicate {source.Name}");
             command.Redo();
@@ -1691,8 +1694,9 @@ public sealed partial class EditorSession
             Transform = source.Transform.Translated(offset),
         });
 
-        // Under the same parent; held where it lands once it is in the level.
+        // Under the same parent and in the same collection; held where it lands once it is in the level.
         copy.ParentId = Scene.ParentOf(source)?.Id ?? 0;
+        copy.CollectionId = source.CollectionId;
 
         var command = new AddLightCommand(Scene, copy, $"Duplicate {source.Name}");
         command.Redo();
@@ -1838,7 +1842,7 @@ public sealed partial class EditorSession
     /// </summary>
     public bool SetObjectVisible(int objectId, bool visible)
     {
-        if (Scene.Find(objectId) is not { } target || target.Visible == visible)
+        if (Scene.Find(objectId) is not { } target || target.OwnVisible == visible)
         {
             return false;
         }
@@ -1875,7 +1879,7 @@ public sealed partial class EditorSession
     /// </summary>
     public bool SetObjectLocked(int objectId, bool locked)
     {
-        if (Scene.Find(objectId) is not { } target || target.Locked == locked)
+        if (Scene.Find(objectId) is not { } target || target.OwnLocked == locked)
         {
             return false;
         }
@@ -1903,21 +1907,29 @@ public sealed partial class EditorSession
         return true;
     }
 
-    /// <summary>Unlocks every locked object and light. Returns how many there were.</summary>
+    /// <summary>Unlocks every locked object, light and collection. Returns how many there were.</summary>
     public int UnlockAll()
     {
         int unlocked = 0;
-        foreach (VoxelObject o in Scene.Objects.Where(o => o.Locked))
+        foreach (VoxelObject o in Scene.Objects.Where(o => o.OwnLocked))
         {
             o.Locked = false;
             unlocked++;
         }
 
-        foreach (SceneLight light in Scene.Lights.Where(l => l.Locked))
+        foreach (SceneLight light in Scene.Lights.Where(l => l.OwnLocked))
         {
             light.Locked = false;
             unlocked++;
         }
+
+        foreach (SceneCollection collection in Scene.Collections.Where(c => c.Locked))
+        {
+            collection.Locked = false;
+            unlocked++;
+        }
+
+        Scene.RefreshCollections();
 
         if (unlocked > 0)
         {
@@ -1927,18 +1939,26 @@ public sealed partial class EditorSession
         return unlocked;
     }
 
-    /// <summary>Shows every hidden object. Returns how many there were.</summary>
+    /// <summary>Shows every hidden object, and every hidden collection. Returns how many there were.</summary>
     public int ShowAllObjects()
     {
         int shown = 0;
         foreach (VoxelObject o in Scene.Objects)
         {
-            if (!o.Visible)
+            if (!o.OwnVisible)
             {
                 o.Visible = true;
                 shown++;
             }
         }
+
+        foreach (SceneCollection collection in Scene.Collections.Where(c => !c.Visible))
+        {
+            collection.Visible = true;
+            shown++;
+        }
+
+        Scene.RefreshCollections();
 
         if (shown > 0)
         {
@@ -2002,7 +2022,8 @@ public sealed partial class EditorSession
             DuplicateName(source.Name, Scene.Objects.Select(o => o.Name)),
             $"Duplicate {source.Name}",
             Scene.IndexOf(source.Id) + 1,
-            Scene.ParentOf(source)?.Id ?? 0);
+            Scene.ParentOf(source)?.Id ?? 0,
+            source.CollectionId);
 
         command.Redo();
         if (source.Modifiers.Count > 0)

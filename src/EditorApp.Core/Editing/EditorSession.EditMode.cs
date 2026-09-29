@@ -316,7 +316,8 @@ public sealed partial class EditorSession
             DuplicateName(edited.Name, Scene.Objects.Select(o => o.Name)),
             "Separate",
             Scene.IndexOf(edited.Id) + 1,
-            Scene.ParentOf(edited)?.Id ?? 0);
+            Scene.ParentOf(edited)?.Id ?? 0,
+            edited.CollectionId);
         create.Redo();
 
         // Creating it took focus; Edit Mode stays in the object it was in.

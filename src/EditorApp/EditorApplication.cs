@@ -1330,6 +1330,10 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.Search when !IsDragging(): CommandSearch.Open(); break;
 
             // At the mouse, where what is picked will be set down.
+            case EditorAction.MoveToCollection when !IsDragging() && _input is { Mice.Count: > 0 } mice:
+                CollectionMenu.Open(mice.Mice[0].Position);
+                break;
+
             case EditorAction.AddMenu when !IsDragging() && _input is { Mice.Count: > 0 } input:
                 AddMenu.Open(input.Mice[0].Position);
                 break;
@@ -1991,6 +1995,7 @@ public sealed class EditorApplication : IDisposable
             }),
             _preferences.RecentCommands);
         ParentMenu.DrawPopup(_session);
+        CollectionMenu.DrawPopup(_session);
         ColourAdjustWindow.Draw(_session);
         _renderWindow?.Draw(_session, RenderImageCamera);
         RenderWindow.DrawDialogs();

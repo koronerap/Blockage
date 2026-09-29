@@ -103,6 +103,11 @@ public sealed class LevelManifest
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? Parent { get; set; }
 
+        /// <summary>The <see cref="CollectionEntry.Id"/> it is in; absent at the top.</summary>
+        [JsonPropertyName("collection")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Collection { get; set; }
+
         /// <summary>Written only when true; absent in files from before there was a selection.</summary>
         [JsonPropertyName("selected")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -240,6 +245,35 @@ public sealed class LevelManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LightEntry[]? Lights { get; set; }
 
+    /// <summary>The level's collections, each after the one it is inside; absent for none.</summary>
+    [JsonPropertyName("collections")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CollectionEntry[]? Collections { get; set; }
+
+    /// <summary>One collection and its three switches.</summary>
+    public sealed class CollectionEntry
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "Collection";
+
+        /// <summary>The <see cref="Id"/> of the collection it is inside; absent at the top.</summary>
+        [JsonPropertyName("parent")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Parent { get; set; }
+
+        [JsonPropertyName("visible")]
+        public bool Visible { get; set; } = true;
+
+        [JsonPropertyName("locked")]
+        public bool Locked { get; set; }
+
+        [JsonPropertyName("export")]
+        public bool Export { get; set; } = true;
+    }
+
     /// <summary>The level's cameras; absent for none.</summary>
     [JsonPropertyName("cameras")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -331,6 +365,11 @@ public sealed class LevelManifest
         [JsonPropertyName("parent")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? Parent { get; set; }
+
+        /// <summary>The <see cref="CollectionEntry.Id"/> it is in; absent at the top.</summary>
+        [JsonPropertyName("collection")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Collection { get; set; }
 
         [JsonPropertyName("selected")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

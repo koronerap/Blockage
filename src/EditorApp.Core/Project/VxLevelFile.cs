@@ -121,6 +121,15 @@ public static class VxLevelFile
             Active = scene.Focus?.Id,
             Render = WriteRender(scene.RenderSettings),
             Cameras = scene.Cameras.Count > 0 ? [.. scene.Cameras.Select(WriteCamera)] : null,
+            Collections = scene.Collections.Count > 0 ? [.. scene.Collections.Select(c => new LevelManifest.CollectionEntry
+            {
+                Id = c.Id,
+                Name = c.Name,
+                Parent = c.ParentId == 0 ? null : c.ParentId,
+                Visible = c.Visible,
+                Locked = c.Locked,
+                Export = c.Export,
+            })] : null,
             ActiveCamera = scene.ActiveCamera?.Id,
             Materials = scene.Palette.Materials().Any()
                 ? [.. scene.Palette.Materials().Select(m => new LevelManifest.MaterialEntry
@@ -154,10 +163,11 @@ public static class VxLevelFile
                     o.Transform.Rotation.W,
                 ],
                 Chunks = [.. coordinates.Select(c => new[] { c.X, c.Y, c.Z })],
-                Visible = o.Visible,
+                Visible = o.OwnVisible,
                 VoxelSize = o.VoxelSize,
-                Locked = o.Locked,
+                Locked = o.OwnLocked,
                 Parent = scene.ParentOf(o)?.Id,
+                Collection = scene.FindCollection(o.CollectionId)?.Id,
                 Selected = scene.IsSelected(o.Id),
                 Modifiers = o.Modifiers.Count == 0 ? null : [.. o.Modifiers.Select(m => new LevelManifest.ModifierEntry
                 {
@@ -331,6 +341,27 @@ public static class VxLevelFile
         var byFileId = new Dictionary<int, VoxelObject>();
         var parented = new List<(IPlaceable Child, int ParentFileId)>();
 
+        // Collections first, so what is read after can go into them; their parents once all exist.
+        var collectionOf = new Dictionary<int, int>();
+        foreach (LevelManifest.CollectionEntry entry in manifest.Collections ?? [])
+        {
+            SceneCollection collection = scene.AddCollection(string.IsNullOrWhiteSpace(entry.Name) ? "Collection" : entry.Name, 0);
+            collection.Visible = entry.Visible;
+            collection.Locked = entry.Locked;
+            collection.Export = entry.Export;
+            collectionOf.TryAdd(entry.Id, collection.Id);
+        }
+
+        foreach (LevelManifest.CollectionEntry entry in manifest.Collections ?? [])
+        {
+            if (entry.Parent is { } parent && collectionOf.TryGetValue(parent, out int parentId) && collectionOf.TryGetValue(entry.Id, out int id))
+            {
+                scene.MoveCollection(id, parentId);
+            }
+        }
+
+        var collected = new List<(IPlaceable Thing, int CollectionFileId)>();
+
         // An empty list is a level with nothing in it; only a missing one is version 1's single grid.
         if (manifest.Objects is { } objects)
         {
@@ -348,6 +379,11 @@ public static class VxLevelFile
 
                 added.Visible = entry.Visible;
                 added.Locked = entry.Locked;
+                if (entry.Collection is { } inCollection)
+                {
+                    collected.Add((added, inCollection));
+                }
+
                 if (entry.Modifiers is { Length: > 0 } modifiers)
                 {
                     added.SetModifiers(modifiers.Select(ReadModifier));
@@ -385,6 +421,11 @@ public static class VxLevelFile
                     scene.Select(light.Id);
                 }
 
+                if (entry.Collection is { } inCollection)
+                {
+                    collected.Add((light, inCollection));
+                }
+
                 if (entry.Parent is { } parent)
                 {
                     parented.Add((light, parent));
@@ -394,6 +435,14 @@ public static class VxLevelFile
         else
         {
             scene.AddDefaultSun();
+        }
+
+        foreach ((IPlaceable thing, int collectionFileId) in collected)
+        {
+            if (collectionOf.TryGetValue(collectionFileId, out int collectionId))
+            {
+                scene.SetCollection(thing.Id, collectionId);
+            }
         }
 
         // A parent that is not there, or that would close a loop, is simply no parent.
@@ -449,8 +498,9 @@ public static class VxLevelFile
             Range = light.Range,
             SpotAngle = light.SpotAngle,
             SpotBlend = light.SpotBlend,
-            Visible = light.Visible,
-            Locked = light.Locked,
+            Visible = light.OwnVisible,
+            Locked = light.OwnLocked,
+            Collection = scene.FindCollection(light.CollectionId)?.Id,
             Parent = scene.ParentOf(light)?.Id,
             Selected = scene.IsSelected(light.Id),
         };
