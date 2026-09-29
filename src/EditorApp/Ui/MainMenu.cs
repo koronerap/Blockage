@@ -284,6 +284,18 @@ public static class MainMenu
                 ImGui.EndMenu();
             }
 
+            if (ImGui.MenuItem("Turntable, Sprites and Cameras..."))
+            {
+                view.RenderOutputs();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("The level turning, as a GIF, PNGs or an MP4; a sheet of sprites from all round it; a picture from every camera.");
+            }
+
+            ImGui.Separator();
+
             if (ImGui.MenuItem("Save Viewport Image..."))
             {
                 view.SaveViewportImage();

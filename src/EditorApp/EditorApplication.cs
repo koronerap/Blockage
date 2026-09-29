@@ -84,6 +84,7 @@ public sealed class EditorApplication : IDisposable
     private LightAimInteraction? _aim;
     private SelectInteraction? _select;
     private RenderWindow? _renderWindow;
+    private RenderOutputsWindow? _outputsWindow;
 
     /// <summary>
     /// The camera the view was put at by looking through it, and the view as it stood before, to go
@@ -254,6 +255,7 @@ public sealed class EditorApplication : IDisposable
         _aim = new LightAimInteraction(_session);
         _select = new SelectInteraction(_session);
         _renderWindow = new RenderWindow(_gl);
+        _outputsWindow = new RenderOutputsWindow(_gl);
         CameraPropertiesPanel.LookThrough = LookThrough;
         CameraPropertiesPanel.MoveToView = camera => _session.SetCameraToView(camera.Id, ViewAsCamera());
         _viewportRender = new ViewportRender(_gl);
@@ -1992,6 +1994,8 @@ public sealed class EditorApplication : IDisposable
         ColourAdjustWindow.Draw(_session);
         _renderWindow?.Draw(_session, RenderImageCamera);
         RenderWindow.DrawDialogs();
+        _outputsWindow?.Draw(_session, RenderImageCamera);
+        RenderOutputsWindow.DrawDialogs();
         ViewportShotBrowser.Draw();
         AddMenu.DrawPopup();
         ViewportMenu.Draw(new ViewportMenuActions { Session = _session, Run = Run, Viewport = View });
@@ -2304,6 +2308,7 @@ public sealed class EditorApplication : IDisposable
         FrameFocused = FrameFocused,
         RenderImage = () => _renderWindow?.Start(_session, RenderImageCamera()),
         ViewCamera = ToggleCameraView,
+        RenderOutputs = () => _outputsWindow?.Open(),
         CameraToView = CameraToView,
         SaveViewportImage = () => ViewportShotBrowser.Show(FileBrowserMode.Save, "Save the viewport as an image", ".png", null, _session.ProjectName, path => _viewportShotPath = path),
         LookAtCenter = () => _camera.LookAt(Vector3.Zero),
@@ -2483,6 +2488,7 @@ public sealed class EditorApplication : IDisposable
 
         _imgui?.Dispose();
         _renderWindow?.Dispose();
+        _outputsWindow?.Dispose();
         _viewportRender?.Dispose();
         _renderer?.Dispose();
         _input?.Dispose();

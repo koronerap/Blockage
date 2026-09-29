@@ -16,6 +16,9 @@ public sealed class ViewActions
     /// <summary>The viewport as it is, without overlays or gizmos, to a PNG.</summary>
     public Action SaveViewportImage { get; init; } = () => { };
 
+    /// <summary>The window for turntables, sprite sheets and every camera's picture.</summary>
+    public Action RenderOutputs { get; init; } = () => { };
+
     /// <summary>Numpad 0: through the camera renders are seen from, and back.</summary>
     public Action ViewCamera { get; init; } = () => { };
 
