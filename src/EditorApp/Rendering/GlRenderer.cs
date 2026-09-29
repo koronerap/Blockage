@@ -193,6 +193,51 @@ public sealed class GlRenderer : IDisposable
         }
     }
 
+    /// <summary>What each palette entry is made of, a texel each, for the voxel shader to look up.</summary>
+    private uint _materialTexture;
+    private Palette? _materialsOf;
+    private int _materialsRevision = -1;
+
+    /// <summary>Puts the palette's materials on the GPU, when they have changed since last time.</summary>
+    private unsafe void UploadMaterials(Palette palette)
+    {
+        if (_materialTexture == 0)
+        {
+            _materialTexture = _gl.GenTexture();
+            _gl.BindTexture(TextureTarget.Texture2D, _materialTexture);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        }
+
+        if (ReferenceEquals(palette, _materialsOf) && palette.MaterialRevision == _materialsRevision)
+        {
+            return;
+        }
+
+        _materialsOf = palette;
+        _materialsRevision = palette.MaterialRevision;
+
+        var texels = new byte[Palette.Size * 4];
+        for (int i = 0; i < Palette.Size; i++)
+        {
+            VoxelMaterial m = palette.Material(i);
+            texels[(i * 4) + 0] = (byte)MathF.Round(m.Emission * 255f);
+            texels[(i * 4) + 1] = (byte)MathF.Round(m.Metallic * 255f);
+            texels[(i * 4) + 2] = (byte)MathF.Round(m.Smoothness * 255f);
+            texels[(i * 4) + 3] = (byte)MathF.Round(m.Opacity * 255f);
+        }
+
+        _gl.BindTexture(TextureTarget.Texture2D, _materialTexture);
+        fixed (byte* data = texels)
+        {
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, Palette.Size, 1, 0, PixelFormat.Rgba, PixelType.UnsignedByte, data);
+        }
+
+        _gl.BindTexture(TextureTarget.Texture2D, 0);
+    }
+
     private static VoxelObject? FindObject(VoxelScene scene, int id)
     {
         foreach (VoxelObject o in scene.Objects)
@@ -343,6 +388,13 @@ public sealed class GlRenderer : IDisposable
         bool wireframe = Lighting.Mode == ShadingMode.Wireframe;
 
         _voxelShader.Use();
+        UploadMaterials(scene.Palette);
+        _gl.ActiveTexture(TextureUnit.Texture1);
+        _gl.BindTexture(TextureTarget.Texture2D, _materialTexture);
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _voxelShader.SetInt("uMaterials", 1);
+        _voxelShader.SetVector3("uCameraPosition", camera.Position);
+        _voxelShader.SetInt("uPass", 2);
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
         _voxelShader.SetInt("uUnlit", Lighting.IsLit ? 0 : SolidLighting == SolidLighting.Flat ? 2 : 1);
         UploadLights(scene);
@@ -383,7 +435,21 @@ public sealed class GlRenderer : IDisposable
             _gl.Disable(EnableCap.CullFace);
         }
 
+        // Solid faces, then — when anything is see-through — the glass over them, blended and
+        // writing no depth, so what is behind it still shows.
+        _voxelShader.SetInt("uPass", blended ? 2 : 0);
         DrawObjects(scene, frustum, count: true);
+
+        if (!blended && scene.Palette.AnyTransparent)
+        {
+            _gl.Enable(EnableCap.Blend);
+            _gl.BlendFuncSeparate(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha, BlendingFactor.Zero, BlendingFactor.One);
+            _gl.DepthMask(false);
+            _voxelShader.SetInt("uPass", 1);
+            DrawObjects(scene, frustum, count: false);
+            _gl.DepthMask(true);
+            _gl.Disable(EnableCap.Blend);
+        }
 
         if (blended)
         {
@@ -571,5 +637,9 @@ public sealed class GlRenderer : IDisposable
         _gl.DeleteVertexArray(_emptyVao);
         _voxelShader.Dispose();
         _lineShader.Dispose();
+        if (_materialTexture != 0)
+        {
+            _gl.DeleteTexture(_materialTexture);
+        }
     }
 }

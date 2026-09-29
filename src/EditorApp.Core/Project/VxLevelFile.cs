@@ -119,6 +119,16 @@ public static class VxLevelFile
             Lights = [.. scene.Lights.Select(light => WriteLight(scene, light))],
             Ambient = scene.Ambient,
             Active = scene.Focus?.Id,
+            Materials = scene.Palette.Materials().Any()
+                ? [.. scene.Palette.Materials().Select(m => new LevelManifest.MaterialEntry
+                {
+                    Index = m.Index,
+                    Emission = m.Material.Emission,
+                    Metallic = m.Material.Metallic,
+                    Roughness = m.Material.Roughness,
+                    Opacity = m.Material.Opacity,
+                })]
+                : null,
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
 
@@ -299,6 +309,13 @@ public static class VxLevelFile
 
         var scene = new VoxelScene();
         scene.ReplacePalette(LevelManifest.DecodePalette(manifest.Palette, manifest.SavedCustomSlots));
+        foreach (LevelManifest.MaterialEntry material in manifest.Materials ?? [])
+        {
+            if (material.Index > Palette.EmptyIndex && material.Index < Palette.Size)
+            {
+                scene.Palette.SetMaterial(material.Index, VoxelMaterial.Of(material.Emission, material.Metallic, material.Roughness, material.Opacity));
+            }
+        }
 
         // Before version 6 the whole level had one voxel size — absent before version 4, where one
         // voxel was always one unit — and positions were counted in those voxels. Both move onto

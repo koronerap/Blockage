@@ -39,6 +39,11 @@ public sealed record ExportOptions
         ? AtlasTexture.EncodePng(atlas, mesh, palette)
         : PaletteTexture.EncodePng(palette);
 
+    /// <summary>A texture laid out as the colour one is, each entry's texel what <paramref name="texel"/> says: a material channel.</summary>
+    public byte[] EncodeChannel(ExportMesh mesh, Palette palette, Func<int, Color32> texel) => Atlas is { } atlas
+        ? AtlasTexture.EncodePng(atlas, mesh, texel)
+        : PaletteTexture.EncodePng(palette, texel);
+
     public string ImportNotes() => Atlas is { } atlas
         ? AtlasTexture.ImportNotes(atlas)
         : PaletteTexture.ImportNotes;

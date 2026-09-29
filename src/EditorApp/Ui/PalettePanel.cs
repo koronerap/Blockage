@@ -185,6 +185,11 @@ public sealed class PalettePanel
 
         DrawActiveRow(session, palette);
 
+        if (Props.Section("Material", openByDefault: false))
+        {
+            DrawMaterial(session, palette);
+        }
+
         if (Props.Section("Custom"))
         {
             DrawSavedSwatches(session, palette);
@@ -196,6 +201,60 @@ public sealed class PalettePanel
         }
 
         DrawLibraryEditPopup(session, palette);
+    }
+
+    /// <summary>The entry a material drag started on, and what its material was then; null between drags.</summary>
+    private (int Index, VoxelMaterial Before)? _materialEdit;
+
+    /// <summary>
+    /// What the colour in hand is made of: how it glows, how metallic, how rough, how see-through.
+    /// It belongs to the colour, so every voxel painted with it has it, and it goes to the game.
+    /// </summary>
+    private void DrawMaterial(EditorSession session, Palette palette)
+    {
+        int index = session.ActiveColorIndex;
+        VoxelMaterial material = palette.Material(index);
+
+        float emission = material.Emission;
+        float metallic = material.Metallic;
+        float roughness = material.Roughness;
+        float opacity = material.Opacity;
+
+        bool changed = Props.Slider("Emission", "material-emission", ref emission, 0f, 1f, "%.2f");
+        Hint("Its own light, whatever lights it: lamps, screens, lava.");
+        changed |= Props.Slider("Metallic", "material-metallic", ref metallic, 0f, 1f, "%.2f");
+        Hint("A metal reflects in its own colour.");
+        changed |= Props.Slider("Roughness", "material-roughness", ref roughness, 0f, 1f, "%.2f");
+        Hint("1 matte, 0 a sharp highlight.");
+        changed |= Props.Slider("Opacity", "material-opacity", ref opacity, 1f - VoxelMaterial.MaxTransparency, 1f, "%.2f");
+        Hint("Below 1 it lets light through: glass, water, ice.");
+
+        if (changed)
+        {
+            _materialEdit ??= (index, material);
+            session.SetMaterial(index, VoxelMaterial.Of(emission, metallic, roughness, opacity));
+        }
+
+        if (!material.IsPlain && Props.Buttons(string.Empty, "material-plain", "Back to plain") == 0)
+        {
+            session.SetMaterial(index, VoxelMaterial.Plain);
+            session.PushMaterialEdit(index, material);
+        }
+
+        // One drag, one undo step.
+        if (_materialEdit is { } edit && !ImGui.IsAnyItemActive())
+        {
+            session.PushMaterialEdit(edit.Index, edit.Before);
+            _materialEdit = null;
+        }
+    }
+
+    private static void Hint(string text)
+    {
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(text);
+        }
     }
 
     private void DrawActiveRow(EditorSession session, Palette palette)

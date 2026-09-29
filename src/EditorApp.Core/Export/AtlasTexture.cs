@@ -22,7 +22,11 @@ public static class AtlasTexture
     public const string DefaultFileName = "basecolor.png";
 
     /// <summary>Row-major RGBA pixels, top row first.</summary>
-    public static byte[] CreateRgba(UvAtlas atlas, ExportMesh mesh, Palette palette)
+    public static byte[] CreateRgba(UvAtlas atlas, ExportMesh mesh, Palette palette) =>
+        CreateRgba(atlas, mesh, index => MaterialTextures.BaseColour(palette, index));
+
+    /// <summary>The same islands, each cell filled with what <paramref name="texel"/> says for its palette entry.</summary>
+    public static byte[] CreateRgba(UvAtlas atlas, ExportMesh mesh, Func<int, Color32> texel)
     {
         int width = atlas.Width;
         int height = atlas.Height;
@@ -53,7 +57,7 @@ public static class AtlasTexture
             {
                 for (int i = 0; i < cells.Width; i++)
                 {
-                    Color32 color = palette[cells.At(i, j)];
+                    Color32 color = texel(cells.At(i, j));
                     (int left, int top, int cellWidth, int cellHeight) = CellRect(island, cells, i, j);
 
                     for (int y = top; y < top + cellHeight; y++)
@@ -183,6 +187,9 @@ public static class AtlasTexture
 
     public static byte[] EncodePng(UvAtlas atlas, ExportMesh mesh, Palette palette) =>
         PngWriter.EncodeRgba(CreateRgba(atlas, mesh, palette), atlas.Width, atlas.Height);
+
+    public static byte[] EncodePng(UvAtlas atlas, ExportMesh mesh, Func<int, Color32> texel) =>
+        PngWriter.EncodeRgba(CreateRgba(atlas, mesh, texel), atlas.Width, atlas.Height);
 
     /// <summary>Import settings, written beside the mesh and shown in the export dialog.</summary>
     public static string ImportNotes(UvAtlas atlas) =>

@@ -40,9 +40,15 @@ public static class Shaders
         out vec3 vLocal;
         out vec3 vLocalNormal;
 
+        // The palette entry the face was painted with, which says what it is made of.
+        flat out int vPalette;
+
         void main()
         {
-            int face = int(aFace + 0.5);
+            // The attribute carries the face and the palette entry both: face + 8 x entry.
+            int faceAndEntry = int(aFace + 0.5);
+            int face = faceAndEntry % 8;
+            vPalette = faceAndEntry / 8;
             vec4 world = uModel * vec4(aPosition, 1.0);
 
             // Rotated into the world, or turning an object would leave its shading behind. The voxel
@@ -71,6 +77,18 @@ public static class Shaders
         in float vFaceShade;
         in vec3 vLocal;
         in vec3 vLocalNormal;
+        flat in int vPalette;
+
+        // What each palette entry is made of, a texel each: glow, metal, smoothness, opacity. A head
+        // that never binds it reads (0, 0, 0, 1) everywhere - the plain material, matte and solid.
+        uniform sampler2D uMaterials;
+
+        // Which faces this draw is for: 0 the solid ones, 1 the see-through ones, drawn blended after
+        // them, 2 every face - X-Ray and the wireframe, which are blended already.
+        uniform int uPass;
+
+        // Where the eye is, for the highlight a smooth face catches.
+        uniform vec3 uCameraPosition;
 
         // 0 = lit, 1 = unlit (the per-face shade), 2 = flat (no shade at all).
         uniform int uUnlit;
@@ -140,6 +158,44 @@ public static class Shaders
             return total;
         }
 
+        /// The highlight each light puts on a face seen from `toEye`: tight on a smooth face, wide and
+        /// faint on a rough one.
+        vec3 highlight(vec3 normal, vec3 toEye, float smoothness)
+        {
+            vec3 total = vec3(0.0);
+            float power = mix(4.0, 256.0, smoothness * smoothness);
+
+            for (int i = 0; i < uLightCount; i++)
+            {
+                vec3 towards;
+                float strength = 1.0;
+
+                if (uLightPosition[i].w == 0.0)
+                {
+                    towards = uLightPosition[i].xyz;
+                }
+                else
+                {
+                    vec3 offset = uLightPosition[i].xyz - vWorldPosition;
+                    float dist = length(offset);
+                    towards = offset / max(dist, 0.0001);
+
+                    float range = uLightShape[i].x;
+                    float reach = clamp(1.0 - (dist * dist) / (range * range), 0.0, 1.0);
+                    strength = reach * reach;
+                    strength *= smoothstep(uLightShape[i].y, uLightShape[i].z, dot(-towards, uLightDirection[i]));
+                }
+
+                if (dot(normal, towards) > 0.0)
+                {
+                    vec3 halfway = normalize(towards + toEye);
+                    total += uLightColor[i] * (pow(max(dot(normal, halfway), 0.0), power) * strength);
+                }
+            }
+
+            return total;
+        }
+
         /// How much of a line of the lattice this pixel is: 1 on one, 0 a pixel and a half away.
         float latticeLine()
         {
@@ -153,16 +209,43 @@ public static class Shaders
 
         void main()
         {
+            vec4 material = texelFetch(uMaterials, ivec2(vPalette, 0), 0);
+            float opacity = material.a;
+
+            // Solid faces first, then the see-through ones over them: the pass a face is not for, it
+            // leaves alone.
+            if ((uPass == 0 && opacity < 0.999) || (uPass == 1 && opacity >= 0.999))
+            {
+                discard;
+            }
+
             vec3 albedo = uColorMode == 1 ? uSingleColor : uColorMode == 2 ? uObjectColor : vColor.rgb;
             vec3 light = uUnlit == 2 ? vec3(1.0) : uUnlit != 0 ? vec3(vFaceShade) : lightArriving(normalize(vNormal));
             vec3 lit = albedo * light;
+
+            // A metal's colour is in its reflection, not its diffuse; a smooth face catches the lights
+            // as a highlight. Only lit, where there are lights to catch.
+            if (uUnlit == 0 && (material.g > 0.0 || material.b > 0.0))
+            {
+                vec3 normal = normalize(vNormal);
+                vec3 toEye = normalize(uCameraPosition - vWorldPosition);
+                vec3 reflectance = mix(vec3(0.04), albedo, material.g);
+
+                // With no surroundings to reflect, a metal would go black between its highlights; the
+                // ambient stands in for them, so it reads as metal rather than as a hole.
+                vec3 surroundings = vec3(uAmbient + 0.35) * material.g * (0.5 + (0.5 * material.b));
+                lit = lit * (1.0 - (material.g * 0.45)) + (reflectance * ((highlight(normal, toEye, material.b) * (0.25 + material.b)) + surroundings));
+            }
+
+            // Its own light, whatever lights it.
+            lit += albedo * material.r * 1.5;
 
             // Lift towards white rather than scaling: multiplying leaves an already-white model
             // exactly as it was, which is the one case that has to read as focused.
             vec3 highlighted = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
             lit = mix(lit, highlighted, uFocusStrength);
 
-            float alpha = uXRay > 0.0 ? uXRay : vColor.a;
+            float alpha = uXRay > 0.0 ? uXRay * opacity : vColor.a * opacity;
 
             if (uWireOnly != 0)
             {

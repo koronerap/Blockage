@@ -51,7 +51,8 @@ public static class EditMesher
 
                         // Per face, not per voxel: an edge voxel can carry a different colour on
                         // each side it shows.
-                        EmitFace(builder, worldPosition, face, palette[chunk.GetFace(x, y, z, face)].Rgba);
+                        byte index = chunk.GetFace(x, y, z, face);
+                        EmitFace(builder, worldPosition, face, palette[index].Rgba, index);
                     }
                 }
             }
@@ -81,7 +82,7 @@ public static class EditMesher
         return world.IsSolid(worldPosition + offset);
     }
 
-    private static void EmitFace(MeshBuilder builder, Int3 voxel, Face face, uint rgba)
+    private static void EmitFace(MeshBuilder builder, Int3 voxel, Face face, uint rgba, byte paletteIndex)
     {
         Vector3 basePosition = voxel.ToVector3();
 
@@ -91,7 +92,7 @@ public static class EditMesher
             basePosition + FaceInfo.Corner(face, 2).ToVector3(),
             basePosition + FaceInfo.Corner(face, 3).ToVector3(),
             rgba,
-            (int)face);
+            MeshVertex.Pack(face, paletteIndex));
     }
 
     /// <summary>

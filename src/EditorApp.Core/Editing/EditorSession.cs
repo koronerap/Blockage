@@ -2389,6 +2389,35 @@ public sealed partial class EditorSession
         return used;
     }
 
+    /// <summary>What a palette entry is made of, changed live — a drag — without an undo step until <see cref="PushMaterialEdit"/>.</summary>
+    public void SetMaterial(int index, VoxelMaterial material)
+    {
+        if (index == Palette.EmptyIndex)
+        {
+            return;
+        }
+
+        int revision = Scene.Palette.MaterialRevision;
+        Scene.Palette.SetMaterial(index, material);
+        if (Scene.Palette.MaterialRevision != revision)
+        {
+            HasUnsavedChanges = true;
+        }
+    }
+
+    /// <summary>Records a finished change to an entry's material as one undo step.</summary>
+    public bool PushMaterialEdit(int index, VoxelMaterial before)
+    {
+        if (index == Palette.EmptyIndex || Scene.Palette.Material(index) == before)
+        {
+            return false;
+        }
+
+        History.Push(new MaterialEditCommand(Scene.Palette, index, before, Scene.Palette.Material(index)));
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     /// <summary>Records a finished palette edit as one undo step.</summary>
     public void PushPaletteEdit(int index, Color32 before, Color32 after)
     {

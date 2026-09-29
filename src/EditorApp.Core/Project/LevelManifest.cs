@@ -138,6 +138,29 @@ public sealed class LevelManifest
         public bool Enabled { get; set; } = true;
     }
 
+    /// <summary>The palette entries that are not plain, with what they are made of; absent for none.</summary>
+    [JsonPropertyName("materials")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MaterialEntry[]? Materials { get; set; }
+
+    public sealed class MaterialEntry
+    {
+        [JsonPropertyName("index")]
+        public int Index { get; set; }
+
+        [JsonPropertyName("emission")]
+        public float Emission { get; set; }
+
+        [JsonPropertyName("metallic")]
+        public float Metallic { get; set; }
+
+        [JsonPropertyName("roughness")]
+        public float Roughness { get; set; } = 1f;
+
+        [JsonPropertyName("opacity")]
+        public float Opacity { get; set; } = 1f;
+    }
+
     /// <summary>The <see cref="ObjectEntry.Id"/> of the active object; absent when there was none.</summary>
     [JsonPropertyName("active")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

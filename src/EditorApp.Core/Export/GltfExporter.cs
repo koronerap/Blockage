@@ -38,11 +38,23 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         string textureFileName = options.ResolveTextureFileName();
         byte[] png = options.EncodeTexture(mesh, palette);
 
-        MaterialBuilder material = new MaterialBuilder(MaterialName)
-            .WithDoubleSide(false)
-            .WithMetallicRoughnessShader()
-            .WithMetallicRoughness(0f, 1f)
-            .WithBaseColor(new MemoryImage(png), Vector4.One);
+        // What the colours used are made of: textures only for what some colour has, so a level
+        // without materials exports exactly as it always has.
+        IReadOnlyList<byte> used = mesh.UsedPaletteIndices();
+        bool shiny = used.Any(i => palette.Material(i) is { Metallic: > 0f } or { Smoothness: > 0f });
+        bool glowing = used.Any(i => palette.Material(i).Emission > 0f);
+        bool seeThrough = used.Any(i => palette.Material(i).IsTransparent);
+
+        byte[]? metallicRoughness = shiny ? options.EncodeChannel(mesh, palette, i => MaterialTextures.MetallicRoughness(palette, i)) : null;
+        byte[]? emissive = glowing ? options.EncodeChannel(mesh, palette, i => MaterialTextures.Emissive(palette, i)) : null;
+
+        MaterialBuilder material = Material(MaterialName, png, metallicRoughness, emissive);
+
+        // See-through faces go in a material of their own, blended: the rest stay opaque, which an
+        // engine draws and sorts far more cheaply.
+        MaterialBuilder? glass = seeThrough
+            ? Material(MaterialName + "-transparent", png, metallicRoughness, emissive).WithAlpha(SharpGLTF.Materials.AlphaMode.BLEND)
+            : null;
 
         var scene = new SceneBuilder();
 
@@ -55,17 +67,21 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
             var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexTexture1>(part.Name);
             PrimitiveBuilder<MaterialBuilder, VertexPositionNormal, VertexTexture1, VertexEmpty> primitive =
                 meshBuilder.UsePrimitive(material);
+            PrimitiveBuilder<MaterialBuilder, VertexPositionNormal, VertexTexture1, VertexEmpty>? glassPrimitive =
+                glass is null ? null : meshBuilder.UsePrimitive(glass);
 
-            // Six indices per quad, two triangles.
-            int from = part.FirstQuad * 6;
-            int to = from + (part.QuadCount * 6);
-
-            for (int i = from; i < to; i += 3)
+            for (int quad = part.FirstQuad; quad < part.FirstQuad + part.QuadCount; quad++)
             {
-                primitive.AddTriangle(
-                    Vertex(mesh, mesh.Indices[i]),
-                    Vertex(mesh, mesh.Indices[i + 1]),
-                    Vertex(mesh, mesh.Indices[i + 2]));
+                var target = glassPrimitive is not null && IsSeeThrough(mesh, palette, quad) ? glassPrimitive : primitive;
+
+                // Six indices per quad, two triangles.
+                for (int i = quad * 6; i < (quad * 6) + 6; i += 3)
+                {
+                    target.AddTriangle(
+                        Vertex(mesh, mesh.Indices[i]),
+                        Vertex(mesh, mesh.Indices[i + 1]),
+                        Vertex(mesh, mesh.Indices[i + 2]));
+                }
             }
 
             scene.AddRigidMesh(meshBuilder, Matrix4x4.Identity);
@@ -89,14 +105,33 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
             File.WriteAllBytes(texturePath, png);
             written.Add(texturePath);
 
+            // Each texture under a name of its own beside the colour one: the channel's name added.
+            string stem = Path.GetFileNameWithoutExtension(textureFileName);
+            string extension = Path.GetExtension(textureFileName);
+            string metallicName = $"{stem}-metallic-roughness{extension}";
+            string emissiveName = $"{stem}-emissive{extension}";
+
             var settings = new WriteSettings
             {
                 ImageWriting = ResourceWriteMode.SatelliteFile,
-                ImageWriteCallback = (_, _, _) => textureFileName,
+                ImageWriteCallback = (_, _, image) =>
+                    metallicRoughness is not null && image.Content.Span.SequenceEqual(metallicRoughness) ? metallicName
+                    : emissive is not null && image.Content.Span.SequenceEqual(emissive) ? emissiveName
+                    : textureFileName,
             };
 
             model.Save(path, settings);
             written.Add(path);
+
+            if (metallicRoughness is not null)
+            {
+                written.Add(Path.Combine(directory, metallicName));
+            }
+
+            if (emissive is not null)
+            {
+                written.Add(Path.Combine(directory, emissiveName));
+            }
         }
 
         if (options.WriteImportNotes && !Binary)
@@ -107,6 +142,46 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         }
 
         return new ExportResult(written, mesh.VertexCount, mesh.TriangleCount, mesh.QuadCount);
+    }
+
+    /// <summary>The metallic-roughness material over the colour texture, with the other channels where there are any.</summary>
+    private static MaterialBuilder Material(string name, byte[] colour, byte[]? metallicRoughness, byte[]? emissive)
+    {
+        MaterialBuilder material = new MaterialBuilder(name)
+            .WithDoubleSide(false)
+            .WithMetallicRoughnessShader()
+            .WithBaseColor(new MemoryImage(colour), Vector4.One);
+
+        material = metallicRoughness is null
+            ? material.WithMetallicRoughness(0f, 1f)
+            : material.WithMetallicRoughness(new MemoryImage(metallicRoughness), 1f, 1f);
+
+        if (emissive is not null)
+        {
+            material = material.WithEmissive(new MemoryImage(emissive), Vector3.One);
+        }
+
+        return material;
+    }
+
+    /// <summary>Whether any cell of a quad is a see-through colour.</summary>
+    private static bool IsSeeThrough(ExportMesh mesh, Palette palette, int quad)
+    {
+        if (quad < mesh.QuadCells.Count)
+        {
+            QuadColors cells = mesh.QuadCells[quad];
+            foreach (byte index in cells.Cells)
+            {
+                if (palette.Material(index).IsTransparent)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return quad < mesh.QuadPaletteIndices.Count && palette.Material(mesh.QuadPaletteIndices[quad]).IsTransparent;
     }
 
     private static VertexBuilder<VertexPositionNormal, VertexTexture1, VertexEmpty> Vertex(ExportMesh mesh, int index) =>

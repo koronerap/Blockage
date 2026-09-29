@@ -38,14 +38,18 @@ public static class PaletteTexture
         return new Vector2(u, v);
     }
 
-    /// <summary>Row-major RGBA pixels, top row first.</summary>
-    public static byte[] CreateRgba(Palette palette)
+    /// <summary>Row-major RGBA pixels, top row first: each entry's colour, its opacity in alpha.</summary>
+    public static byte[] CreateRgba(Palette palette) =>
+        CreateRgba(palette, index => MaterialTextures.BaseColour(palette, index));
+
+    /// <summary>The same layout, each block filled with what <paramref name="texel"/> says for its entry.</summary>
+    public static byte[] CreateRgba(Palette palette, Func<int, Color32> texel)
     {
         var pixels = new byte[Width * Height * 4];
 
         for (int index = 0; index < Palette.Size; index++)
         {
-            Color32 color = palette[index];
+            Color32 color = texel(index);
 
             // Index 0 is the empty marker and never appears on a quad, but leaving it transparent
             // would show up as a hole if anyone ever sampled it. Paint it opaque magenta instead so
@@ -77,6 +81,9 @@ public static class PaletteTexture
 
     public static byte[] EncodePng(Palette palette) =>
         PngWriter.EncodeRgba(CreateRgba(palette), Width, Height);
+
+    public static byte[] EncodePng(Palette palette, Func<int, Color32> texel) =>
+        PngWriter.EncodeRgba(CreateRgba(palette, texel), Width, Height);
 
     public static void WritePng(Palette palette, string path) =>
         File.WriteAllBytes(path, EncodePng(palette));

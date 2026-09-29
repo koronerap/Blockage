@@ -40,14 +40,14 @@ public class EditMesherTests
         var seen = new HashSet<int>();
         for (int quad = 0; quad < mesh.QuadCount; quad++)
         {
-            int face = (int)vertices[quad * 4].FaceIndex;
+            int face = (int)vertices[quad * 4].Face;
             Assert.InRange(face, 0, FaceInfo.Count - 1);
             Assert.True(seen.Add(face), $"Face {face} was emitted twice.");
 
             // All four corners of a quad belong to the same face.
             for (int corner = 1; corner < 4; corner++)
             {
-                Assert.Equal(face, (int)vertices[(quad * 4) + corner].FaceIndex);
+                Assert.Equal(face, (int)vertices[(quad * 4) + corner].Face);
             }
 
             // The quad has to actually lie in the plane its index claims: a face index that merely

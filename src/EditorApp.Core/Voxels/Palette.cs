@@ -65,6 +65,44 @@ public sealed class Palette
 
     public ReadOnlySpan<Color32> Colors => _colors;
 
+    private readonly VoxelMaterial[] _materials = new VoxelMaterial[Size];
+
+    /// <summary>What an entry is made of: plain until set.</summary>
+    public VoxelMaterial Material(int index) => _materials[index];
+
+    public void SetMaterial(int index, VoxelMaterial material)
+    {
+        if (index == EmptyIndex)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index), "Index 0 is reserved for empty.");
+        }
+
+        VoxelMaterial clamped = material.Clamped();
+        if (_materials[index] != clamped)
+        {
+            _materials[index] = clamped;
+            MaterialRevision++;
+        }
+    }
+
+    /// <summary>Goes up with every change to a material, so what keeps a copy of them knows it is stale.</summary>
+    public int MaterialRevision { get; private set; }
+
+    /// <summary>Whether any entry lets light through, and so whether see-through faces need drawing apart.</summary>
+    public bool AnyTransparent => _materials.Any(m => m.IsTransparent);
+
+    /// <summary>The entries that are not plain, with what they are.</summary>
+    public IEnumerable<(int Index, VoxelMaterial Material)> Materials()
+    {
+        for (int i = 1; i < Size; i++)
+        {
+            if (!_materials[i].IsPlain)
+            {
+                yield return (i, _materials[i]);
+            }
+        }
+    }
+
     /// <summary>
     /// A custom slot nobody has filled yet. Fully transparent is the marker: every real colour is
     /// written opaque, so no extra bookkeeping is needed and the state survives a save unchanged.
@@ -203,6 +241,7 @@ public sealed class Palette
         var clone = new Palette();
         _colors.CopyTo(clone._colors, 0);
         _customSaved.CopyTo(clone._customSaved, 0);
+        _materials.CopyTo(clone._materials, 0);
         return clone;
     }
 

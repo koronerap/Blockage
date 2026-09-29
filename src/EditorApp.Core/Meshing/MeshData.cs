@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Meshing;
 
@@ -12,6 +13,15 @@ public struct MeshVertex(Vector3 position, uint rgba, float faceIndex)
 {
     public Vector3 Position = position;
     public uint Rgba = rgba;
+
+    /// <summary>A face and the palette entry it was painted with, in the one float the vertex has room for: face + 8 × entry.</summary>
+    public static float Pack(Face face, byte paletteIndex) => (int)face + (paletteIndex * 8);
+
+    /// <summary>Which of the six faces this vertex is on.</summary>
+    public readonly Face Face => (Face)((int)FaceIndex & 7);
+
+    /// <summary>The palette entry the face was painted with — how the renderer finds its material.</summary>
+    public readonly byte PaletteIndex => (byte)((int)FaceIndex >> 3);
 
     /// <summary>
     /// Which of the six faces this vertex belongs to, as a float because that is what a vertex
