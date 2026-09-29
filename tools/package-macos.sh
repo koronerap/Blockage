@@ -46,4 +46,8 @@ else
 fi
 
 codesign --verify --deep --strict "$app"
-ditto -c -k --keepParent "$app" "$out/Blockage-$version-osx-arm64.zip"
+
+# Without the files' extended attributes, which ditto would otherwise keep beside each as a ._ file:
+# the Finder folds those back in, but a plain unzip leaves them in the bundle, and a bundle with
+# files its signature does not list will not open.
+ditto -c -k --norsrc --keepParent "$app" "$out/Blockage-$version-osx-arm64.zip"

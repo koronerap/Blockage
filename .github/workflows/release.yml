@@ -127,7 +127,7 @@ jobs:
           xcrun notarytool submit "$zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple dist/Blockage.app
           rm "$zip"
-          ditto -c -k --keepParent dist/Blockage.app "$zip"
+          ditto -c -k --norsrc --keepParent dist/Blockage.app "$zip"
       - uses: actions/upload-artifact@v7
         with:
           name: macos
