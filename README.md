@@ -39,7 +39,12 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
   clean up loose pieces, halve the resolution or scale a model.
 - **Non-destructive modifiers.** Mirror and Array, shown and exported over the voxels you edit, to
   switch off, change or apply at any time.
-- **Paint face by face.** Brush, bucket and pattern fills, an eyedropper on Alt, a 256-colour palette.
+- **Paint face by face.** Brush, bucket and pattern fills; gradient, noise and dither in two colours;
+  a stencil that lays an image over the view; an eyedropper on Alt; replace a colour everywhere or
+  shift hue, saturation and value.
+- **A palette with materials.** 256 colours, each with its own glow, metal, roughness and glass, shown
+  in the viewport and exported to glTF; palettes in and out as .gpl, .hex and .png (Lospec's too),
+  ramps, and a library of palettes.
 - **Add with Shift+A.** Cubes, spheres, cylinders, cones, stairs, arches, voxel lettering and more;
   ready-made props — crates, barrels, tables, trees — and lights, set down on the surface under the
   cursor and sized afterwards in an *Adjust* panel.
