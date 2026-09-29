@@ -17,6 +17,10 @@
     <Product>Blockage</Product>
     <AssemblyTitle>Blockage</AssemblyTitle>
 
+    <!-- The one place the desktop's version is written; the welcome screen reads it back from the
+         assembly. The phone's ApplicationDisplayVersion (0.1) moves with it. -->
+    <Version>0.1.0</Version>
+
     <!-- Generated, not drawn by hand: the write-icon switch renders it from AppIcon.
          Committed so a build needs no extra step. -->
     <ApplicationIcon>..\..\assets\icon\Blockage.ico</ApplicationIcon>

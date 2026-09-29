@@ -46,20 +46,43 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
     public RecentFiles Recent { get; } = new();
 
+    /// <summary>
+    /// The level as the editor last closed on it. Set by the host; left null for a smoke or
+    /// screenshot run, which keeps nothing.
+    /// </summary>
+    public LastSession? LastSession
+    {
+        get => _lastSession;
+        set
+        {
+            _lastSession = value;
+            LastSessionFound = value?.Read();
+        }
+    }
+
+    private LastSession? _lastSession;
+
+    /// <summary>What the last session left, read once — it is only written as the editor closes.</summary>
+    public LastSessionInfo? LastSessionFound { get; private set; }
+
+    /// <summary>Whether the crash-recovery question is up, or about to be.</summary>
+    public bool IsOfferingRecovery => _offer is not null;
+
     /// <summary>Whether opening and saving add to the recent-files list. Off for smoke and screenshot runs.</summary>
     public bool RemembersRecent { get; set; } = true;
 
     public string WindowTitle =>
         $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} - Blockage";
 
-    public void NewProject() => GuardUnsaved("start a new level", () =>
+    /// <summary>
+    /// A new level from one of the templates — the cube unless another is asked for. Never an empty
+    /// world: with no Place tool there has to be a surface for Extrude to pull on.
+    /// </summary>
+    public void NewProject(LevelTemplate template = LevelTemplate.Cube) => GuardUnsaved("start a new level", () =>
     {
-        // A new level starts as a cube, not an empty world: with no Place tool there has to be a
-        // surface for Extrude to pull on, in every direction.
-        session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
+        session.ReplaceScene(LevelTemplates.Build(template), projectPath: null);
         onWorldReplaced();
-        int side = EditorSession.StarterCubeSize;
-        Report($"New level - {side}x{side}x{side} white cube to extrude from.", isError: false);
+        Report($"New level - {LevelTemplates.DescriptionOf(template)}.", isError: false);
     });
 
     public void OpenProject() => GuardUnsaved("open another level", () =>
@@ -196,6 +219,38 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         }
 
         CanRecover = Autosave?.FindAbandoned().Count > 0;
+    });
+
+    /// <summary>
+    /// Opens the level the editor last closed on, in place of the current one. It keeps the path it
+    /// had, so saving puts it back where it came from, and comes back unsaved if it closed on unsaved
+    /// work — which is exactly the work this is for.
+    /// </summary>
+    public void RecoverLastSession() => GuardUnsaved("recover the last session", () =>
+    {
+        if (LastSession?.Read() is not { } last)
+        {
+            Report("There is no last session to recover.", isError: true);
+            return;
+        }
+
+        try
+        {
+            VoxelScene scene = VxLevelFile.LoadScene(last.LevelPath);
+            session.ReplaceScene(scene, last.ProjectPath);
+            session.HasUnsavedChanges = last.HadUnsavedChanges;
+            onWorldReplaced();
+            Report(
+                last.HadUnsavedChanges
+                    ? $"Recovered the last session: {last.ProjectName}, as it was left - save it to keep it."
+                    : $"Recovered the last session: {last.ProjectName}.",
+                isError: false);
+        }
+        catch (Exception exception)
+        {
+            Report($"Could not recover the last session: {exception.Message}", isError: true);
+            CrashLog.Record($"recovering the last session from {last.LevelPath}", exception);
+        }
     });
 
     /// <summary>True while the discard prompt is waiting for an answer.</summary>

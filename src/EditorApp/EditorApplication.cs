@@ -45,6 +45,11 @@ public sealed class EditorApplication : IDisposable
     private ExportController? _export;
     private MimicraftController? _mimicraft;
     private AutosaveController? _autosave;
+
+    /// <summary>The level as the editor last closed on it, kept at every clean exit. Null for smoke and screenshot runs.</summary>
+    private LastSession? _lastSession;
+
+    private WelcomeActions? _welcomeActions;
     private string _windowTitle = string.Empty;
 
     private Vector2 _previousMousePosition;
@@ -182,7 +187,13 @@ public sealed class EditorApplication : IDisposable
             _renderer.Lighting.Mode = ShadingMode.Unlit;
         }
 
-        _project = new ProjectController(_session, () => _renderer.ResetBuffers());
+        // A level from somewhere else — a template, a file, a recovery — is framed: where the camera
+        // was looking in the last one says nothing about this one.
+        _project = new ProjectController(_session, () =>
+        {
+            _renderer.ResetBuffers();
+            FrameLevel();
+        });
         _export = new ExportController(_session);
         _mimicraft = new MimicraftController(_session);
         _extrude = new ExtrudeInteraction(_session);
@@ -216,6 +227,16 @@ public sealed class EditorApplication : IDisposable
             _project.Autosave = _autosave;
             CrashLog.Crashing += _autosave.WriteBeforeDying;
             _project.OfferRecovery();
+
+            _lastSession = new LastSession();
+            _project.LastSession = _lastSession;
+
+            // Blender's splash: when the editor starts on nothing in particular, and not over the
+            // question about a crash, which comes first.
+            if (_startLevel is null && _preferences.ShowWelcome && !_project.IsOfferingRecovery)
+            {
+                WelcomeScreen.Open();
+            }
         }
 
         if (_input.Mice.Count > 0)
@@ -802,6 +823,13 @@ public sealed class EditorApplication : IDisposable
         if (ImGui.GetIO().WantCaptureKeyboard || CommandSearch.IsOpen)
         {
             return;
+        }
+
+        // A key pressed over the welcome screen puts it away and then does what it does, as in
+        // Blender. Not a modifier on its own: that is the start of a chord, or of a click.
+        if (WelcomeScreen.IsOpen && key is not (Key.ControlLeft or Key.ControlRight or Key.ShiftLeft or Key.ShiftRight or Key.AltLeft or Key.AltRight or Key.SuperLeft or Key.SuperRight))
+        {
+            WelcomeScreen.Dismiss();
         }
 
         // While the look button is held, the letter keys are flying the camera, not picking tools.
@@ -1497,6 +1525,8 @@ public sealed class EditorApplication : IDisposable
         _referencePanel.DrawDialogs();
         ToolOptions.DrawDialogs();
 
+        WelcomeScreen.Draw(_welcomeActions ??= CreateWelcomeActions());
+
         // Before the Parent list: a search that picks "Parent to..." opens it in the same frame.
         CommandSearch.Draw(
             () => SearchCommands.Build(new SearchSources
@@ -1519,6 +1549,40 @@ public sealed class EditorApplication : IDisposable
         {
             _windowTitle = title;
             _window.Title = title;
+        }
+    }
+
+    private WelcomeActions CreateWelcomeActions() => new()
+    {
+        New = template => _project!.NewProject(template),
+        Open = () => _project!.OpenProject(),
+        Recent = () => _project!.Recent.Paths,
+        OpenRecent = path => _project!.OpenRecent(path),
+        LastSession = () => _project!.LastSessionFound,
+        RecoverLastSession = () => _project!.RecoverLastSession(),
+        CanRecoverAutoSave = () => _project!.CanRecover,
+        RecoverAutoSave = () => _project!.OfferRecovery(),
+        OpenUrl = OpenUrl,
+        ShowShortcuts = () =>
+        {
+            if (!ShortcutSheet.IsOpen)
+            {
+                ShortcutSheet.Toggle();
+            }
+        },
+        Preferences = _preferences,
+    };
+
+    /// <summary>Opens a web page in the default browser, saying so in the status bar if it cannot.</summary>
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            using var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+        {
+            ReportLog.Shared.Post($"Could not open {url}: {exception.Message}", ReportKind.Error);
         }
     }
 
@@ -1650,7 +1714,9 @@ public sealed class EditorApplication : IDisposable
 
         // Past the guard, so the user has answered for any unsaved work — kept or thrown away, the
         // autosave is nobody's safety net any more. A crash never reaches this line, which is what
-        // leaves the copy behind to be offered next time.
+        // leaves the copy behind to be offered next time. What was open is kept all the same, as
+        // the last session, for when the answer was the wrong one.
+        _lastSession?.Write(_session);
         _autosave?.CloseCleanly();
 
         SavePreferences();

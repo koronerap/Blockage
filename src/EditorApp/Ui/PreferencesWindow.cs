@@ -191,12 +191,23 @@ public static class PreferencesWindow
             }
         }
 
+        if (Props.Section("Startup"))
+        {
+            bool welcome = p.ShowWelcome;
+            if (Props.Check("Welcome screen", "pref-welcome", "Templates, recent files and recovery", ref welcome))
+            {
+                p.ShowWelcome = welcome;
+                changed = true;
+            }
+        }
+
         return changed | RestoreDefaults(p, d =>
         {
             p.Theme = d.Theme;
             p.Accent = d.Accent;
             p.TextSize = d.TextSize;
             p.MouseHints = d.MouseHints;
+            p.ShowWelcome = d.ShowWelcome;
         });
     }
 

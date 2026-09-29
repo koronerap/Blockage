@@ -1,4 +1,5 @@
 using EditorApp.Core.Editing;
+using EditorApp.Core.Project;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Input;
@@ -125,6 +126,20 @@ public static class SearchCommands
             Problem = () => sources.Project.CanRecover ? null : "No unsaved work was left behind.",
         });
         commands.Add(new("file.mimicraft", "Save for Mimicraft...", EditorActions.File, sources.Mimicraft.Show) { Keywords = "character weapons game export" });
+        commands.Add(new("file.recoverlast", "Recover last session", EditorActions.File, sources.Project.RecoverLastSession)
+        {
+            Keywords = "restore quit closed lost",
+            Problem = () => sources.Project.LastSessionFound is null ? "Nothing has been kept yet." : null,
+        });
+        commands.Add(new("help.welcome", "Welcome screen", EditorActions.Help, WelcomeScreen.Open) { Keywords = "splash start recent templates" });
+
+        foreach (LevelTemplate template in LevelTemplates.All)
+        {
+            commands.Add(new($"file.new.{template}".ToLowerInvariant(), LevelTemplates.NameOf(template), "New", () => sources.Project.NewProject(template))
+            {
+                Keywords = "template level file",
+            });
+        }
         commands.Add(new("file.exit", "Exit", EditorActions.File, sources.Exit) { Keywords = "quit close" });
 
         foreach (string path in sources.Project.Recent.Paths)

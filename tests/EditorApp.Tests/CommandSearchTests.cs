@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Project;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Input;
@@ -403,6 +404,11 @@ public class SearchCommandsTests
 
         Assert.Contains(commands, c => c.Name == "Turn left" && c.Menu == "Object");
         Assert.Contains(commands, c => c.Name == "Keymap preferences");
+
+        // The welcome screen's too: every template, the screen itself, and the last session.
+        Assert.All(LevelTemplates.All, t => Assert.Contains(commands, c => c.Menu == "New" && c.Name == LevelTemplates.NameOf(t)));
+        Assert.Contains(commands, c => c.Id == "help.welcome");
+        Assert.NotNull(commands.Single(c => c.Id == "file.recoverlast").Problem?.Invoke());
     }
 
     [Fact]

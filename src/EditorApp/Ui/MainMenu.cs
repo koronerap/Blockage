@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Core.Project;
 using EditorApp.Input;
 using EditorApp.Rendering;
 using ImGuiNET;
@@ -25,9 +26,24 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("File"))
         {
-            if (ImGui.MenuItem("New", Shortcut.Of(EditorAction.NewLevel)))
+            // Blender's File > New: a template to start from, the cube first as Ctrl+N makes it.
+            if (ImGui.BeginMenu("New"))
             {
-                project.NewProject();
+                foreach (LevelTemplate template in LevelTemplates.All)
+                {
+                    string shortcut = template == LevelTemplate.Cube ? Shortcut.Of(EditorAction.NewLevel) : string.Empty;
+                    if (ImGui.MenuItem(LevelTemplates.NameOf(template), shortcut))
+                    {
+                        project.NewProject(template);
+                    }
+
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip(LevelTemplates.DescriptionOf(template));
+                    }
+                }
+
+                ImGui.EndMenu();
             }
 
             if (ImGui.MenuItem("Open...", Shortcut.Of(EditorAction.Open)))
@@ -42,6 +58,17 @@ public static class MainMenu
             if (ImGui.MenuItem("Recover Unsaved Work...", null, false, project.CanRecover))
             {
                 project.OfferRecovery();
+            }
+
+            // Blender's quit.blend: the level as the editor last closed on it, saved or not.
+            if (ImGui.MenuItem("Recover Last Session", null, false, project.LastSessionFound is not null))
+            {
+                project.RecoverLastSession();
+            }
+
+            if (project.LastSessionFound is { } last && ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip($"{last.ProjectName}, as Blockage last closed on it.");
             }
 
             ImGui.Separator();
@@ -149,6 +176,11 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("Help"))
         {
+            if (ImGui.MenuItem("Welcome Screen"))
+            {
+                WelcomeScreen.Open();
+            }
+
             if (ImGui.MenuItem("Keyboard Shortcuts", Shortcut.Of(EditorAction.ShortcutSheet), ShortcutSheet.IsOpen))
             {
                 ShortcutSheet.Toggle();

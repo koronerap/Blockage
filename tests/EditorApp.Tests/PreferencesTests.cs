@@ -31,6 +31,7 @@ public sealed class PreferencesFileTests : IDisposable
             Accent = AccentKind.Rose,
             TextSize = TextSize.Large,
             MouseHints = false,
+            ShowWelcome = false,
             FieldOfView = 75f,
             LineWidth = 1.5f,
             GizmoSize = 0.75f,
@@ -63,6 +64,7 @@ public sealed class PreferencesFileTests : IDisposable
         Assert.Equal(AccentKind.Rose, loaded.Accent);
         Assert.Equal(TextSize.Large, loaded.TextSize);
         Assert.False(loaded.MouseHints);
+        Assert.False(loaded.ShowWelcome);
         Assert.Equal(75f, loaded.FieldOfView);
         Assert.Equal(1.5f, loaded.LineWidth);
         Assert.Equal(0.75f, loaded.GizmoSize);

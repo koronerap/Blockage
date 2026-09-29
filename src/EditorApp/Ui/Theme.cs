@@ -128,6 +128,18 @@ public static class Theme
 
     private static readonly Dictionary<TextSize, ImFontPtr> Fonts = [];
 
+    /// <summary>The welcome screen's name over its picture: far past any text size, so it gets a face of its own.</summary>
+    public const int TitlePixels = 34;
+
+    private static ImFontPtr? _title;
+
+    /// <summary>
+    /// The face and size for a title. Scaled up from the ordinary face when there is no title face —
+    /// ImGui's built-in font, or a test with no atlas built — soft, but in the right place.
+    /// </summary>
+    public static (ImFontPtr Font, float Size) Title =>
+        _title is { } title ? (title, TitlePixels) : (ImGui.GetFont(), ImGui.GetFontSize() * 2.2f);
+
     /// <summary>The theme in use, as last applied.</summary>
     public static ThemeKind Kind { get; private set; } = ThemeKind.Dark;
 
@@ -145,6 +157,8 @@ public static class Theme
                 Fonts[size] = atlas.AddFontFromFileTTF(path, PixelsFor(size));
             }
         }
+
+        _title = atlas.AddFontFromFileTTF(path, TitlePixels);
     }
 
     /// <summary>Whether the text size can be changed — not with ImGui's built-in bitmap font, which comes in one size.</summary>

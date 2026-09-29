@@ -897,6 +897,185 @@ public static class Icons
         canvas.Line(centre + new Vector2(r * 0.7f, -r * 0.85f), centre + new Vector2(r * 0.7f, r * 0.5f));
     }
 
+    // ---- Files and the welcome screen -------------------------------------------------------------
+
+    /// <summary>A new file: a sheet with its corner turned, and a plus on it.</summary>
+    public static void NewFile(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Sheet(canvas, centre, r);
+        Vector2 middle = centre + new Vector2(-r * 0.06f, r * 0.15f);
+        canvas.Line(middle - new Vector2(r * 0.3f, 0f), middle + new Vector2(r * 0.3f, 0f));
+        canvas.Line(middle - new Vector2(0f, r * 0.3f), middle + new Vector2(0f, r * 0.3f));
+    }
+
+    /// <summary>A file already made: the sheet, with lines of writing on it.</summary>
+    public static void Document(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Sheet(canvas, centre, r);
+
+        for (int i = 0; i < 3; i++)
+        {
+            float y = r * (-0.12f + (i * 0.28f));
+            canvas.Line(centre + new Vector2(-r * 0.36f, y), centre + new Vector2(r * (i == 2 ? 0.05f : 0.24f), y), 0.8f);
+        }
+    }
+
+    /// <summary>A portrait sheet with its top right corner folded over.</summary>
+    private static void Sheet(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        float left = -r * 0.62f;
+        float right = r * 0.5f;
+        float top = -r * 0.85f;
+        float bottom = r * 0.85f;
+        float fold = r * 0.34f;
+
+        canvas.Polyline(
+        [
+            centre + new Vector2(left, top),
+            centre + new Vector2(right - fold, top),
+            centre + new Vector2(right, top + fold),
+            centre + new Vector2(right, bottom),
+            centre + new Vector2(left, bottom),
+            centre + new Vector2(left, top),
+        ]);
+        canvas.Polyline(
+        [
+            centre + new Vector2(right - fold, top),
+            centre + new Vector2(right - fold, top + fold),
+            centre + new Vector2(right, top + fold),
+        ], 0.8f);
+    }
+
+    /// <summary>Open: a folder with its tab.</summary>
+    public static void Folder(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.85f, -r * 0.65f),
+            centre + new Vector2(-r * 0.25f, -r * 0.65f),
+            centre + new Vector2(-r * 0.08f, -r * 0.42f),
+            centre + new Vector2(r * 0.85f, -r * 0.42f),
+            centre + new Vector2(r * 0.85f, r * 0.7f),
+            centre + new Vector2(-r * 0.85f, r * 0.7f),
+            centre + new Vector2(-r * 0.85f, -r * 0.65f),
+        ]);
+        canvas.Line(centre + new Vector2(-r * 0.85f, -r * 0.2f), centre + new Vector2(r * 0.85f, -r * 0.2f), 0.8f);
+    }
+
+    /// <summary>Recover: the hands of a clock inside an arrow going back round it.</summary>
+    public static void Recover(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        const float Start = -2.45f;
+        float radius = r * 0.78f;
+
+        Arc(canvas, centre, radius, Vector2.One, Start, Start + 5.3f, 20);
+
+        // Pointing the other way round from where the circle begins: back in time.
+        Vector2 tip = centre + (new Vector2(MathF.Cos(Start), MathF.Sin(Start)) * radius);
+        Arrowhead(canvas, tip + new Vector2(-r * 0.05f, r * 0.2f), new Vector2(MathF.Sin(Start), -MathF.Cos(Start)), r * 0.42f);
+
+        canvas.Line(centre, centre + new Vector2(0f, -r * 0.42f));
+        canvas.Line(centre, centre + new Vector2(r * 0.32f, r * 0.2f));
+    }
+
+    /// <summary>A repository, as a branch: two commits on a line and one on a branch leaving it.</summary>
+    public static void Repository(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        float dot = r * 0.2f;
+        Vector2 top = centre + new Vector2(-r * 0.38f, -r * 0.62f);
+        Vector2 bottom = centre + new Vector2(-r * 0.38f, r * 0.62f);
+        Vector2 branch = centre + new Vector2(r * 0.46f, -r * 0.3f);
+
+        canvas.Circle(top, dot);
+        canvas.Circle(bottom, dot);
+        canvas.Circle(branch, dot);
+        canvas.Line(top + new Vector2(0f, dot), bottom - new Vector2(0f, dot));
+
+        // Down from the branch's commit and round into the line, sampled as a curve.
+        Span<Vector2> curve = stackalloc Vector2[7];
+        Vector2 from = branch + new Vector2(0f, dot);
+        Vector2 to = centre + new Vector2(-r * 0.38f, r * 0.3f);
+        for (int i = 0; i < curve.Length; i++)
+        {
+            float t = i / (float)(curve.Length - 1);
+            float bend = 1f - ((1f - t) * (1f - t));
+            curve[i] = new Vector2(from.X + ((to.X - from.X) * bend), from.Y + ((to.Y - from.Y) * t));
+        }
+
+        canvas.Polyline(curve);
+    }
+
+    /// <summary>The keyboard: its outline, two rows of keys and the space bar.</summary>
+    public static void Keyboard(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.92f, -r * 0.55f), centre + new Vector2(r * 0.92f, r * 0.55f), r * 0.14f);
+
+        for (int row = 0; row < 2; row++)
+        {
+            for (int key = 0; key < 5; key++)
+            {
+                Vector2 at = centre + new Vector2(r * (-0.6f + (key * 0.3f)), r * (-0.26f + (row * 0.26f)));
+                canvas.FilledRect(at - new Vector2(r * 0.07f), at + new Vector2(r * 0.07f));
+            }
+        }
+
+        canvas.Line(centre + new Vector2(-r * 0.4f, r * 0.3f), centre + new Vector2(r * 0.4f, r * 0.3f));
+    }
+
+    // ---- Templates: what a new level starts as, drawn as the editor draws a block ------------------
+
+    /// <summary>The cube a new level has always started as.</summary>
+    public static void TemplateCube(IIconCanvas canvas, Vector2 centre, float r) => ObjectTab(canvas, centre, r);
+
+    /// <summary>One voxel: the cube, smaller, standing where the big one would.</summary>
+    public static void TemplateVoxel(IIconCanvas canvas, Vector2 centre, float r) =>
+        ObjectTab(canvas, centre + new Vector2(0f, r * 0.3f), r * 0.64f);
+
+    /// <summary>The ground: a wide, thin slab, lines of the lattice across its top.</summary>
+    public static void TemplateGround(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 left = centre + new Vector2(-r * 0.95f, 0f);
+        Vector2 back = centre + new Vector2(0f, -r * 0.5f);
+        Vector2 right = centre + new Vector2(r * 0.95f, 0f);
+        Vector2 front = centre + new Vector2(0f, r * 0.5f);
+        Vector2 thick = new(0f, r * 0.24f);
+
+        canvas.Polyline([left, back, right, front, left]);
+        canvas.Polyline([left, left + thick, front + thick, right + thick, right]);
+        canvas.Line(front, front + thick);
+
+        canvas.Line((left + back) * 0.5f, (front + right) * 0.5f, 0.7f);
+        canvas.Line((back + right) * 0.5f, (left + front) * 0.5f, 0.7f);
+    }
+
+    /// <summary>A room: a low, wide box with no top, the thickness of its walls seen round the rim.</summary>
+    public static void TemplateRoom(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 left = centre + new Vector2(-r * 0.95f, -r * 0.2f);
+        Vector2 back = centre + new Vector2(0f, -r * 0.72f);
+        Vector2 right = centre + new Vector2(r * 0.95f, -r * 0.2f);
+        Vector2 front = centre + new Vector2(0f, r * 0.32f);
+        Vector2 down = new(0f, r * 0.45f);
+
+        // The rim, outside and in: walls with a thickness, and nothing over them.
+        canvas.Polyline([left, back, right, front, left]);
+        Vector2 middle = (left + right) * 0.5f;
+        canvas.Polyline(
+        [
+            middle + ((left - middle) * 0.7f),
+            middle + ((back - middle) * 0.7f),
+            middle + ((right - middle) * 0.7f),
+            middle + ((front - middle) * 0.7f),
+            middle + ((left - middle) * 0.7f),
+        ], 0.7f);
+
+        // The outside of the near walls, down to the ground.
+        canvas.Line(left, left + down);
+        canvas.Line(front, front + down);
+        canvas.Line(right, right + down);
+        canvas.Polyline([left + down, front + down, right + down]);
+    }
+
     /// <summary>A chevron, for anything that opens and closes.</summary>
     public static void ChevronUp(IIconCanvas canvas, Vector2 centre, float r) =>
         Chevron(canvas, centre, r, up: true);

@@ -42,6 +42,9 @@ public sealed class Preferences
     /// <summary>The mouse hints along the bottom, which say what the buttons do right now.</summary>
     public bool MouseHints { get; set; } = true;
 
+    /// <summary>The welcome screen when the editor starts without a level to open.</summary>
+    public bool ShowWelcome { get; set; } = true;
+
     // ---- Viewport ----------------------------------------------------------------------------
 
     /// <summary>Vertical field of view, in degrees.</summary>
