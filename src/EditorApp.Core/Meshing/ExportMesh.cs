@@ -33,7 +33,31 @@ public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount
 /// −1, a node with no mesh at all: a marker. <paramref name="Extras"/> is what the game is told
 /// about it besides — a marker's kind and size, the object's custom properties — or null for nothing.
 /// </summary>
-public readonly record struct MeshInstance(string Name, int Part, Matrix4x4 Transform, System.Text.Json.Nodes.JsonObject? Extras = null);
+/// <param name="Transform">Where it stands in the world.</param>
+/// <param name="Id">The object's id, so a child can find its parent's node; 0 for none.</param>
+/// <param name="ParentId">The id of what it is parented to; 0 for nothing.</param>
+/// <param name="Colliders">Which of <see cref="ExportMesh.Colliders"/> fills it, or −1 for none.</param>
+public readonly record struct MeshInstance(
+    string Name,
+    int Part,
+    Matrix4x4 Transform,
+    System.Text.Json.Nodes.JsonObject? Extras = null,
+    int Id = 0,
+    int ParentId = 0,
+    int Colliders = -1);
+
+/// <summary>A light put down in the level (Fullreleaseplan 8.4), for formats that carry lights: it shines along its −Y.</summary>
+public readonly record struct ExportLight(
+    string Name,
+    Scene.LightKind Kind,
+    Vector3 Colour,
+    float Intensity,
+    float Range,
+    float SpotAngle,
+    float SpotBlend,
+    Matrix4x4 Transform,
+    int Id,
+    int ParentId);
 
 public sealed class ExportMesh
 {
@@ -63,6 +87,12 @@ public sealed class ExportMesh
     /// Empty when every part is baked where it stands, as it is for formats without.
     /// </summary>
     public List<MeshInstance> Instances { get; } = [];
+
+    /// <summary>The level's lights, for formats that carry them; empty for those that do not.</summary>
+    public List<ExportLight> Lights { get; } = [];
+
+    /// <summary>Boxes filling each part's voxels, in its own cells, for the instances that ask for them.</summary>
+    public List<IReadOnlyList<(Int3 Min, Int3 Max)>> Colliders { get; } = [];
 
     public int VertexCount => Positions.Count;
 
@@ -171,12 +201,44 @@ public sealed class ExportMesh
         return area;
     }
 
-    /// <summary>Bounding box of the mesh, or a zero box when it is empty.</summary>
+    /// <summary>Bounding box of the mesh where it stands — its parts where their instances put them — or a zero box when it is empty.</summary>
     public (Vector3 Min, Vector3 Max) Bounds()
     {
         if (Positions.Count == 0)
         {
             return (Vector3.Zero, Vector3.Zero);
+        }
+
+        if (Instances.Any(instance => instance.Part >= 0 && instance.Part < Parts.Count))
+        {
+            var low = new Vector3(float.MaxValue);
+            var high = new Vector3(float.MinValue);
+            foreach (MeshInstance instance in Instances.Where(instance => instance.Part >= 0 && instance.Part < Parts.Count))
+            {
+                MeshPart part = Parts[instance.Part];
+                if (part.QuadCount == 0)
+                {
+                    continue;
+                }
+
+                Vector3 partLow = Positions[part.FirstQuad * 4];
+                Vector3 partHigh = partLow;
+                for (int i = part.FirstQuad * 4; i < (part.FirstQuad + part.QuadCount) * 4; i++)
+                {
+                    partLow = Vector3.Min(partLow, Positions[i]);
+                    partHigh = Vector3.Max(partHigh, Positions[i]);
+                }
+
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    var local = new Vector3((corner & 1) == 0 ? partLow.X : partHigh.X, (corner & 2) == 0 ? partLow.Y : partHigh.Y, (corner & 4) == 0 ? partLow.Z : partHigh.Z);
+                    Vector3 placed = Vector3.Transform(local, instance.Transform);
+                    low = Vector3.Min(low, placed);
+                    high = Vector3.Max(high, placed);
+                }
+            }
+
+            return (low, high);
         }
 
         Vector3 min = Positions[0];

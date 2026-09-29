@@ -88,20 +88,12 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
             builders.Add(meshBuilder);
         }
 
-        // A node for every object, each where it stands, linked copies sharing one mesh; what the
-        // game is told about each besides is in its extras. Markers come after, as empty nodes.
-        if (mesh.Instances.Count > 0)
+        // A node for every object, marker and light, under its parent's where it has one and placed
+        // relative to it; linked copies share one mesh. What the game is told about each besides is
+        // in its extras.
+        if (mesh.Instances.Count > 0 || mesh.Lights.Count > 0)
         {
-            foreach (MeshInstance instance in mesh.Instances.Where(i => i.Part >= 0))
-            {
-                var node = new NodeBuilder(instance.Name) { LocalMatrix = instance.Transform };
-                if (instance.Extras is { } extras)
-                {
-                    node.Extras = extras;
-                }
-
-                scene.AddRigidMesh(builders[instance.Part], node);
-            }
+            AddNodes(scene, mesh, builders);
         }
         else
         {
@@ -113,16 +105,6 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
 
         ModelRoot model = scene.ToGltf2();
         model.Asset.Generator = "EditorApp voxel level editor";
-
-        foreach (MeshInstance marker in mesh.Instances.Where(i => i.Part < 0))
-        {
-            Node node = model.UseScene(0).CreateNode(marker.Name);
-            node.LocalMatrix = marker.Transform;
-            if (marker.Extras is { } extras)
-            {
-                node.Extras = extras;
-            }
-        }
 
         var written = new List<string>();
 
@@ -179,6 +161,151 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
     }
 
     /// <summary>The metallic-roughness material over the colour texture, with the other channels where there are any.</summary>
+    /// <summary>glTF's lights shine along their −Z, the level's along their −Y: a quarter turn about X before the light's own.</summary>
+    private static readonly Matrix4x4 LightFacing = Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f));
+
+    private static void AddNodes(SceneBuilder scene, ExportMesh mesh, List<MeshBuilder<VertexPositionNormal, VertexTexture1>> builders)
+    {
+        // Everything that can be a parent, by id: where it stands in the world, and what it is under.
+        var things = new Dictionary<int, (string Name, Matrix4x4 World, int ParentId)>();
+        foreach (MeshInstance instance in mesh.Instances.Where(i => i.Id != 0))
+        {
+            things[instance.Id] = (instance.Name, instance.Transform, instance.ParentId);
+        }
+
+        foreach (ExportLight light in mesh.Lights.Where(l => l.Id != 0))
+        {
+            things[light.Id] = (light.Name, LightFacing * light.Transform, light.ParentId);
+        }
+
+        var nodes = new Dictionary<int, NodeBuilder>();
+        var making = new HashSet<int>();
+        NodeBuilder NodeOf(int id)
+        {
+            if (nodes.TryGetValue(id, out NodeBuilder? made))
+            {
+                return made;
+            }
+
+            making.Add(id);
+            (string name, Matrix4x4 world, int parentId) = things[id];
+            NodeBuilder node;
+            if (parentId != 0 && things.TryGetValue(parentId, out var parent) && !making.Contains(parentId))
+            {
+                node = NodeOf(parentId).CreateNode(name);
+                Place(node, Matrix4x4.Invert(parent.World, out Matrix4x4 inverse) ? world * inverse : world);
+            }
+            else
+            {
+                node = Place(new NodeBuilder(name), world);
+            }
+
+            making.Remove(id);
+            nodes[id] = node;
+            return node;
+        }
+
+        var collisionMeshes = new Dictionary<int, MeshBuilder<VertexPosition>>();
+        foreach (MeshInstance instance in mesh.Instances)
+        {
+            NodeBuilder node = instance.Id != 0 ? NodeOf(instance.Id) : Place(new NodeBuilder(instance.Name), instance.Transform);
+            if (instance.Extras is { } extras)
+            {
+                node.Extras = extras;
+            }
+
+            if (instance.Part < 0)
+            {
+                scene.AddNode(node);
+                continue;
+            }
+
+            scene.AddRigidMesh(builders[instance.Part], node);
+
+            // Godot takes a "-colonly" node as collision and nothing else; others read the extras.
+            if (instance.Colliders >= 0 && instance.Colliders < mesh.Colliders.Count)
+            {
+                if (!collisionMeshes.TryGetValue(instance.Colliders, out MeshBuilder<VertexPosition>? boxes))
+                {
+                    boxes = CollisionMesh(mesh.Colliders[instance.Colliders], $"{instance.Name}-collision");
+                    collisionMeshes[instance.Colliders] = boxes;
+                }
+
+                NodeBuilder collider = node.CreateNode($"{instance.Name}-colonly");
+                collider.Extras = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["collider"] = "boxes",
+                    ["boxes"] = mesh.Colliders[instance.Colliders].Count,
+                };
+                scene.AddRigidMesh(boxes, collider);
+            }
+        }
+
+        foreach (ExportLight light in mesh.Lights)
+        {
+            NodeBuilder node = light.Id != 0 ? NodeOf(light.Id) : Place(new NodeBuilder(light.Name), LightFacing * light.Transform);
+            scene.AddLight(LightOf(light), node);
+        }
+    }
+
+    /// <summary>
+    /// A node's place as a move, a turn and a scale rather than a matrix — what engines and animation
+    /// expect to find — whenever it comes apart into them, as the level's placements always do.
+    /// </summary>
+    private static NodeBuilder Place(NodeBuilder node, Matrix4x4 local)
+    {
+        if (Matrix4x4.Decompose(local, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+        {
+            node.LocalTransform = new SharpGLTF.Transforms.AffineTransform(scale, Quaternion.Normalize(rotation), translation);
+        }
+        else
+        {
+            node.LocalMatrix = local;
+        }
+
+        return node;
+    }
+
+    /// <summary>A level's light as KHR_lights_punctual has them: its colour and strength, how far it reaches, its cone.</summary>
+    private static LightBuilder LightOf(ExportLight light)
+    {
+        float outer = MathF.Min(light.SpotAngle * 0.5f, 89.9f) * (MathF.PI / 180f);
+        return light.Kind switch
+        {
+            Scene.LightKind.Point => new LightBuilder.Point { Name = light.Name, Color = light.Colour, Intensity = light.Intensity, Range = light.Range },
+            Scene.LightKind.Spot => new LightBuilder.Spot
+            {
+                Name = light.Name,
+                Color = light.Colour,
+                Intensity = light.Intensity,
+                Range = light.Range,
+                OuterConeAngle = outer,
+                InnerConeAngle = outer * Math.Clamp(1f - light.SpotBlend, 0f, 1f),
+            },
+            _ => new LightBuilder.Directional { Name = light.Name, Color = light.Colour, Intensity = light.Intensity },
+        };
+    }
+
+    private static readonly MaterialBuilder CollisionMaterial = new("collision");
+
+    /// <summary>The boxes as one mesh, each face turned outward.</summary>
+    private static MeshBuilder<VertexPosition> CollisionMesh(IReadOnlyList<(Int3 Min, Int3 Max)> boxes, string name)
+    {
+        var builder = new MeshBuilder<VertexPosition>(name);
+        var primitive = builder.UsePrimitive(CollisionMaterial);
+        (int, int, int, int)[] faces = [(0, 4, 6, 2), (1, 3, 7, 5), (0, 1, 5, 4), (2, 6, 7, 3), (0, 2, 3, 1), (4, 5, 7, 6)];
+        foreach ((Int3 min, Int3 max) in boxes)
+        {
+            VertexPosition Corner(int i) => new(new Vector3((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z));
+            foreach ((int a, int b, int c, int d) in faces)
+            {
+                primitive.AddQuadrangle(Corner(a), Corner(b), Corner(c), Corner(d));
+            }
+        }
+
+        return builder;
+    }
+
     private static MaterialBuilder Material(string name, byte[] colour, byte[]? metallicRoughness, byte[]? emissive)
     {
         MaterialBuilder material = new MaterialBuilder(name)

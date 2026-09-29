@@ -45,6 +45,12 @@ public sealed class ExportController(EditorSession session)
     private int _texelsPerVoxel = UvUnwrap.DefaultTexelsPerVoxel;
     private bool _writeTexture = true;
 
+    /// <summary>glTF only: the level's lights, as KHR_lights_punctual (Fullreleaseplan 8.4).</summary>
+    private bool _lights = true;
+
+    /// <summary>glTF only: boxes filling each object, for an engine to collide with.</summary>
+    private bool _collision;
+
     private UvAtlas? _atlas;
     private ExportMesh? _analysis;
     private int _naiveVertexCount;
@@ -116,7 +122,13 @@ public sealed class ExportController(EditorSession session)
         // Colour stops constraining the merge once there is somewhere for it to go. Palette blocks
         // still need it: there, a merged quad samples one texel and so can only be one colour.
         // glTF can share one mesh between linked copies; the other formats bake each where it stands.
-        _analysis = GreedyMesher.BuildScene(session.Scene, uvSelector: null, mergeAcrossColors: unwrapped, instanceLinked: Current is GltfExporter);
+        _analysis = GreedyMesher.BuildScene(
+            session.Scene,
+            uvSelector: null,
+            mergeAcrossColors: unwrapped,
+            instanceLinked: Current is GltfExporter,
+            lights: _lights,
+            colliders: _collision);
 
         // Unwrapping rewrites the mesh's UVs, so it belongs here with the meshing rather than inside
         // an exporter — both formats have to be handed the same layout and the same sheet.
@@ -268,6 +280,27 @@ public sealed class ExportController(EditorSession session)
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip("The UVs are written either way.\nTurn this off to paint from a blank sheet.");
+        }
+
+        // What only glTF can carry: the lights, and boxes to collide with.
+        if (Current is GltfExporter)
+        {
+            bool changed = ImGui.Checkbox("Lights", ref _lights);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("The level's sun, point and spot lights, as KHR_lights_punctual.");
+            }
+
+            changed |= ImGui.Checkbox("Collision boxes", ref _collision);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Boxes filling each object, under it as a \"-colonly\" node:\nGodot takes them as collision; other engines can read the extras.");
+            }
+
+            if (changed)
+            {
+                Analyze();
+            }
         }
     }
 

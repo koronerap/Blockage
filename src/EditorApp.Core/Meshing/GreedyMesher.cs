@@ -63,15 +63,20 @@ public static class GreedyMesher
     /// rotation.
     /// </summary>
     /// <param name="instanceLinked">
-    /// Linked copies' shared voxels meshed once, in their own space, and placed where each copy stands
-    /// through <see cref="ExportMesh.Instances"/> — for formats that can share one mesh between many
-    /// placements. Everything else is still baked where it stands, and placed where it is.
+    /// For formats with nodes: every object meshed in its own space and placed through
+    /// <see cref="ExportMesh.Instances"/>, under its parent, linked copies sharing one mesh — with the
+    /// level's lights, and boxes to collide with when asked. Without it, everything is baked where it
+    /// stands, for formats that are one lump of triangles.
     /// </param>
+    /// <param name="lights">With nodes, the level's lights go too.</param>
+    /// <param name="colliders">With nodes, each object gets the boxes that fill its voxels.</param>
     public static ExportMesh BuildScene(
         Scene.VoxelScene scene,
         Func<byte, Vector2>? uvSelector = null,
         bool mergeAcrossColors = false,
-        bool instanceLinked = false)
+        bool instanceLinked = false,
+        bool lights = true,
+        bool colliders = false)
     {
         var combined = new ExportMesh();
 
@@ -91,6 +96,7 @@ public static class GreedyMesher
         }
 
         var partOf = new Dictionary<Voxels.VoxelWorld, int>(ReferenceEqualityComparer.Instance);
+        var collidersOf = new Dictionary<int, int>();
 
         foreach (Scene.VoxelObject o in scene.Objects)
         {
@@ -98,7 +104,7 @@ public static class GreedyMesher
             // for the people working on the level, and goes nowhere.
             if (instanceLinked && o.IsExported && o.IsMarker && o.IsEmpty && o.Marker is not { IsNote: true })
             {
-                combined.Instances.Add(new MeshInstance(o.Name, -1, o.Transform.ToMatrix(), ExtrasOf(o)));
+                combined.Instances.Add(new MeshInstance(o.Name, -1, o.Transform.ToMatrix(), ExtrasOf(o), o.Id, o.ParentId));
                 continue;
             }
 
@@ -107,18 +113,30 @@ public static class GreedyMesher
                 continue;
             }
 
-            if (!o.HasModifiers && shared.Contains(o.Grid))
+            if (instanceLinked)
             {
-                if (!partOf.TryGetValue(o.Grid, out int part))
+                // Meshed in its own space and placed by its node; linked copies share one mesh.
+                bool sharable = !o.HasModifiers && shared.Contains(o.Grid);
+                if (!sharable || !partOf.TryGetValue(o.Grid, out int part))
                 {
+                    Voxels.VoxelWorld voxels = sharable ? o.Grid : o.Shown;
                     int start = combined.QuadCount;
-                    combined.Append(Build(o.Grid, uvSelector, mergeAcrossColors), Scene.ObjectTransform.Identity);
+                    combined.Append(Build(voxels, uvSelector, mergeAcrossColors), Scene.ObjectTransform.Identity);
                     combined.BeginPart(o.Name, start);
                     part = combined.Parts.Count - 1;
-                    partOf[o.Grid] = part;
+                    if (sharable)
+                    {
+                        partOf[o.Grid] = part;
+                    }
+
+                    if (colliders)
+                    {
+                        combined.Colliders.Add(CollisionBoxes.Of(voxels));
+                        collidersOf[part] = combined.Colliders.Count - 1;
+                    }
                 }
 
-                combined.Instances.Add(new MeshInstance(o.Name, part, o.Transform.ToMatrix(), ExtrasOf(o)));
+                combined.Instances.Add(new MeshInstance(o.Name, part, o.Transform.ToMatrix(), ExtrasOf(o), o.Id, o.ParentId, collidersOf.GetValueOrDefault(part, -1)));
                 continue;
             }
 
@@ -129,9 +147,14 @@ public static class GreedyMesher
             int first = combined.QuadCount;
             combined.Append(Build(o.Shown, uvSelector, mergeAcrossColors), o.Transform);
             combined.BeginPart(o.Name, first, o.VoxelSize);
-            if (instanceLinked)
+        }
+
+        if (instanceLinked && lights)
+        {
+            foreach (Scene.SceneLight light in scene.Lights)
             {
-                combined.Instances.Add(new MeshInstance(o.Name, combined.Parts.Count - 1, Matrix4x4.Identity, ExtrasOf(o)));
+                combined.Lights.Add(new ExportLight(
+                    light.Name, light.Kind, light.Colour, light.Intensity, light.Range, light.SpotAngle, light.SpotBlend, light.Transform.ToMatrix(), light.Id, light.ParentId));
             }
         }
 
