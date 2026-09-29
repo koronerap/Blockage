@@ -45,6 +45,11 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
 - **A palette with materials.** 256 colours, each with its own glow, metal, roughness and glass, shown
   in the viewport and exported to glTF; palettes in and out as .gpl, .hex and .png (Lospec's too),
   ramps, and a library of palettes.
+- **Lay out levels.** Nested collections with show, lock and export switches; linked copies (Alt+D)
+  that share their voxels and export to glTF as one mesh; a prop library of your own, and Append from
+  other levels; align and distribute; scatter trees and rocks over the ground; markers (spawn points,
+  triggers, sounds) and custom properties, sent to the game in glTF extras; and generated terrain,
+  caves, trees, rocks and buildings.
 - **Render.** A path tracer for presentation pictures: soft shadows, light bounced off walls, glowing
   colours, metal and glass, sky light, fog, bloom and depth of field. It runs on every CPU core, or
   on the graphics card where OpenGL 4.3 is available, and both give the same picture. F12 renders an
@@ -81,6 +86,7 @@ changes them.
 | Select | W, then click; drag for a box. Shift adds, Ctrl takes away · A all · Alt+A none · Ctrl+I invert |
 | Tools | G move · R rotate · E extrude · B paint · S sculpt · Ctrl+R loop cut · V view |
 | Edit Mode | Tab into the active object and out; P separates the chosen voxels |
+| Collections, copies | M moves the selection to a collection · Alt+D duplicates linked |
 | Add | Shift+A |
 | Render | F12 renders an image · Numpad 0 looks through the render camera · Ctrl+Alt+Numpad 0 moves it to the view |
 | Search for any command | F3 |
