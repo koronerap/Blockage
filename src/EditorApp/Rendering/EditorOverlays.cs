@@ -220,6 +220,52 @@ public static class EditorOverlays
     }
 
     /// <summary>
+    /// The Sculpt brush where it would dab: its round — or square — lying on the face under the
+    /// pointer, in the colour of what it will do: adding in the add colour, taking away in the
+    /// take-away one, reshaping in the brush's own.
+    /// </summary>
+    public static void AddSculptBrush(LineGeometry lines, RaycastHit hit, float radius, SculptShape shape, SculptMode mode)
+    {
+        Vector3 normal = FaceInfo.Normal(hit.Face);
+        Vector3 centre = hit.Voxel.ToVector3() + new Vector3(0.5f) + (normal * (0.5f + PatchOffset));
+
+        // Two directions across the face.
+        Vector3 u = MathF.Abs(normal.Y) > 0.5f ? Vector3.UnitX : Vector3.UnitY;
+        Vector3 v = Vector3.Cross(normal, u);
+        float reach = radius + 0.5f;
+
+        Color32 colour = mode switch
+        {
+            SculptMode.Add or SculptMode.Raise => SelectionAdd,
+            SculptMode.Remove or SculptMode.Lower => SelectionSubtract,
+            _ => BrushOutline,
+        };
+
+        if (shape == SculptShape.Cube)
+        {
+            Vector3 a = centre + ((u + v) * reach), b = centre + ((u - v) * reach), c = centre - ((u + v) * reach), d = centre + ((v - u) * reach);
+            lines.AddThickLine(a, b, colour, SelectionWidth);
+            lines.AddThickLine(b, c, colour, SelectionWidth);
+            lines.AddThickLine(c, d, colour, SelectionWidth);
+            lines.AddThickLine(d, a, colour, SelectionWidth);
+        }
+        else
+        {
+            const int Segments = 40;
+            Vector3 previous = centre + (u * reach);
+            for (int i = 1; i <= Segments; i++)
+            {
+                float angle = i / (float)Segments * MathF.Tau;
+                Vector3 next = centre + (((u * MathF.Cos(angle)) + (v * MathF.Sin(angle))) * reach);
+                lines.AddThickLine(previous, next, colour, SelectionWidth);
+                previous = next;
+            }
+        }
+
+        lines.AddVoxelFace(hit.Voxel, hit.Face, colour, width: SelectionWidth);
+    }
+
+    /// <summary>
     /// Edit Mode's chosen voxels, as the faces of them open to the air — a patch per direction, so
     /// the choice reads as a shape on the model's surface rather than as a cloud of boxes.
     /// </summary>

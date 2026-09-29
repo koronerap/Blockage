@@ -29,6 +29,9 @@ public enum EditorTool
     /// the numbers the others were saved under stay theirs; the toolbar shows it first.
     /// </summary>
     Select,
+
+    /// <summary>Brushes that build, carve, raise, flatten and smooth volume along a surface.</summary>
+    Sculpt,
 }
 
 /// <summary>What a Transform drag of several things turns about, Blender's pivot point.</summary>

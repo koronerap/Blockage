@@ -37,6 +37,53 @@ public static class ToolOptions
             case EditorTool.Paint:
                 DrawPaint(session);
                 break;
+
+            case EditorTool.Sculpt:
+                DrawSculpt(session);
+                break;
+        }
+    }
+
+    /// <summary>The brush: what it does, its shape and its size.</summary>
+    private static void DrawSculpt(EditorSession session)
+    {
+        string[] modes = ["Add", "Remove", "Raise", "Lower", "Flatten", "Smooth"];
+        int mode = (int)session.SculptMode;
+        ImGui.SetNextItemWidth(ImGui.CalcTextSize("Flatten").X + (ImGui.GetFrameHeight() * 1.6f));
+        if (ImGui.Combo("##sculpt-mode", ref mode, modes, modes.Length))
+        {
+            session.SculptMode = (SculptMode)mode;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("What a dab does. Ctrl turns it round - Add and Remove, Raise and Lower - and Shift smooths.");
+        }
+
+        ImGui.SameLine(0f, 4f);
+        float size = ImGui.GetFrameHeight();
+        if (IconButton.Toggle(
+                "sculpt-shape",
+                (Icons.ShapeSphere, "Sphere brush"),
+                (Icons.ObjectTab, "Cube brush"),
+                session.SculptShape == SculptShape.Cube,
+                string.Empty,
+                size))
+        {
+            session.SculptShape = session.SculptShape == SculptShape.Sphere ? SculptShape.Cube : SculptShape.Sphere;
+        }
+
+        ImGui.SameLine(0f, Gap);
+        float radius = session.SculptRadius;
+        ImGui.SetNextItemWidth(ImGui.GetFrameHeight() * 5f);
+        if (ImGui.DragFloat("##sculpt-radius", ref radius, 0.05f, SculptOperations.MinRadius, SculptOperations.MaxRadius, "Radius %.1f"))
+        {
+            session.SculptRadius = radius;
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("The brush's size in voxels. Ctrl+wheel over the model changes it too.");
         }
     }
 

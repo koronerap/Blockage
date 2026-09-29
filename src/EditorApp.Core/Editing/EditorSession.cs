@@ -428,6 +428,38 @@ public sealed partial class EditorSession
     public bool FillsSolid => PaintMode is PaintMode.Bucket or PaintMode.Pattern;
 
 
+    // ---- Sculpt --------------------------------------------------------------------------------
+
+    public SculptMode SculptMode { get; set; } = SculptMode.Add;
+
+    public SculptShape SculptShape { get; set; } = SculptShape.Sphere;
+
+    /// <summary>The brush's radius in voxels.</summary>
+    public float SculptRadius
+    {
+        get => _sculptRadius;
+        set => _sculptRadius = float.IsFinite(value) ? Math.Clamp(value, SculptOperations.MinRadius, SculptOperations.MaxRadius) : _sculptRadius;
+    }
+
+    private float _sculptRadius = 3f;
+
+    /// <summary>
+    /// One dab of the Sculpt brush at a surface point of the focused object, part of the open stroke
+    /// — so a whole drag is one undo step — and mirrored as symmetry says. <paramref name="mode"/>
+    /// stands in for the tool's own mode while a key turns it round.
+    /// </summary>
+    public bool Sculpt(RaycastHit hit, SculptMode? mode = null)
+    {
+        BeginStroke();
+        if (_stroke is null)
+        {
+            return false;
+        }
+
+        byte colour = ActiveColorIndex == Palette.EmptyIndex ? Palette.WhiteIndex : ActiveColorIndex;
+        return SculptOperations.Dab(mode ?? SculptMode, SculptShape, SculptRadius, hit, colour, _stroke) > 0;
+    }
+
     /// <summary>The eyedropper. Returns false when there is nothing to sample.</summary>
     public bool SampleColor(RaycastHit hit)
     {

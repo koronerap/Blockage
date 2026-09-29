@@ -53,6 +53,10 @@ public static class ToolPanel
                 DrawPaint(session);
                 break;
 
+            case EditorTool.Sculpt:
+                DrawSculpt(session);
+                break;
+
             case EditorTool.LoopCut:
                 Wrapped("Hover the model to preview a cut plane, then click to split the object in two along it.");
                 break;
@@ -61,6 +65,41 @@ public static class ToolPanel
                 Wrapped("The camera only. Hold the right mouse button to look, W A S D and Q E to fly.");
                 break;
         }
+    }
+
+    private static void DrawSculpt(EditorSession session)
+    {
+        if (!Props.Section("Brush"))
+        {
+            return;
+        }
+
+        if (Props.BeginCombo("Mode", "sculpt-mode", session.SculptMode.ToString()))
+        {
+            foreach (SculptMode mode in Enum.GetValues<SculptMode>())
+            {
+                if (ImGui.Selectable(mode.ToString(), session.SculptMode == mode))
+                {
+                    session.SculptMode = mode;
+                }
+            }
+
+            ImGui.EndCombo();
+        }
+
+        Tooltip("Ctrl turns a dab round - Add and Remove, Raise and Lower - and Shift smooths.");
+
+        int shape = Props.Choice("Shape", "sculpt-shape", [(Icons.ShapeSphere, "Sphere"), (Icons.ObjectTab, "Cube")], (int)session.SculptShape);
+        session.SculptShape = (SculptShape)shape;
+
+        float radius = session.SculptRadius;
+        if (Props.Float("Radius", "sculpt-radius", ref radius, 0.05f, SculptOperations.MinRadius, SculptOperations.MaxRadius, "%.1f"))
+        {
+            session.SculptRadius = radius;
+        }
+
+        Tooltip("In voxels. Ctrl+wheel over the model changes it too.");
+        Wrapped("Works on the selected objects, a stroke at a time: each stroke is one undo step. New voxels take the colour in hand; Raise keeps the surface's own.");
     }
 
     private static void DrawTransform(EditorSession session)

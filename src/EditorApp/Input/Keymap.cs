@@ -207,6 +207,9 @@ public sealed class Keymap
             // Blender's: Tab into the object and out, P to separate, Ctrl and the numpad's plus and
             // minus to grow and shrink — with the number row's for a laptop.
             [EditorAction.ToggleEditMode] = [new(Key.Tab)],
+
+            // Free in both, and the tool's own letter.
+            [EditorAction.ToolSculpt] = [new(Key.S)],
             [EditorAction.Separate] = [new(Key.P)],
             [EditorAction.GrowSelection] = [KeyChord.Ctrl(Key.KeypadAdd), KeyChord.Ctrl(Key.Equal)],
             [EditorAction.ShrinkSelection] = [KeyChord.Ctrl(Key.KeypadSubtract), KeyChord.Ctrl(Key.Minus)],

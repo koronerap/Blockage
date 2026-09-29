@@ -38,6 +38,15 @@ public class MouseHintTests
     }
 
     [Fact]
+    public void SculptSaysWhatCtrlAndShiftTurnTheBrushInto()
+    {
+        Assert.Equal("Build up", Left(Hints(EditorTool.Sculpt)));
+        Assert.Equal("Carve", Left(Hints(EditorTool.Sculpt, control: true)));
+        Assert.Equal("Smooth", Left(Hints(EditorTool.Sculpt, shift: true)));
+        Assert.Contains(Hints(EditorTool.Sculpt, control: true), hint => hint.Icon == Icons.MouseWheel && hint.Action == "Brush size");
+    }
+
+    [Fact]
     public void TheSelectToolSaysWhatShiftAndCtrlDo()
     {
         Assert.Equal("Select, drag for a box", Left(Hints(EditorTool.Select)));
@@ -68,6 +77,8 @@ public class MouseHintTests
     [InlineData(EditorTool.Extrude)]
     [InlineData(EditorTool.Paint)]
     [InlineData(EditorTool.LoopCut)]
+    [InlineData(EditorTool.Sculpt)]
+    [InlineData(EditorTool.Select)]
     public void EveryEditingToolSaysWhatTheLeftButtonDoes(EditorTool tool) =>
         Assert.False(string.IsNullOrEmpty(Left(Hints(tool))));
 

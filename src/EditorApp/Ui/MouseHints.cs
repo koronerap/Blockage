@@ -38,7 +38,7 @@ public static class MouseHints
         hints.Add(new(Icons.MouseMiddle, string.Empty, "Orbit"));
         hints.Add(new(Icons.MouseMiddle, "Shift", "Pan"));
 
-        hints.Add(session.ActiveTool == EditorTool.Paint && control
+        hints.Add(session.ActiveTool is EditorTool.Paint or EditorTool.Sculpt && control
             ? new(Icons.MouseWheel, string.Empty, "Brush size")
             : new(Icons.MouseWheel, string.Empty, "Zoom"));
 
@@ -90,6 +90,17 @@ public static class MouseHints
             },
 
             EditorTool.LoopCut => "Cut here",
+
+            EditorTool.Sculpt when shift => "Smooth",
+            EditorTool.Sculpt => (control ? SculptOperations.Inverse(session.SculptMode) : session.SculptMode) switch
+            {
+                SculptMode.Remove => "Carve",
+                SculptMode.Raise => "Raise the surface",
+                SculptMode.Lower => "Lower the surface",
+                SculptMode.Flatten => "Flatten",
+                SculptMode.Smooth => "Smooth",
+                _ => "Build up",
+            },
 
             // View never edits, so the left button has nothing to say.
             _ => null,

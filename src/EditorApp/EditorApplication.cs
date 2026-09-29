@@ -412,6 +412,12 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
+        if (_session.ActiveTool == EditorTool.Sculpt && IsControlHeld())
+        {
+            _session.SculptRadius += wheel.Y * 0.5f;
+            return;
+        }
+
         if (_viewport.Contains(mouse.Position))
         {
             _camera.Zoom(_preferences.InvertZoom ? -wheel.Y : wheel.Y);
@@ -655,7 +661,7 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>Whether the tool in hand writes voxels, and so reaches only what is selected.</summary>
-    private bool VoxelToolInHand => _session.ActiveTool is EditorTool.Extrude or EditorTool.Paint or EditorTool.LoopCut;
+    private bool VoxelToolInHand => _session.ActiveTool is EditorTool.Extrude or EditorTool.Paint or EditorTool.LoopCut or EditorTool.Sculpt;
 
     /// <summary>
     /// The nearest object under a point of the viewport. With <paramref name="selectedOnly"/>, what is
@@ -785,6 +791,10 @@ public sealed class EditorApplication : IDisposable
 
             case EditorTool.LoopCut:
                 UpdateLoopCut(pressed);
+                break;
+
+            case EditorTool.Sculpt:
+                UpdateSculpt(leftDown, pressed, released);
                 break;
 
             // Transform and Loop Cut need the multi-object scene first (R4-R6); View never edits.
@@ -952,6 +962,35 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
+    /// <summary>Dabs at most this often while the button is held: fast enough to feel continuous, slow enough to aim.</summary>
+    private const double SculptInterval = 0.07;
+
+    private double _lastDab;
+
+    /// <summary>What a Sculpt dab does with the keys held: Shift smooths, Ctrl turns the brush round.</summary>
+    private SculptMode HeldSculptMode() =>
+        IsShiftHeld() ? SculptMode.Smooth
+        : IsControlHeld() ? SculptOperations.Inverse(_session.SculptMode)
+        : _session.SculptMode;
+
+    /// <summary>The Sculpt tool: a stroke of dabs while the button is held, one undo step.</summary>
+    private void UpdateSculpt(bool leftDown, bool pressed, bool released)
+    {
+        if (released)
+        {
+            _session.EndStroke();
+            return;
+        }
+
+        if (!leftDown || _hover is not { } hit || (!pressed && _clock - _lastDab < SculptInterval))
+        {
+            return;
+        }
+
+        _lastDab = _clock;
+        _session.Sculpt(hit, HeldSculptMode());
+    }
+
     /// <summary>
     /// Previews the grid boundary nearest the cursor and cuts on click. The preview point is the
     /// exact spot on the picked face, so the plane tracks the cursor rather than snapping per voxel.
@@ -1085,6 +1124,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToolExtrude: SwitchTool(EditorTool.Extrude); break;
             case EditorAction.ToolPaint: SwitchTool(EditorTool.Paint); break;
             case EditorAction.ToolLoopCut: SwitchTool(EditorTool.LoopCut); break;
+            case EditorAction.ToolSculpt: SwitchTool(EditorTool.Sculpt); break;
             case EditorAction.ToolView: SwitchTool(EditorTool.View); break;
 
             // Straight to a Transform mode, where the keymap has a key for each.
@@ -1624,6 +1664,10 @@ public sealed class EditorApplication : IDisposable
             {
                 // Choosing objects is shown by their outlines, not by the voxel under the pointer.
                 case EditorTool.Select or EditorTool.Transform when !_session.InEditMode:
+                    break;
+
+                case EditorTool.Sculpt:
+                    EditorOverlays.AddSculptBrush(lines, hit, _session.SculptRadius, _session.SculptShape, HeldSculptMode());
                     break;
 
                 case EditorTool.Extrude:

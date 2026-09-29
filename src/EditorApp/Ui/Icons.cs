@@ -49,6 +49,25 @@ public static class Icons
         canvas.Line(tip + new Vector2(s * 0.3f, s * 0.62f), tip + new Vector2(s * 0.55f, s * 1.05f), 2.2f);
     }
 
+    /// <summary>Sculpt: a low mound of ground, and a round brush on a handle working it.</summary>
+    public static void Sculpt(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Span<Vector2> hill = stackalloc Vector2[13];
+        for (int i = 0; i < hill.Length; i++)
+        {
+            float t = i / (float)(hill.Length - 1);
+            hill[i] = centre + new Vector2(-r + (2f * r * t), (r * 0.8f) - (MathF.Sin(t * MathF.PI) * r * 0.55f));
+        }
+
+        canvas.Polyline(hill, 1.5f);
+        canvas.Line(centre + new Vector2(-r, r * 0.8f), centre + new Vector2(r, r * 0.8f), 1.5f);
+
+        // The brush, off to one side and up, its handle running out of the icon's corner.
+        Vector2 head = centre + new Vector2(r * 0.25f, -r * 0.2f);
+        canvas.FilledCircle(head, r * 0.26f);
+        canvas.Line(head + new Vector2(r * 0.18f, -r * 0.18f), centre + new Vector2(r * 0.95f, -r * 0.95f), 1.5f);
+    }
+
     /// <summary>Transform: four solid-headed arrows out of a centre, the universal "move this".</summary>
     public static void Move(IIconCanvas canvas, Vector2 centre, float r)
     {
