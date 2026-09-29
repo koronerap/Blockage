@@ -87,6 +87,46 @@ public readonly record struct LatticeMap(Int3 Origin, Int3 X, Int3 Y, Int3 Z)
 /// <param name="Transform">The placement of the object they came from, so a paste lands on its lattice.</param>
 public sealed record VoxelClipboard(VoxelWorld Grid, ObjectTransform Transform, string Name);
 
+/// <summary>
+/// What was last copied or cut, and the palette its colours are numbers in. A session has one of its
+/// own; the desktop gives every level open the same one (Fullreleaseplan 7.8), so what is copied in
+/// one pastes into another, its colours found in the other's palette the way Append finds them.
+/// </summary>
+public sealed class SharedClipboard
+{
+    /// <summary>Pastes into each level since the last copy, so each lands a step further along than the last.</summary>
+    private readonly Dictionary<VoxelScene, int> _pastes = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Every piece of what was last copied — one per object, when several were selected.</summary>
+    public IReadOnlyList<VoxelClipboard> Pieces { get; private set; } = [];
+
+    /// <summary>The level the pieces were copied from.</summary>
+    public VoxelScene? Source { get; private set; }
+
+    /// <summary>The palette their colours are numbers in: the one of the level they came from.</summary>
+    public Palette? Palette { get; private set; }
+
+    public void Set(IReadOnlyList<VoxelClipboard> pieces, VoxelScene source)
+    {
+        Pieces = pieces;
+        Source = source;
+        Palette = source.Palette;
+        _pastes.Clear();
+    }
+
+    /// <summary>
+    /// How many steps from where they were copied the next paste into <paramref name="scene"/> puts
+    /// the pieces, counting that paste. In the level they came from the first lands a step beside
+    /// them; in another, nothing is there to land on, and the first goes where they were.
+    /// </summary>
+    public int NextPaste(VoxelScene scene)
+    {
+        int count = _pastes.GetValueOrDefault(scene) + 1;
+        _pastes[scene] = count;
+        return ReferenceEquals(scene, Source) ? count : count - 1;
+    }
+}
+
 /// <summary>Copying, pasting and joining, as pure operations on grids.</summary>
 public static class ClipboardOperations
 {

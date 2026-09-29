@@ -11,11 +11,13 @@ public sealed record RecoveryEntry(
     int ProcessId,
     string? ProjectPath,
     string ProjectName,
-    DateTime SavedUtc);
+    DateTime SavedUtc,
+    int Slot = 0);
 
 /// <summary>
-/// Where autosaves live, one pair of files per running editor: <c>&lt;pid&gt;.vxlevel</c> with the
-/// level, and <c>&lt;pid&gt;.json</c> saying which project it came from.
+/// Where autosaves live, one pair of files per level open in a running editor: <c>&lt;pid&gt;.vxlevel</c>
+/// with the level, and <c>&lt;pid&gt;.json</c> saying which project it came from — and for the levels
+/// in its other tabs, <c>&lt;pid&gt;-&lt;slot&gt;</c> the same way (Fullreleaseplan 7.8).
 ///
 /// Named by process so two editors open at once never write over each other's copy — and so that on
 /// start, a copy whose process is no longer running is known to be one nobody put away: the editor
@@ -24,18 +26,30 @@ public sealed record RecoveryEntry(
 /// Whether a process is still running is asked of the host, since what counts as "still the editor"
 /// is a platform question, and a test wants to answer it without starting processes.
 /// </summary>
-public sealed class RecoveryStore(string directory, int processId, Func<int, bool> isEditorRunning)
+public sealed class RecoveryStore(string directory, int processId, Func<int, bool> isEditorRunning, int slot = 0)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public string Directory { get; } = directory;
 
     /// <summary>This editor's own autosave.</summary>
-    public string LevelPath => LevelPathFor(processId);
+    public string LevelPath => LevelPathFor(processId, slot);
 
-    private string LevelPathFor(int id) => Path.Combine(Directory, id.ToString(CultureInfo.InvariantCulture) + VxLevelFile.Extension);
+    private string LevelPathFor(int id, int tab) => Path.Combine(Directory, Stem(id, tab) + VxLevelFile.Extension);
 
-    private string InfoPathFor(int id) => Path.Combine(Directory, id.ToString(CultureInfo.InvariantCulture) + ".json");
+    private string InfoPathFor(int id, int tab) => Path.Combine(Directory, Stem(id, tab) + ".json");
+
+    /// <summary>The first level open keeps the name an editor with one level has always used.</summary>
+    private static string Stem(int id, int tab) =>
+        tab == 0 ? id.ToString(CultureInfo.InvariantCulture) : string.Create(CultureInfo.InvariantCulture, $"{id}-{tab}");
+
+    private static bool TryParseStem(string stem, out int id, out int tab)
+    {
+        tab = 0;
+        int dash = stem.IndexOf('-', StringComparison.Ordinal);
+        return int.TryParse(dash < 0 ? stem : stem[..dash], NumberStyles.None, CultureInfo.InvariantCulture, out id)
+            && (dash < 0 || int.TryParse(stem[(dash + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out tab));
+    }
 
     /// <summary>
     /// Writes this editor's autosave. Safe to call away from the editing thread as long as the scene
@@ -57,21 +71,21 @@ public sealed class RecoveryStore(string directory, int processId, Func<int, boo
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
 
-        string infoPath = InfoPathFor(processId);
+        string infoPath = InfoPathFor(processId, slot);
         string temporary = infoPath + ".saving";
         File.WriteAllText(temporary, JsonSerializer.Serialize(info, JsonOptions));
         File.Move(temporary, infoPath, overwrite: true);
     }
 
     /// <summary>Removes this editor's autosave: the work was saved, discarded, or is being closed cleanly.</summary>
-    public void Delete() => Delete(processId);
+    public void Delete() => Delete(processId, slot);
 
-    public void Delete(RecoveryEntry entry) => Delete(entry.ProcessId);
+    public void Delete(RecoveryEntry entry) => Delete(entry.ProcessId, entry.Slot);
 
-    private void Delete(int id)
+    private void Delete(int id, int tab)
     {
-        TryDelete(LevelPathFor(id));
-        TryDelete(InfoPathFor(id));
+        TryDelete(LevelPathFor(id, tab));
+        TryDelete(InfoPathFor(id, tab));
     }
 
     /// <summary>
@@ -81,17 +95,17 @@ public sealed class RecoveryStore(string directory, int processId, Func<int, boo
     /// </summary>
     public void Adopt(RecoveryEntry entry)
     {
-        if (entry.ProcessId == processId)
+        if (entry.ProcessId == processId && entry.Slot == slot)
         {
             return;
         }
 
         File.Move(entry.LevelPath, LevelPath, overwrite: true);
 
-        string info = InfoPathFor(entry.ProcessId);
+        string info = InfoPathFor(entry.ProcessId, entry.Slot);
         if (File.Exists(info))
         {
-            File.Move(info, InfoPathFor(processId), overwrite: true);
+            File.Move(info, InfoPathFor(processId, slot), overwrite: true);
         }
     }
 
@@ -109,30 +123,30 @@ public sealed class RecoveryStore(string directory, int processId, Func<int, boo
         {
             // The pattern also matches longer extensions on some platforms; only the exact one counts.
             if (!level.EndsWith(VxLevelFile.Extension, StringComparison.OrdinalIgnoreCase)
-                || !int.TryParse(Path.GetFileNameWithoutExtension(level), NumberStyles.None, CultureInfo.InvariantCulture, out int id)
+                || !TryParseStem(Path.GetFileNameWithoutExtension(level), out int id, out int tab)
                 || id == processId
                 || isEditorRunning(id))
             {
                 continue;
             }
 
-            found.Add(Describe(level, id));
+            found.Add(Describe(level, id, tab));
         }
 
         return [.. found.OrderByDescending(entry => entry.SavedUtc)];
     }
 
     /// <summary>What the note says about an autosave — or, without a note, what the level itself does.</summary>
-    private RecoveryEntry Describe(string level, int id)
+    private RecoveryEntry Describe(string level, int id, int tab)
     {
         try
         {
-            string infoPath = InfoPathFor(id);
+            string infoPath = InfoPathFor(id, tab);
             if (File.Exists(infoPath)
                 && JsonSerializer.Deserialize<RecoveryInfo>(File.ReadAllText(infoPath), JsonOptions) is { } info
                 && DateTime.TryParse(info.SavedUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime saved))
             {
-                return new RecoveryEntry(level, id, info.ProjectPath, info.ProjectName, saved.ToUniversalTime());
+                return new RecoveryEntry(level, id, info.ProjectPath, info.ProjectName, saved.ToUniversalTime(), tab);
             }
         }
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
@@ -149,7 +163,7 @@ public sealed class RecoveryStore(string directory, int processId, Func<int, boo
         {
         }
 
-        return new RecoveryEntry(level, id, null, name, File.GetLastWriteTimeUtc(level));
+        return new RecoveryEntry(level, id, null, name, File.GetLastWriteTimeUtc(level), tab);
     }
 
     private static void TryDelete(string path)

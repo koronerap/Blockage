@@ -38,8 +38,8 @@ public static class ObjectListPanel
 
     private static readonly Dictionary<int, (Vector2 Min, Vector2 Max)> RowRects = [];
 
-    /// <summary>Parents whose children are folded away.</summary>
-    private static readonly HashSet<int> Folded = [];
+    /// <summary>Parents whose children are folded away — the level in front's own, since an id means something only in its level.</summary>
+    public static HashSet<int> Folded { get; set; } = [];
 
     /// <summary>Where a row's switch — "lock" or "eye" — or its "fold" arrow was drawn last frame, for tests to aim at.</summary>
     public static (Vector2 Min, Vector2 Max)? ToggleRect(int id, string toggle) =>
@@ -90,6 +90,14 @@ public static class ObjectListPanel
     public static void StartRename(SceneLight light) => StartRename(light.Id, light.Name);
 
     public static void StartRename(IPlaceable thing) => StartRename(thing.Id, thing.Name);
+
+    /// <summary>A rename left unfinished is dropped: the level it was in is no longer in front.</summary>
+    public static void StopRenaming()
+    {
+        _renamingId = 0;
+        _renameJustStarted = false;
+        _draggedId = 0;
+    }
 
     public static void StartRename(int id, string name)
     {

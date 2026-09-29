@@ -10,6 +10,9 @@ public sealed class ViewActions
 {
     public required Action FrameLevel { get; init; }
 
+    /// <summary>Closes the level in front, once its unsaved work is answered for.</summary>
+    public Action CloseLevel { get; init; } = () => { };
+
     /// <summary>F12: the level rendered from the view, in the Render window.</summary>
     public Action RenderImage { get; init; } = () => { };
 

@@ -16,6 +16,20 @@ namespace EditorApp;
 /// </summary>
 public sealed class ProjectController(EditorSession session, Action onWorldReplaced)
 {
+    /// <summary>The level Save, Save As and the questions are about: the one in front. The host moves it as tabs change.</summary>
+    public EditorSession Session { get; set; } = session;
+
+    /// <summary>
+    /// Makes room for a level being opened and returns the session it is to go into: a tab of its
+    /// own, or the level in front when that is an untitled one nothing has been done to. Set by a
+    /// host that keeps levels in tabs (Fullreleaseplan 7.8); left null, a level opened replaces the
+    /// one in front, once its unsaved work has been answered for.
+    /// </summary>
+    public Func<EditorSession>? MakeRoom { get; set; }
+
+    /// <summary>Brings forward the tab a file is open in already, and says whether there was one.</summary>
+    public Func<string, bool>? ShowOpen { get; set; }
+
     /// <summary>Title and identity together; both have to be passed to OpenPopup and BeginPopupModal.</summary>
     private const string ConfirmPopupId = "Unsaved changes###discard-changes";
 
@@ -72,20 +86,19 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     public bool RemembersRecent { get; set; } = true;
 
     public string WindowTitle =>
-        $"{(session.HasUnsavedChanges ? "*" : string.Empty)}{session.ProjectName} - Blockage";
+        $"{(Session.HasUnsavedChanges ? "*" : string.Empty)}{Session.ProjectName} - Blockage";
 
     /// <summary>
     /// A new level from one of the templates — the cube unless another is asked for. Never an empty
     /// world: with no Place tool there has to be a surface for Extrude to pull on.
     /// </summary>
-    public void NewProject(LevelTemplate template = LevelTemplate.Cube) => GuardUnsaved("start a new level", () =>
+    public void NewProject(LevelTemplate template = LevelTemplate.Cube) => Guarded("start a new level", () =>
     {
-        session.ReplaceScene(LevelTemplates.Build(template), projectPath: null);
-        onWorldReplaced();
+        Place(LevelTemplates.Build(template), projectPath: null);
         Report($"New level - {LevelTemplates.DescriptionOf(template)}.", isError: false);
     });
 
-    public void OpenProject() => GuardUnsaved("open another level", () =>
+    public void OpenProject() => Guarded("open another level", () =>
         _browser.Show(
             FileBrowserMode.Open,
             "Open level",
@@ -95,21 +108,24 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             LoadFrom,
             ProjectDirectory));
 
-    public void OpenRecent(string path) => GuardUnsaved("open another level", () => LoadFrom(path));
+    public void OpenRecent(string path) => Guarded("open another level", () => LoadFrom(path));
 
     /// <summary>Asks before letting the editor close on unsaved work.</summary>
     public void RequestExit(Action exit) => GuardUnsaved("exit", exit);
 
+    /// <summary>Asks before letting the level in front be closed on unsaved work.</summary>
+    public void RequestClose(Action close) => GuardUnsaved("close it", close);
+
     /// <summary>Saves to the current path, or asks for one when the project has never been saved.</summary>
     public void Save()
     {
-        if (session.ProjectPath is null)
+        if (Session.ProjectPath is null)
         {
             SaveAs();
             return;
         }
 
-        WriteTo(session.ProjectPath);
+        WriteTo(Session.ProjectPath);
     }
 
     public void SaveAs() => _browser.Show(
@@ -117,7 +133,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         "Save level as",
         VxLevelFile.Extension,
         StartDirectory,
-        session.ProjectName + VxLevelFile.Extension,
+        Session.ProjectName + VxLevelFile.Extension,
         WriteTo,
         ProjectDirectory);
 
@@ -128,20 +144,25 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     /// to open would be a lie.
     /// </summary>
     private string? ProjectDirectory =>
-        session.ProjectPath is not null ? Path.GetDirectoryName(session.ProjectPath) : null;
+        Session.ProjectPath is not null ? Path.GetDirectoryName(Session.ProjectPath) : null;
 
     private string StartDirectory =>
-        session.ProjectPath is not null
-            ? Path.GetDirectoryName(session.ProjectPath) ?? _browser.CurrentDirectory
+        Session.ProjectPath is not null
+            ? Path.GetDirectoryName(Session.ProjectPath) ?? _browser.CurrentDirectory
             : _browser.CurrentDirectory;
 
     private void LoadFrom(string path)
     {
+        if (ShowOpen?.Invoke(path) == true)
+        {
+            Report($"{Path.GetFileName(path)} is open already.", isError: false);
+            return;
+        }
+
         try
         {
             VoxelScene scene = VxLevelFile.LoadScene(path);
-            session.ReplaceScene(scene, path);
-            onWorldReplaced();
+            Place(scene, path);
             Remember(path);
             Report(
                 $"Opened {Path.GetFileName(path)} - {scene.SolidCount:N0} voxels in {scene.Objects.Count} object(s).",
@@ -166,9 +187,9 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     {
         try
         {
-            VxLevelFile.Save(session.Scene, path);
-            session.ProjectPath = path;
-            session.HasUnsavedChanges = false;
+            VxLevelFile.Save(Session.Scene, path);
+            Session.ProjectPath = path;
+            Session.HasUnsavedChanges = false;
             Remember(path);
             Report($"Saved {Path.GetFileName(path)}.", isError: false);
         }
@@ -201,14 +222,12 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     /// knows its project's path — the file at that path is older than what was recovered — and the
     /// copy becomes this session's own autosave, so a second crash straight away loses nothing.
     /// </summary>
-    public void Recover(RecoveryEntry entry) => GuardUnsaved("recover the autosaved work", () =>
+    public void Recover(RecoveryEntry entry) => Guarded("recover the autosaved work", () =>
     {
         try
         {
             VoxelScene scene = VxLevelFile.LoadScene(entry.LevelPath);
-            session.ReplaceScene(scene, entry.ProjectPath);
-            session.HasUnsavedChanges = true;
-            onWorldReplaced();
+            Place(scene, entry.ProjectPath).HasUnsavedChanges = true;
             Autosave?.Adopt(entry);
             Report($"Recovered {entry.ProjectName} - save it to keep it.", isError: false);
         }
@@ -226,7 +245,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     /// had, so saving puts it back where it came from, and comes back unsaved if it closed on unsaved
     /// work — which is exactly the work this is for.
     /// </summary>
-    public void RecoverLastSession() => GuardUnsaved("recover the last session", () =>
+    public void RecoverLastSession() => Guarded("recover the last session", () =>
     {
         if (LastSession?.Read() is not { } last)
         {
@@ -237,9 +256,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
         try
         {
             VoxelScene scene = VxLevelFile.LoadScene(last.LevelPath);
-            session.ReplaceScene(scene, last.ProjectPath);
-            session.HasUnsavedChanges = last.HadUnsavedChanges;
-            onWorldReplaced();
+            Place(scene, last.ProjectPath).HasUnsavedChanges = last.HadUnsavedChanges;
             Report(
                 last.HadUnsavedChanges
                     ? $"Recovered the last session: {last.ProjectName}, as it was left - save it to keep it."
@@ -270,10 +287,34 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
     public void CancelPending() => _pendingAction = null;
 
+    /// <summary>
+    /// Puts a level in — in a tab of its own when the host keeps tabs, else in place of the level in
+    /// front — and returns the session it went into.
+    /// </summary>
+    private EditorSession Place(VoxelScene scene, string? projectPath)
+    {
+        EditorSession target = MakeRoom?.Invoke() ?? Session;
+        target.ReplaceScene(scene, projectPath);
+        onWorldReplaced();
+        return target;
+    }
+
+    /// <summary>Asks about unsaved work only when what comes next would replace it, not when it goes in a tab of its own.</summary>
+    private void Guarded(string description, Action action)
+    {
+        if (MakeRoom is not null)
+        {
+            action();
+            return;
+        }
+
+        GuardUnsaved(description, action);
+    }
+
     /// <summary>Runs an action immediately, or asks first when there is unsaved work.</summary>
     private void GuardUnsaved(string description, Action action)
     {
-        if (!session.HasUnsavedChanges)
+        if (!Session.HasUnsavedChanges)
         {
             action();
             return;
@@ -380,7 +421,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             return;
         }
 
-        ImGui.Text($"{session.ProjectName} has unsaved changes.");
+        ImGui.Text($"{Session.ProjectName} has unsaved changes.");
         ImGui.Text($"Discard them and {_pendingDescription}?");
         ImGui.Spacing();
 
@@ -392,7 +433,7 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
             Save();
 
             // Save As opens its own dialog; only chain straight through when the path was known.
-            if (!session.HasUnsavedChanges)
+            if (!Session.HasUnsavedChanges)
             {
                 pending?.Invoke();
             }

@@ -40,7 +40,7 @@ public sealed partial class EditorSession
         Selection = null;
 
         var steps = new List<ICommand>();
-        byte[] map = ColoursFrom(source.Palette, objects, steps);
+        byte[] map = ColoursFrom(source.Palette, objects.Select(o => o.Grid), steps);
 
         // Parents before children, so each child's parent is in already; linked copies stay linked.
         var grids = new Dictionary<VoxelWorld, VoxelWorld>(ReferenceEqualityComparer.Instance);
@@ -89,11 +89,11 @@ public sealed partial class EditorSession
     }
 
     /// <summary>
-    /// Where each colour of <paramref name="palette"/> the objects use goes in this level's palette:
+    /// Where each colour of <paramref name="palette"/> the grids use goes in this level's palette:
     /// the same colour if it is there, else a free custom slot given it (and its material), else the
     /// nearest. The slots claimed are commands in <paramref name="steps"/>, to undo with the rest.
     /// </summary>
-    private byte[] ColoursFrom(Palette palette, IReadOnlyList<VoxelObject> objects, List<ICommand> steps)
+    private byte[] ColoursFrom(Palette palette, IEnumerable<VoxelWorld> grids, List<ICommand> steps)
     {
         var map = new byte[Palette.Size];
         for (int i = 0; i < map.Length; i++)
@@ -107,9 +107,9 @@ public sealed partial class EditorSession
         }
 
         var used = new bool[Palette.Size];
-        foreach (VoxelObject o in objects)
+        foreach (VoxelWorld grid in grids)
         {
-            foreach (Chunk chunk in o.Grid.Chunks.Values)
+            foreach (Chunk chunk in grid.Chunks.Values)
             {
                 foreach (byte index in chunk.Indices)
                 {

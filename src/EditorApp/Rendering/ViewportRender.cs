@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Rendering;
+using EditorApp.Core.Scene;
 using Silk.NET.OpenGL;
 
 namespace EditorApp.Rendering;
@@ -23,7 +24,7 @@ public sealed class ViewportRender(GL gl) : IDisposable
     private const double GpuBudget = 6;
 
     private RenderJob? _job;
-    private (RenderCamera Camera, long Revision, int Width, int Height, RenderSettings Settings)? _key;
+    private (RenderCamera Camera, VoxelScene Scene, long Revision, int Width, int Height, RenderSettings Settings)? _key;
     private double _restartedAt = double.NegativeInfinity;
 
     /// <summary>The picture so far, on the GPU; 0 before there is one.</summary>
@@ -46,7 +47,8 @@ public sealed class ViewportRender(GL gl) : IDisposable
         int width = Math.Max((int)viewportPixels.X / Downscale, 16);
         int height = Math.Max((int)viewportPixels.Y / Downscale, 16);
         RenderSettings settings = session.Scene.RenderSettings;
-        var key = (camera, session.Revision, width, height, settings);
+        // The scene as well as its revision: another level's, brought to the front, can be at the same one.
+        var key = (camera, session.Scene, session.Revision, width, height, settings);
 
         if (_key == key || clock - _restartedAt < RestartSeconds)
         {

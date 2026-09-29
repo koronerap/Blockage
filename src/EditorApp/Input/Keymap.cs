@@ -252,6 +252,11 @@ public sealed class Keymap
             [EditorAction.SaveAs] = [KeyChord.CtrlShift(Key.S)],
             [EditorAction.Export] = [KeyChord.Ctrl(Key.E)],
 
+            // Levels in tabs, as a browser keeps pages.
+            [EditorAction.NextLevel] = [KeyChord.Ctrl(Key.Tab), KeyChord.Ctrl(Key.PageDown)],
+            [EditorAction.PreviousLevel] = [KeyChord.CtrlShift(Key.Tab), KeyChord.Ctrl(Key.PageUp)],
+            [EditorAction.CloseLevel] = [KeyChord.Ctrl(Key.W)],
+
             [EditorAction.FrameLevel] = [new(Key.Home)],
             [EditorAction.ToggleMeasurements] = [new(Key.D)],
             [EditorAction.ToggleSidebar] = [new(Key.N)],

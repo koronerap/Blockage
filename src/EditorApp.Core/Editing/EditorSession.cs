@@ -1295,16 +1295,17 @@ public sealed partial class EditorSession
 
     // ---- Clipboard -----------------------------------------------------------------------------
 
-    /// <summary>What was last copied or cut, or null: the first piece of it. Kept by the session, not the system clipboard.</summary>
-    public VoxelClipboard? Clipboard => _clipboard.Count > 0 ? _clipboard[0] : null;
+    /// <summary>
+    /// Where what is copied is kept — not the system clipboard. The session's own, unless it is given
+    /// one shared with other levels open at the same time (Fullreleaseplan 7.8).
+    /// </summary>
+    public SharedClipboard SharedClipboard { get; set; } = new();
+
+    /// <summary>What was last copied or cut, or null: the first piece of it.</summary>
+    public VoxelClipboard? Clipboard => SharedClipboard.Pieces.Count > 0 ? SharedClipboard.Pieces[0] : null;
 
     /// <summary>Every piece of what was last copied — one per object, when several were selected.</summary>
-    public IReadOnlyList<VoxelClipboard> ClipboardPieces => _clipboard;
-
-    private List<VoxelClipboard> _clipboard = [];
-
-    /// <summary>Pastes since the last copy, so each lands a step further along instead of on the last.</summary>
-    private int _pasteCount;
+    public IReadOnlyList<VoxelClipboard> ClipboardPieces => SharedClipboard.Pieces;
 
     /// <summary>
     /// True when a copy would take the voxels behind the Extrude selection rather than the whole
@@ -1323,8 +1324,7 @@ public sealed partial class EditorSession
         if (!CopiesSelection && EditObject is { } edited && !VoxelSelection.IsEmpty)
         {
             VoxelWorld chosen = ClipboardOperations.Extract(edited.Grid, VoxelSelection.Cells);
-            _clipboard = [new VoxelClipboard(chosen, edited.Transform, edited.Name)];
-            _pasteCount = 0;
+            SharedClipboard.Set([new VoxelClipboard(chosen, edited.Transform, edited.Name)], Scene);
             return chosen.SolidCount;
         }
 
@@ -1337,8 +1337,7 @@ public sealed partial class EditorSession
                 return 0;
             }
 
-            _clipboard = [new VoxelClipboard(region, focus.Transform, focus.Name)];
-            _pasteCount = 0;
+            SharedClipboard.Set([new VoxelClipboard(region, focus.Transform, focus.Name)], Scene);
             return region.SolidCount;
         }
 
@@ -1352,8 +1351,7 @@ public sealed partial class EditorSession
             return 0;
         }
 
-        _clipboard = pieces;
-        _pasteCount = 0;
+        SharedClipboard.Set(pieces, Scene);
         return pieces.Sum(piece => piece.Grid.SolidCount);
     }
 
@@ -1433,11 +1431,14 @@ public sealed partial class EditorSession
 
     /// <summary>
     /// Pastes as a new object, on the lattice of the one the voxels came from, beside where they were
-    /// copied from — further along with each paste. The new object is focused. One undo step.
+    /// copied from — further along with each paste. Copied in another level, the first paste lands
+    /// where they were there, their colours found in this level's palette. The new object is focused.
+    /// One undo step.
     /// </summary>
     public VoxelObject? Paste(Vector3 towards)
     {
-        if (_clipboard.Count == 0)
+        IReadOnlyList<VoxelClipboard> pieces = SharedClipboard.Pieces;
+        if (pieces.Count == 0)
         {
             return null;
         }
@@ -1447,19 +1448,23 @@ public sealed partial class EditorSession
         Selection = null;
 
         // All the pieces by one step, so they land as they were copied, among each other.
-        _pasteCount++;
-        List<VoxelObject> placed = [.. _clipboard.Select(piece => new VoxelObject(0, piece.Grid, piece.Transform, piece.Name))];
-        Vector3 offset = SelectionOffset(placed, [], towards) * _pasteCount;
+        int along = SharedClipboard.NextPaste(Scene);
+        List<VoxelObject> placed = [.. pieces.Select(piece => new VoxelObject(0, piece.Grid, piece.Transform, piece.Name))];
+        Vector3 offset = along == 0 ? Vector3.Zero : SelectionOffset(placed, [], towards) * along;
 
         var steps = new List<ICommand>();
+        Palette from = SharedClipboard.Palette ?? Scene.Palette;
+        bool samePalette = ReferenceEquals(from, Scene.Palette);
+        byte[] map = ColoursFrom(from, pieces.Select(piece => piece.Grid), steps);
+
         var pasted = new List<int>();
-        foreach (VoxelClipboard piece in _clipboard)
+        foreach (VoxelClipboard piece in pieces)
         {
             var command = new CreateObjectCommand(
                 Scene,
-                piece.Grid.Copy(),
+                samePalette ? piece.Grid.Copy() : Recoloured(piece.Grid, map),
                 piece.Transform.Translated(offset),
-                DuplicateName(piece.Name, Scene.Objects.Select(o => o.Name)),
+                Scene.Objects.Any(o => o.Name == piece.Name) ? DuplicateName(piece.Name, Scene.Objects.Select(o => o.Name)) : piece.Name,
                 "Paste");
 
             command.Redo();

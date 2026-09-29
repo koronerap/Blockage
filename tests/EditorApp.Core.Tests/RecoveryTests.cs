@@ -118,6 +118,64 @@ public class RecoveryTests : IDisposable
     public void AnEmptyOrMissingDirectoryHasNothingToOffer() =>
         Assert.Empty(Store(1).FindAbandoned());
 
+    // ---- A level in each tab (Fullreleaseplan 7.8) ------------------------------------------------
+
+    private RecoveryStore Tab(int processId, int slot, params int[] running) =>
+        new(_directory, processId, id => running.Contains(id), slot);
+
+    /// <summary>Each level open keeps its own copy, and every one of them is offered once the editor is gone.</summary>
+    [Fact]
+    public void EveryTabsAutosaveIsOfferedWithTheTabItCameFrom()
+    {
+        Tab(100, 0).Write(VoxelScene.CreateStarter(), @"C:.vxlevel", "castle");
+        Tab(100, 3).Write(VoxelScene.CreateStarter(), @"C:.vxlevel", "cave");
+
+        IReadOnlyList<RecoveryEntry> found = Store(200).FindAbandoned();
+
+        Assert.Equal(2, found.Count);
+        Assert.Equal(0, found.Single(e => e.ProjectName == "castle").Slot);
+        Assert.Equal(3, found.Single(e => e.ProjectName == "cave").Slot);
+        Assert.True(File.Exists(Path.Combine(_directory, "100-3.vxlevel")));
+    }
+
+    [Fact]
+    public void NoTabOfARunningEditorIsOffered()
+    {
+        Tab(100, 0).Write(VoxelScene.CreateStarter(), null, "one");
+        Tab(100, 2).Write(VoxelScene.CreateStarter(), null, "two");
+
+        Assert.Empty(Store(200, running: 100).FindAbandoned());
+        Assert.Empty(Tab(100, 1).FindAbandoned());
+    }
+
+    [Fact]
+    public void DeletingOneTabsCopyLeavesTheOthers()
+    {
+        Tab(100, 0).Write(VoxelScene.CreateStarter(), null, "one");
+        RecoveryStore second = Tab(100, 1);
+        second.Write(VoxelScene.CreateStarter(), null, "two");
+
+        second.Delete();
+
+        RecoveryEntry left = Assert.Single(Store(200).FindAbandoned());
+        Assert.Equal("one", left.ProjectName);
+    }
+
+    [Fact]
+    public void ACopyRecoveredIntoATabBecomesThatTabsOwn()
+    {
+        Tab(100, 2).Write(VoxelScene.CreateStarter(), @"C:.vxlevel", "cave");
+        RecoveryStore mine = Tab(200, 4);
+        RecoveryEntry entry = Assert.Single(mine.FindAbandoned());
+
+        mine.Adopt(entry);
+
+        Assert.Equal(Path.Combine(_directory, "200-4.vxlevel"), mine.LevelPath);
+        Assert.True(File.Exists(mine.LevelPath));
+        Assert.True(File.Exists(Path.Combine(_directory, "200-4.json")));
+        Assert.Equal("cave", Assert.Single(Store(300).FindAbandoned()).ProjectName);
+    }
+
     // ---- The schedule -----------------------------------------------------------------------------
 
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(120);

@@ -61,6 +61,12 @@ public sealed class EditorShell(LayoutSettings layout)
         float top = menuHeight;
         float bottom = screen.Y - statusHeight;
 
+        // The levels open, a tab each, while there is more than one.
+        if (context.Levels is { Levels.Count: > 1 } levels)
+        {
+            top += LevelTabs.Draw(new Vector2(0f, top), screen.X, levels);
+        }
+
         DrawToolOptions(context, new Vector2(0f, top), new Vector2(screen.X, optionsHeight));
         top += optionsHeight;
 
@@ -303,6 +309,9 @@ public sealed class EditorShell(LayoutSettings layout)
 public sealed class ShellContext
 {
     public required EditorSession Session { get; init; }
+
+    /// <summary>The levels open in tabs; null, or only one, and no strip is drawn for them.</summary>
+    public LevelTabsContext? Levels { get; init; }
 
     public required ProjectController Project { get; init; }
 

@@ -58,6 +58,9 @@ public enum EditorAction
     Save,
     SaveAs,
     Export,
+    NextLevel,
+    PreviousLevel,
+    CloseLevel,
 
     // View
     FrameLevel,
@@ -165,6 +168,9 @@ public static class EditorActions
         new(EditorAction.Save, "file.save", "Save", File),
         new(EditorAction.SaveAs, "file.saveas", "Save as", File),
         new(EditorAction.Export, "file.export", "Export mesh", File),
+        new(EditorAction.NextLevel, "file.nextlevel", "Next level tab", File),
+        new(EditorAction.PreviousLevel, "file.previouslevel", "Previous level tab", File),
+        new(EditorAction.CloseLevel, "file.closelevel", "Close level", File),
 
         new(EditorAction.FrameLevel, "view.framelevel", "Frame the level", View),
         new(EditorAction.FrameFocused, "view.framefocused", "Frame the focused object", View),

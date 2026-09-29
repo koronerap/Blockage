@@ -26,10 +26,11 @@ public sealed class AutosaveController
     private Task? _writing;
     private long _writingRevision;
 
-    public AutosaveController(EditorSession session, string? directory = null, TimeSpan? interval = null)
+    /// <param name="slot">Which of the levels open it keeps: each tab has an autosave of its own.</param>
+    public AutosaveController(EditorSession session, string? directory = null, TimeSpan? interval = null, int slot = 0)
     {
         _session = session;
-        _store = new RecoveryStore(directory ?? DefaultDirectory, Environment.ProcessId, IsEditorRunning);
+        _store = new RecoveryStore(directory ?? DefaultDirectory, Environment.ProcessId, IsEditorRunning, slot);
         _schedule = new AutosaveSchedule(interval ?? Interval);
     }
 

@@ -31,7 +31,20 @@ public sealed class EditorApplication : IDisposable
     /// <summary>Set once the window and its context exist: a failure before it is the context refused.</summary>
     private bool _loaded;
     private readonly int _smokeFrames;
-    private readonly EditorSession _session = new();
+    /// <summary>The level in front: what every tool, panel and shortcut works on. Changes with the tab in front.</summary>
+    private EditorSession _session = new();
+
+    /// <summary>The levels open, a tab each (Fullreleaseplan 7.8); <see cref="_level"/> is the one in front.</summary>
+    private readonly List<LevelDocument> _levels = [];
+    private LevelDocument? _level;
+    private int _nextSlot;
+
+    /// <summary>What was last copied: every level open shares it, so what is copied in one pastes into another.</summary>
+    private readonly SharedClipboard _clipboard = new();
+
+    /// <summary>A change of level asked for while the frame was being drawn, made once it has been.</summary>
+    private Action? _afterUi;
+
     private readonly FlyCamera _camera = new();
     private readonly PalettePanel _palettePanel = new();
     private readonly ReferencePanel _referencePanel = new();
@@ -57,7 +70,6 @@ public sealed class EditorApplication : IDisposable
     private ProjectController? _project;
     private ExportController? _export;
     private MimicraftController? _mimicraft;
-    private AutosaveController? _autosave;
 
     /// <summary>The level as the editor last closed on it, kept at every clean exit. Null for smoke and screenshot runs.</summary>
     private LastSession? _lastSession;
@@ -75,7 +87,7 @@ public sealed class EditorApplication : IDisposable
     private bool _walkClickHeld;
 
     /// <summary>Where the view was before walking, to go back to.</summary>
-    private (Vector3 Position, float Yaw, float Pitch, float PivotDistance, bool Orthographic) _walkStart;
+    private ViewPose _walkStart;
 
     /// <summary>Tells a right click, which opens the viewport's menu, from a right drag, which looks round.</summary>
     private readonly RightClick _rightClick = new();
@@ -87,7 +99,6 @@ public sealed class EditorApplication : IDisposable
     private double _clock;
     private MiddleDrag _middleDrag;
     private bool _middleWasDown;
-    private bool _confirmedClose;
 
     /// <summary>
     /// Closing is deferred to the end of the frame. Calling Close from a button handler runs
@@ -266,13 +277,12 @@ public sealed class EditorApplication : IDisposable
         {
             _renderer.ResetBuffers();
             FrameLevel();
-        });
-        _export = new ExportController(_session);
-        _mimicraft = new MimicraftController(_session);
-        _extrude = new ExtrudeInteraction(_session);
-        _transform = new TransformInteraction(_session);
-        _aim = new LightAimInteraction(_session);
-        _select = new SelectInteraction(_session);
+        })
+        {
+            MakeRoom = MakeRoomForLevel,
+            ShowOpen = ShowOpenLevel,
+        };
+        Front(AddLevel(_session));
         _renderWindow = new RenderWindow(_gl);
         _outputsWindow = new RenderOutputsWindow(_gl);
         _library = new PropLibraryWindow(_gl);
@@ -305,16 +315,11 @@ public sealed class EditorApplication : IDisposable
             _camera.Align(view);
         }
 
-
-
-
         // Not in a smoke or screenshot run: those must neither write the user's recovery folder nor
         // stop at a question about what is already in it.
         if (_smokeFrames <= 0)
         {
-            _autosave = new AutosaveController(_session);
-            _project.Autosave = _autosave;
-            CrashLog.Crashing += _autosave.WriteBeforeDying;
+            CrashLog.Crashing += WriteBeforeDying;
             _project.OfferRecovery();
 
             _lastSession = new LastSession();
@@ -410,25 +415,30 @@ public sealed class EditorApplication : IDisposable
         _camera.LookSensitivity = BaseLookSensitivity * p.OrbitSpeed;
         _camera.MoveSpeed = BaseMoveSpeed * p.FlySpeed;
 
-        if (_transform is not null)
-        {
-            _transform.SizeScale = p.GizmoSize;
-        }
-
         _window.VSync = p.VSync;
-        _session.Snap.CopyFrom(p.Snap);
-        _session.History.CellBudget = p.UndoMemory * 1_000_000;
-
-        if (_autosave is not null)
+        foreach (LevelDocument level in _levels)
         {
-            _autosave.Every = TimeSpan.FromMinutes(p.AutosaveMinutes);
+            ApplyPreferencesTo(level);
         }
 
         if (_project is not null)
         {
             _project.Recent.Capacity = p.RecentFilesKept;
         }
+    }
 
+    /// <summary>The preferences kept in a level's session and tools, put into one.</summary>
+    private void ApplyPreferencesTo(LevelDocument level)
+    {
+        Preferences p = _preferences;
+        level.Transform.SizeScale = p.GizmoSize;
+        level.Session.Snap.CopyFrom(p.Snap);
+        level.Session.History.CellBudget = p.UndoMemory * 1_000_000;
+
+        if (level.Autosave is not null)
+        {
+            level.Autosave.Every = TimeSpan.FromMinutes(p.AutosaveMinutes);
+        }
     }
 
     /// <summary>The header's shading and overlays, handed to the renderer for this frame.</summary>
@@ -503,7 +513,11 @@ public sealed class EditorApplication : IDisposable
     {
         _lastDelta = (float)deltaSeconds;
         _clock += deltaSeconds;
-        _autosave?.Tick(deltaSeconds);
+        foreach (LevelDocument level in _levels)
+        {
+            level.Autosave?.Tick(deltaSeconds);
+        }
+
         UpdateCamera((float)deltaSeconds);
 
         // While walking or a pie is open, and until the click that ended one is let go, the tools stand aside.
@@ -1297,6 +1311,9 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.Open: _project?.OpenProject(); break;
             case EditorAction.Save: _project?.Save(); break;
             case EditorAction.SaveAs: _project?.SaveAs(); break;
+            case EditorAction.NextLevel: CycleLevel(1); break;
+            case EditorAction.PreviousLevel: CycleLevel(-1); break;
+            case EditorAction.CloseLevel when _level is { } closing: CloseLevel(closing); break;
             case EditorAction.Export: _export?.Show(); break;
 
             case EditorAction.ToolSelect: SwitchTool(EditorTool.Select); break;
@@ -2062,6 +2079,22 @@ public sealed class EditorApplication : IDisposable
         var context = new ShellContext
         {
             Session = _session,
+            Levels = _levels.Count > 1 && _level is { } front
+                ? new LevelTabsContext
+                {
+                    Levels = _levels,
+                    Active = front,
+                    Show = level => _afterUi = () =>
+                    {
+                        if (!IsDragging())
+                        {
+                            ShowLevel(level);
+                        }
+                    },
+                    Close = level => _afterUi = () => CloseLevel(level),
+                    New = () => _afterUi = () => _project?.NewProject(),
+                }
+                : null,
             Project = _project!,
             Export = _export!,
             Mimicraft = _mimicraft!,
@@ -2147,6 +2180,11 @@ public sealed class EditorApplication : IDisposable
         _library?.Draw(_session);
         ScatterWindow.Draw(_session);
         HistoryWindow.Draw(_session);
+        if (_afterUi is { } afterUi)
+        {
+            _afterUi = null;
+            afterUi();
+        }
         QuickFavorites.Draw(_preferences, Run, SavePreferences);
         if (_input is { Mice.Count: > 0, Keyboards.Count: > 0 } pieInput)
         {
@@ -2320,7 +2358,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        _walkStart = (_camera.Position, _camera.Yaw, _camera.Pitch, _camera.PivotDistance, _camera.Orthographic);
+        _walkStart = ViewPose.Of(_camera);
         _walk = new WalkBody(_session.Scene, _preferences.Walk);
         _walk.PlaceBelow(_camera.Position);
         _camera.Orthographic = false;
@@ -2340,11 +2378,7 @@ public sealed class EditorApplication : IDisposable
         _walk = null;
         if (!keep)
         {
-            _camera.Position = _walkStart.Position;
-            _camera.Yaw = _walkStart.Yaw;
-            _camera.Pitch = _walkStart.Pitch;
-            _camera.PivotDistance = _walkStart.PivotDistance;
-            _camera.Orthographic = _walkStart.Orthographic;
+            _walkStart.ApplyTo(_camera);
         }
         else
         {
@@ -2746,6 +2780,13 @@ public sealed class EditorApplication : IDisposable
     private ViewActions CreateViewActions() => new()
     {
         FrameLevel = FrameLevel,
+        CloseLevel = () =>
+        {
+            if (_level is { } closing)
+            {
+                CloseLevel(closing);
+            }
+        },
         FrameFocused = FrameFocused,
         RenderImage = () => _renderWindow?.Start(_session, RenderImageCamera()),
         ViewCamera = ToggleCameraView,
@@ -2900,14 +2941,17 @@ public sealed class EditorApplication : IDisposable
     /// </summary>
     private void OnClosing()
     {
-        if (!_confirmedClose && _session.HasUnsavedChanges && _project is not null)
+        // Each level with unsaved work in turn, brought to the front to be asked about.
+        if (_project is not null
+            && _levels.FirstOrDefault(level => level.Session.HasUnsavedChanges && level.AnsweredAt != level.Session.Revision) is { } unsaved)
         {
             _window.IsClosing = false;
+            ShowLevel(unsaved);
             _project.RequestExit(() =>
             {
                 // Answered from inside a popup, so mid-frame. Closing here would dispose the
                 // renderer under the frame that is still being drawn.
-                _confirmedClose = true;
+                unsaved.AnsweredAt = unsaved.Session.Revision;
                 _closeRequested = true;
             });
 
@@ -2919,7 +2963,10 @@ public sealed class EditorApplication : IDisposable
         // leaves the copy behind to be offered next time. What was open is kept all the same, as
         // the last session, for when the answer was the wrong one.
         _lastSession?.Write(_session);
-        _autosave?.CloseCleanly();
+        foreach (LevelDocument level in _levels)
+        {
+            level.Autosave?.CloseCleanly();
+        }
 
         SavePreferences();
 
@@ -2943,6 +2990,192 @@ public sealed class EditorApplication : IDisposable
         _renderer = null;
         _input = null;
         _gl = null;
+    }
+
+    // ---- Levels in tabs (Fullreleaseplan 7.8) ------------------------------------------------------
+
+    /// <summary>A level for a session, with its tools and its own autosave, at the end of the tabs.</summary>
+    private LevelDocument AddLevel(EditorSession session)
+    {
+        session.SharedClipboard = _clipboard;
+        var level = new LevelDocument(session, _nextSlot++);
+
+        // Not in a smoke or screenshot run, which must not write the user's recovery folder.
+        if (_smokeFrames <= 0)
+        {
+            level.Autosave = new AutosaveController(session, slot: level.Slot);
+        }
+
+        ApplyPreferencesTo(level);
+        _levels.Add(level);
+        return level;
+    }
+
+    /// <summary>Makes a level the one every tool, panel and shortcut works on.</summary>
+    private void Front(LevelDocument level)
+    {
+        _level = level;
+        _session = level.Session;
+        _export = level.Export;
+        _mimicraft = level.Mimicraft;
+        _extrude = level.Extrude;
+        _transform = level.Transform;
+        _aim = level.Aim;
+        _select = level.Select;
+        ObjectListPanel.Folded = level.Folded;
+
+        if (_project is not null)
+        {
+            _project.Session = level.Session;
+            _project.Autosave = level.Autosave;
+        }
+    }
+
+    /// <summary>
+    /// Brings a level's tab to the front. The view goes back to where it was in it, its section box
+    /// with it; a walk, a look through a camera, and what the pointer was over are left behind.
+    /// Snapping goes along: it is the editor's, not the level's.
+    /// </summary>
+    private void ShowLevel(LevelDocument level)
+    {
+        if (ReferenceEquals(level, _level))
+        {
+            return;
+        }
+
+        EndWalk(keep: false);
+        if (_level is { } leaving)
+        {
+            leaving.View = ViewPose.Of(_camera);
+            leaving.Clip = View.Clip;
+        }
+
+        if (!ReferenceEquals(level.Session, _session))
+        {
+            level.Session.Snap.CopyFrom(_session.Snap);
+        }
+
+        ObjectListPanel.StopRenaming();
+        Front(level);
+        _through = null;
+        _hoverObjectId = 0;
+        _aimHover = null;
+        _pick = null;
+        _hover = null;
+        _paintShapeStart = null;
+        View.Clip = level.Clip;
+
+        // The renderer let go of this level's meshes while another was in front.
+        _renderer?.ResetBuffers();
+        foreach (VoxelObject o in _session.Scene.Objects)
+        {
+            o.Shown.MarkAllDirty();
+        }
+
+        if (level.View is { } pose)
+        {
+            pose.ApplyTo(_camera);
+        }
+        else
+        {
+            FrameLevel();
+        }
+    }
+
+    /// <summary>
+    /// Where a level being opened goes: in place of the one in front when that is an untitled level
+    /// nothing has been done to, else in a tab of its own, brought to the front.
+    /// </summary>
+    private EditorSession MakeRoomForLevel()
+    {
+        if (_level is { IsUntouched: true } untouched)
+        {
+            return untouched.Session;
+        }
+
+        EditorSession session = FreshSession();
+        ShowLevel(AddLevel(session));
+        return session;
+    }
+
+    /// <summary>A session as the editor starts on one: choosing comes first, and the colour in hand is white.</summary>
+    private static EditorSession FreshSession() => new() { ActiveTool = EditorTool.Select, ActiveColorIndex = Palette.WhiteIndex };
+
+    /// <summary>Brings forward the tab a file is open in already; false when no tab has it.</summary>
+    private bool ShowOpenLevel(string path)
+    {
+        string full = Path.GetFullPath(path);
+        LevelDocument? open = _levels.FirstOrDefault(level =>
+            level.Session.ProjectPath is { } own && string.Equals(Path.GetFullPath(own), full, StringComparison.OrdinalIgnoreCase));
+
+        if (open is null)
+        {
+            return false;
+        }
+
+        ShowLevel(open);
+        return true;
+    }
+
+    /// <summary>The next tab along, or the one before — round from the last to the first.</summary>
+    private void CycleLevel(int step)
+    {
+        if (_levels.Count < 2 || _level is null || IsDragging())
+        {
+            return;
+        }
+
+        int index = _levels.IndexOf(_level);
+        ShowLevel(_levels[(((index + step) % _levels.Count) + _levels.Count) % _levels.Count]);
+    }
+
+    /// <summary>Closes a level's tab once its unsaved work is answered for — brought to the front to be asked about.</summary>
+    private void CloseLevel(LevelDocument level)
+    {
+        if (_project is null || IsDragging())
+        {
+            return;
+        }
+
+        ShowLevel(level);
+        _project.RequestClose(() => RemoveLevel(level));
+    }
+
+    /// <summary>Lets a level go. The one beside it comes to the front; the last one gives way to a new level.</summary>
+    private void RemoveLevel(LevelDocument level)
+    {
+        int index = _levels.IndexOf(level);
+        if (index < 0)
+        {
+            return;
+        }
+
+        level.Autosave?.CloseCleanly();
+        _levels.RemoveAt(index);
+
+        if (_levels.Count == 0)
+        {
+            EditorSession session = FreshSession();
+            session.ReplaceWorld(EditorSession.CreateStarterWorld(), projectPath: null);
+            _level = null;
+            ShowLevel(AddLevel(session));
+            return;
+        }
+
+        if (ReferenceEquals(level, _level))
+        {
+            _level = null;
+            ShowLevel(_levels[Math.Min(index, _levels.Count - 1)]);
+        }
+    }
+
+    /// <summary>Every level's unsaved work written out as the editor goes down.</summary>
+    private void WriteBeforeDying()
+    {
+        foreach (LevelDocument level in _levels)
+        {
+            level.Autosave?.WriteBeforeDying();
+        }
     }
 
     public void Dispose() => _window.Dispose();

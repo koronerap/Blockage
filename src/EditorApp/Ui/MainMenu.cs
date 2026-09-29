@@ -143,6 +143,12 @@ public static class MainMenu
                 project.SaveAs();
             }
 
+            // The level in front: the one beside it comes forward, or with none, a new one.
+            if (ImGui.MenuItem("Close Level", Shortcut.Of(EditorAction.CloseLevel)))
+            {
+                view.CloseLevel();
+            }
+
             ImGui.Separator();
 
             // Blender's Append: objects from another level, brought in where they stood there.

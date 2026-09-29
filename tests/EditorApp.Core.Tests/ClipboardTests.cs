@@ -146,6 +146,96 @@ public class ClipboardTests
         Assert.Equal(House(session).Transform.Rotation, pasted.Transform.Rotation);
     }
 
+    // ---- Between levels (Fullreleaseplan 7.8) -----------------------------------------------------
+
+    /// <summary>The house, and an empty level beside it sharing its clipboard, as the desktop's tabs do.</summary>
+    private static (EditorSession From, EditorSession To) TwoLevels()
+    {
+        EditorSession from = House();
+        var to = new EditorSession { SharedClipboard = from.SharedClipboard };
+        to.ReplaceScene(new VoxelScene(), projectPath: null);
+        return (from, to);
+    }
+
+    /// <summary>Nothing is where they were in the other level, so the first paste lands just there.</summary>
+    [Fact]
+    public void WhatIsCopiedInOneLevelPastesIntoAnotherWhereItWas()
+    {
+        (EditorSession from, EditorSession to) = TwoLevels();
+        from.Copy();
+
+        VoxelObject pasted = to.Paste(Vector3.UnitX)!;
+
+        Assert.Same(pasted, Assert.Single(to.Scene.Objects));
+        Assert.Equal(House(from).Grid.SolidCount, pasted.Grid.SolidCount);
+        Assert.Equal(House(from).Transform.Position, pasted.Transform.Position);
+        Assert.Equal("House", pasted.Name);
+        Assert.Single(from.Scene.Objects);
+    }
+
+    [Fact]
+    public void ASecondPasteIntoTheOtherLevelLandsAStepAlong()
+    {
+        (EditorSession from, EditorSession to) = TwoLevels();
+        from.Copy();
+
+        to.Paste(Vector3.UnitX);
+        VoxelObject second = to.Paste(Vector3.UnitX)!;
+
+        // Ten wide, then one clear.
+        Assert.Equal(new Vector3(11f, 0f, 0f), second.Transform.Position);
+    }
+
+    /// <summary>A pasted colour is the colour it was, wherever this level keeps it.</summary>
+    [Fact]
+    public void ColoursPastedIntoAnotherLevelAreFoundInItsPalette()
+    {
+        (EditorSession from, EditorSession to) = TwoLevels();
+        var stone = new Color32(1, 2, 3);
+        from.Scene.Palette[Wall] = stone;
+        to.Scene.Palette[Wall] = new Color32(250, 0, 250);
+        to.Scene.Palette[33] = stone;
+        from.Copy();
+
+        VoxelObject pasted = to.Paste(Vector3.UnitX)!;
+
+        Assert.Equal(33, pasted.Grid.GetVoxel(new Int3(0, 0, 0)));
+        Assert.Equal(Wall, House(from).Grid.GetVoxel(new Int3(0, 0, 0)));
+    }
+
+    [Fact]
+    public void AColourTheOtherLevelLacksIsGivenASlotThatUndoingThePasteFrees()
+    {
+        (EditorSession from, EditorSession to) = TwoLevels();
+        var odd = new Color32(1, 2, 3);
+        from.Scene.Palette[Wall] = odd;
+        from.Copy();
+
+        VoxelObject pasted = to.Paste(Vector3.UnitX)!;
+        byte slot = pasted.Grid.GetVoxel(new Int3(0, 0, 0));
+
+        Assert.True(Palette.IsCustomIndex(slot));
+        Assert.Equal(odd, to.Scene.Palette[slot]);
+
+        to.Undo();
+
+        Assert.Empty(to.Scene.Objects);
+        Assert.True(to.Scene.Palette.IsCustomSlotFree(slot));
+    }
+
+    /// <summary>Within one level a colour keeps its number, even where another slot holds the same colour.</summary>
+    [Fact]
+    public void WithinOneLevelColoursAreNotLookedUpAgain()
+    {
+        EditorSession session = House();
+        session.Scene.Palette[3] = session.Scene.Palette[Wall];
+        session.Copy();
+
+        VoxelObject pasted = session.Paste(Vector3.UnitX)!;
+
+        Assert.Equal(Wall, pasted.Grid.GetVoxel(new Int3(0, 0, 0)));
+    }
+
     // ---- Cut ----------------------------------------------------------------------------------------
 
     [Fact]
