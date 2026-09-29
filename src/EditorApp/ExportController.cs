@@ -29,6 +29,7 @@ public sealed class ExportController(EditorSession session)
         new ObjExporter(),
         new GltfExporter(binary: true),
         new GltfExporter(binary: false),
+        new FbxExporter(),
     ];
 
     private readonly FileBrowserDialog _browser = new();
@@ -126,7 +127,7 @@ public sealed class ExportController(EditorSession session)
             session.Scene,
             uvSelector: null,
             mergeAcrossColors: unwrapped,
-            instanceLinked: Current is GltfExporter,
+            instanceLinked: Current is GltfExporter or FbxExporter,
             lights: _lights,
             colliders: _collision);
 
