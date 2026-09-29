@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in Blockage does not work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. The more exactly it can be made to happen again, the sooner it is fixed.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The welcome screen shows it, at the top right.
+      placeholder: 0.9.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Android
+    validations:
+      required: true
+  - type: input
+    id: graphics
+    attributes:
+      label: Graphics card and driver
+      description: Most useful when something is drawn wrongly, or Blockage does not start.
+      placeholder: e.g. Intel Iris Xe, driver 31.0.101.5186
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps from opening Blockage. A small .vxlevel that shows it helps most — zip it and drop it here.
+      placeholder: |
+        1. Add a cube with Shift+A
+        2. Tab into Edit Mode and extrude the top face
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Screenshots are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: crash
+    attributes:
+      label: Crash log
+      description: |
+        If Blockage closed on its own, it wrote what happened to `crash.log`: `%APPDATA%\EditorApp\crash.log` on Windows, `~/.config/EditorApp/crash.log` on Linux and macOS. Paste the end of it here.
+      render: text

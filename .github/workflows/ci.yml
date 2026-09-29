@@ -1,0 +1,55 @@
+# Every push and pull request: both test suites on the three desktop platforms, and the large-level
+# measurement on Windows, written to the run's summary. The Android app is not built here: it needs
+# the android workload, a JDK and the Android SDK, and is not part of the solution.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Core tests
+        run: dotnet test tests/EditorApp.Core.Tests -c Release
+      - name: Editor tests
+        run: dotnet test tests/EditorApp.Tests -c Release
+
+  performance:
+    name: Large level measurement
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build src/EditorApp -c Release
+      # Needs no window or GPU: builds the levels, meshes, saves and opens them. Shared runners vary
+      # too much for a time to fail the build on, so the numbers are reported, not judged.
+      - name: Measure
+        shell: pwsh
+        run: |
+          $report = & src/EditorApp/bin/Release/net10.0/Blockage.exe --stress=64 | Out-String
+          if ($LASTEXITCODE -ne 0) { Write-Output $report; exit $LASTEXITCODE }
+          Write-Output $report
+          $fence = '```'
+          "## Large level measurement`n`n$fence`n$report$fence" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

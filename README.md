@@ -4,6 +4,8 @@
 
 # Blockage
 
+[![CI](https://github.com/koronerap/Blockage/actions/workflows/ci.yml/badge.svg)](https://github.com/koronerap/Blockage/actions/workflows/ci.yml)
+
 **A voxel level editor with Blender's habits.** You shape volume by pulling faces out and pushing
 them in — there is no place-a-block tool — then paint faces, cut objects in two, parent, light, and
 export clean meshes for a game engine.
@@ -122,14 +124,14 @@ changes them.
 ## Building from source
 
 You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and OpenGL 3.3. Windows is the
-tested platform.
+tested platform; CI also builds and tests on Linux and macOS.
 
 ```
 git clone https://github.com/koronerap/Blockage.git
 cd Blockage
 dotnet run --project src/EditorApp                            # the editor
 dotnet test                                                   # the test suites
-dotnet publish src/EditorApp -p:PublishProfile=win-x64        # a standalone build; or osx-arm64
+dotnet publish src/EditorApp -p:PublishProfile=win-x64        # a standalone build; or osx-arm64, linux-x64
 ```
 
 The Android app needs the .NET `android` workload, JDK 17 and the Android SDK. `build-android.ps1`
@@ -148,10 +150,16 @@ sideloadable APK; `-Run` also installs it on the connected device or emulator an
 | `tests/` | the xUnit suites for both |
 | `integrations/unity` | the Unity package that imports `.vxlevel` directly |
 | `tools/validate-exports.ps1` | opens the exports in Blender and Unity and checks what arrives |
+| `.github/workflows` | the tests on every push, and the release packages on a version tag |
 | [`EditorCodec.md`](EditorCodec.md) | the Mimicraft `.character` and `.weapons` formats, in Turkish |
 
 Levels are saved as `.vxlevel`: a zip holding a JSON manifest and run-length-encoded chunks of 32³
 voxels.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). What each
+version brought is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

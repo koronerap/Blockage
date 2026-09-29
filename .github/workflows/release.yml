@@ -1,0 +1,169 @@
+# A tag like v0.9.0 builds the three desktop packages, each on its own platform, and makes a draft
+# release of them with their SHA-256 sums and the CHANGELOG's section for that version. The draft is
+# read over and published by hand.
+#
+# Signing is ready and off: with the WINDOWS_CERTIFICATE (a base64 .pfx) and
+# WINDOWS_CERTIFICATE_PASSWORD secrets set, Blockage.exe is signed and time-stamped before it is
+# zipped. Without them the build goes out unsigned, as it does now.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        name: Tag, project and CHANGELOG agree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          project=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/EditorApp/EditorApp.csproj)
+          if [ "$tag" != "$project" ]; then
+            echo "::error::The tag says $tag, but EditorApp.csproj says $project."
+            exit 1
+          fi
+          if ! grep -q "^## \[$tag\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $tag."
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows package
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      HAS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish
+        run: dotnet publish src/EditorApp -p:PublishProfile=win-x64
+      - name: Sign
+        if: env.HAS_CERTIFICATE == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'blockage.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 `
+            /tr http://timestamp.digicert.com /td sha256 publish/win-x64/Blockage.exe
+          $signed = $LASTEXITCODE
+          Remove-Item $pfx
+          exit $signed
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "Blockage-$env:VERSION-win-x64"
+          Rename-Item publish/win-x64 $name
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "publish/$name" -DestinationPath "dist/$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  macos:
+    name: macOS package
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish
+        run: dotnet publish src/EditorApp -p:PublishProfile=osx-arm64
+      - name: Package
+        run: |
+          name="Blockage-$VERSION-osx-arm64"
+          mv publish/osx-arm64 "publish/$name"
+          mkdir -p dist
+          tar -czf "dist/$name.tar.gz" -C publish "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  linux:
+    name: Linux package
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish
+        run: dotnet publish src/EditorApp -p:PublishProfile=linux-x64
+      - name: Package
+        run: |
+          name="Blockage-$VERSION-linux-x64"
+          mv publish/linux-x64 "publish/$name"
+          mkdir -p dist
+          tar -czf "dist/$name.tar.gz" -C publish "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  release:
+    name: Draft release
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SIGNED: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Notes
+        run: |
+          {
+            echo "## Downloads"
+            echo
+            echo "| Platform | File | |"
+            echo "|---|---|---|"
+            if [ "$SIGNED" = "true" ]; then
+              echo "| Windows 10/11, x64 | \`Blockage-$VERSION-win-x64.zip\` | Unzip and run \`Blockage.exe\`; no .NET install needed. |"
+            else
+              echo "| Windows 10/11, x64 | \`Blockage-$VERSION-win-x64.zip\` | Unzip and run \`Blockage.exe\`; no .NET install needed. Not code-signed, so SmartScreen may stop it the first time: **More info → Run anyway**. |"
+            fi
+            echo "| macOS, Apple Silicon | \`Blockage-$VERSION-osx-arm64.tar.gz\` | **Experimental: built, not yet run on a Mac.** Unpack, run \`xattr -dr com.apple.quarantine Blockage-$VERSION-osx-arm64\`, then \`./Blockage\` from a terminal inside it. |"
+            echo "| Linux, x64 | \`Blockage-$VERSION-linux-x64.tar.gz\` | Unpack and run \`./Blockage\`. Needs OpenGL 3.3. |"
+            echo
+            echo "Check a download against \`SHA256SUMS.txt\`: \`sha256sum -c SHA256SUMS.txt --ignore-missing\`."
+            echo
+            awk -v heading="## [$VERSION]" 'index($0, heading) == 1 { found = 1; next } found && /^## \[/ { exit } found' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+      - name: Draft
+        run: gh release create "$GITHUB_REF_NAME" dist/* --draft --title "Blockage $VERSION" --notes-file notes.md
