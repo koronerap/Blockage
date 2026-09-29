@@ -97,6 +97,22 @@ public static class AddMenu
 
         Remember("Mesh");
 
+        // Made from noise and a seed: ground, a cave, a tree, a rock, a house.
+        if (IconMenu.Begin(Icons.TemplateGround, "Generate"))
+        {
+            foreach (ShapeKind generated in Generators.All)
+            {
+                if (Entry(IconFor(generated), Shapes.NameOf(generated)))
+                {
+                    Choose(new AddChoice(Shape: generated), at);
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
+        Remember("Generate");
+
         if (IconMenu.Begin(Icons.PropCrate, "Prop"))
         {
             foreach (PropKind prop in PropPresets.All)
@@ -179,6 +195,11 @@ public static class AddMenu
         ShapeKind.Stairs => Icons.ShapeStairs,
         ShapeKind.Arch => Icons.ShapeArch,
         ShapeKind.Text => Icons.Text,
+        ShapeKind.Terrain => Icons.TemplateGround,
+        ShapeKind.Cave => Icons.ShapeArch,
+        ShapeKind.Tree => Icons.PropTree,
+        ShapeKind.Rock => Icons.ShapeSphere,
+        ShapeKind.Building => Icons.PropCrate,
         _ => Icons.ObjectTab,
     };
 

@@ -19,6 +19,13 @@ public enum ShapeKind
 
     /// <summary>Lettering in the built-in pixel font: a sign, a label, a number on a door.</summary>
     Text,
+
+    // Generated (Fullreleaseplan 6.8): made from noise and a seed, in colours of their own.
+    Terrain,
+    Cave,
+    Tree,
+    Rock,
+    Building,
 }
 
 /// <summary>One number a shape is made from: what it is called, where it starts, and how far it may go.</summary>
@@ -166,8 +173,12 @@ public static class Shapes
         ShapeKind.Torus => "Torus",
         ShapeKind.Stairs => "Stairs",
         ShapeKind.Text => "Text",
+        ShapeKind.Terrain or ShapeKind.Cave or ShapeKind.Tree or ShapeKind.Rock or ShapeKind.Building => Generators.NameOf(kind),
         _ => "Arch",
     };
+
+    /// <summary>Whether a shape is generated, in colours of its own, rather than built in the colour in hand.</summary>
+    public static bool IsGenerated(ShapeKind kind) => kind >= ShapeKind.Terrain;
 
     public static IReadOnlyList<ShapeField> FieldsOf(ShapeKind kind) => kind switch
     {
@@ -182,6 +193,11 @@ public static class Shapes
         ShapeKind.Stairs => Flight,
         ShapeKind.Arch => Doorway,
         ShapeKind.Text => Lettering,
+        ShapeKind.Terrain => Generators.TerrainFields,
+        ShapeKind.Cave => Generators.CaveFields,
+        ShapeKind.Tree => Generators.TreeFields,
+        ShapeKind.Rock => Generators.RockFields,
+        ShapeKind.Building => Generators.BuildingFields,
         _ => None,
     };
 
@@ -190,9 +206,17 @@ public static class Shapes
 
     public static ShapeSettings Defaults(ShapeKind kind) => new(kind, [.. FieldsOf(kind).Select(f => f.Default)]);
 
-    /// <summary>The shape's voxels, all of one colour.</summary>
-    public static VoxelWorld Build(ShapeSettings settings, byte colour)
+    /// <summary>
+    /// The shape's voxels: all of one colour — or, for a generated one, in the colours it is made in,
+    /// the nearest <paramref name="palette"/> has (the default palette's without one).
+    /// </summary>
+    public static VoxelWorld Build(ShapeSettings settings, byte colour, Palette? palette = null)
     {
+        if (IsGenerated(settings.Kind))
+        {
+            return Generators.Build(settings, palette ?? Palette.CreateDefault());
+        }
+
         var world = new VoxelWorld();
         var cells = new HashSet<Int3>();
         ShapeSettings s = settings;

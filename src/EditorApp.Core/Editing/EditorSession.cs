@@ -1556,7 +1556,7 @@ public sealed partial class EditorSession
     public VoxelObject AddShape(ShapeSettings settings, Vector3 point, Vector3 normal, float voxelSize)
     {
         byte colour = ActiveColorIndex == Palette.EmptyIndex ? Palette.WhiteIndex : ActiveColorIndex;
-        VoxelObject added = AddObject(Shapes.Build(settings, colour), Shapes.NameOf(settings.Kind), point, normal, voxelSize);
+        VoxelObject added = AddObject(Shapes.Build(settings, colour, Scene.Palette), Shapes.NameOf(settings.Kind), point, normal, voxelSize);
 
         _lastShape = new AddedShape(added, settings, colour, point, normal, History.LastDone!);
         return added;
@@ -1574,7 +1574,7 @@ public sealed partial class EditorSession
             return false;
         }
 
-        VoxelWorld grid = Shapes.Build(settings, last.Colour);
+        VoxelWorld grid = Shapes.Build(settings, last.Colour, Scene.Palette);
         last.Object.Grid.ReplaceWith(grid);
         last.Object.Transform = Placement.Against(grid, last.Point, last.Normal, last.Object.VoxelSize);
 
