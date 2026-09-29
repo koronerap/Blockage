@@ -118,6 +118,26 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
     /// <summary>Goes into exports: shown, and in no collection kept out of them.</summary>
     public bool IsExported => Visible && !ExcludedByCollection;
 
+    /// <summary>What it marks for the game, when it is a marker (Fullreleaseplan 6.4); null for an ordinary object.</summary>
+    public ObjectMarker? Marker { get; set; }
+
+    public bool IsMarker => Marker is not null;
+
+    /// <summary>Its custom properties (Fullreleaseplan 6.5), in the order they were added.</summary>
+    public IReadOnlyList<CustomProperty> Properties { get; set; } = [];
+
+    /// <summary>What it is besides its voxels — modifiers, marker, custom properties — taken on from another, as a copy of it.</summary>
+    public void CopyDataFrom(VoxelObject source)
+    {
+        if (source.Modifiers.Count > 0)
+        {
+            SetModifiers(source.Modifiers);
+        }
+
+        Marker = source.Marker;
+        Properties = source.Properties;
+    }
+
     /// <summary>World units one of this object's voxels measures — its transform's scale.</summary>
     public float VoxelSize => Transform.VoxelSize;
 

@@ -463,6 +463,91 @@ public static class EditorOverlays
     /// <summary>A light that is switched off: still there to be picked, but grey.</summary>
     public static readonly Color32 LightOff = new(130, 130, 130);
 
+    /// <summary>A marker, as a game object that is not drawn in the game.</summary>
+    public static readonly Color32 MarkerColour = new(110, 200, 240);
+
+    /// <summary>
+    /// A marker as Blender draws an empty, turned and placed as its object: crossed axes for a plain
+    /// one; a ring and the way it faces for a spawn; the box a trigger fills, standing on it; the
+    /// three rings of a sound's reach.
+    /// </summary>
+    public static void AddMarker(LineGeometry lines, VoxelObject o, Color32 colour)
+    {
+        if (o.Marker is not { } marker)
+        {
+            return;
+        }
+
+        Vector3 at = o.Transform.Position;
+        Quaternion turn = o.Transform.Rotation;
+        Vector3 Axis(Vector3 local) => Vector3.Transform(local, turn);
+        Vector3 size = marker.Size;
+
+        switch (marker.Kind)
+        {
+            case MarkerKind.Spawn:
+            {
+                float radius = MathF.Max(size.X, size.Z) * 0.5f;
+                AddRing(lines, at, Axis(Vector3.UnitX) * radius, Axis(Vector3.UnitZ) * radius, colour);
+                AddArrow(lines, at + (Axis(Vector3.UnitY) * 0.05f), at + (Axis(Vector3.UnitZ) * radius * 1.6f), colour, LightWidth);
+                lines.AddThickLine(at, at + (Axis(Vector3.UnitY) * size.Y * 1.8f), colour, LightWidth);
+                break;
+            }
+
+            case MarkerKind.Trigger:
+            {
+                Vector3 half = new(size.X * 0.5f, 0f, size.Z * 0.5f);
+                Vector3[] corners = new Vector3[8];
+                for (int i = 0; i < 8; i++)
+                {
+                    var local = new Vector3((i & 1) == 0 ? -half.X : half.X, (i & 2) == 0 ? 0f : size.Y, (i & 4) == 0 ? -half.Z : half.Z);
+                    corners[i] = at + Axis(local);
+                }
+
+                foreach ((int a, int b) in new[] { (0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7) })
+                {
+                    lines.AddThickLine(corners[a], corners[b], colour, LightWidth);
+                }
+
+                break;
+            }
+
+            case MarkerKind.Sound:
+            {
+                float reach = size.X;
+                AddRing(lines, at, Vector3.UnitX * reach, Vector3.UnitZ * reach, colour);
+                AddRing(lines, at, Vector3.UnitX * reach, Vector3.UnitY * reach, colour);
+                AddRing(lines, at, Vector3.UnitZ * reach, Vector3.UnitY * reach, colour);
+                AddRing(lines, at, Vector3.UnitX * 0.4f, Vector3.UnitZ * 0.4f, colour);
+                break;
+            }
+
+            default:
+            {
+                foreach (Vector3 axis in new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ })
+                {
+                    Vector3 reach = Axis(axis) * size.X;
+                    lines.AddThickLine(at - reach, at + reach, colour, LightWidth);
+                }
+
+                break;
+            }
+        }
+    }
+
+    private static void AddRing(LineGeometry lines, Vector3 centre, Vector3 u, Vector3 v, Color32 colour)
+    {
+        const int Segments = 32;
+        Vector3 previous = centre + u;
+        for (int i = 1; i <= Segments; i++)
+        {
+            float angle = MathF.Tau * i / Segments;
+            Vector3 next = centre + (u * MathF.Cos(angle)) + (v * MathF.Sin(angle));
+            lines.AddThickLine(previous, next, colour, LightWidth);
+            previous = next;
+        }
+    }
+
     /// <summary>A camera in the level, and the one renders are seen from.</summary>
     public static readonly Color32 CameraColour = new(170, 170, 180);
 

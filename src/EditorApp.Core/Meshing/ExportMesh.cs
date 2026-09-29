@@ -28,8 +28,12 @@ public readonly record struct QuadColors(int Width, int Height, byte[] Cells)
 /// <param name="VoxelSize">World size of this part's voxels, so its quads can be measured in voxels again.</param>
 public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount, float VoxelSize = 1f);
 
-/// <summary>A part put down in the level: under a name, where an object stands.</summary>
-public readonly record struct MeshInstance(string Name, int Part, Matrix4x4 Transform);
+/// <summary>
+/// A part put down in the level: under a name, where an object stands — or, with <paramref name="Part"/>
+/// −1, a node with no mesh at all: a marker. <paramref name="Extras"/> is what the game is told
+/// about it besides — a marker's kind and size, the object's custom properties — or null for nothing.
+/// </summary>
+public readonly record struct MeshInstance(string Name, int Part, Matrix4x4 Transform, System.Text.Json.Nodes.JsonObject? Extras = null);
 
 public sealed class ExportMesh
 {

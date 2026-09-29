@@ -88,12 +88,19 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
             builders.Add(meshBuilder);
         }
 
-        // Linked copies: one mesh, a node for every copy, each where its copy stands.
+        // A node for every object, each where it stands, linked copies sharing one mesh; what the
+        // game is told about each besides is in its extras. Markers come after, as empty nodes.
         if (mesh.Instances.Count > 0)
         {
-            foreach (MeshInstance instance in mesh.Instances)
+            foreach (MeshInstance instance in mesh.Instances.Where(i => i.Part >= 0))
             {
-                scene.AddRigidMesh(builders[instance.Part], instance.Transform).WithName(instance.Name);
+                var node = new NodeBuilder(instance.Name) { LocalMatrix = instance.Transform };
+                if (instance.Extras is { } extras)
+                {
+                    node.Extras = extras;
+                }
+
+                scene.AddRigidMesh(builders[instance.Part], node);
             }
         }
         else
@@ -106,6 +113,16 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
 
         ModelRoot model = scene.ToGltf2();
         model.Asset.Generator = "EditorApp voxel level editor";
+
+        foreach (MeshInstance marker in mesh.Instances.Where(i => i.Part < 0))
+        {
+            Node node = model.UseScene(0).CreateNode(marker.Name);
+            node.LocalMatrix = marker.Transform;
+            if (marker.Extras is { } extras)
+            {
+                node.Extras = extras;
+            }
+        }
 
         var written = new List<string>();
 

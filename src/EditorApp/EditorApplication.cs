@@ -634,6 +634,14 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
+        if (choice.Marker is { } markerKind)
+        {
+            _session.ExitEditMode();
+            (Vector3 markerPoint, _) = SurfaceUnder(at);
+            _session.AddMarker(markerKind, markerPoint);
+            return;
+        }
+
         if (choice.Camera)
         {
             _session.ExitEditMode();
@@ -750,6 +758,11 @@ public sealed class EditorApplication : IDisposable
         if (ShowLightIcons && LightUnder(local, _viewport.Size) is { } light)
         {
             return light.Id;
+        }
+
+        if (MarkerUnder(local) is { } marker)
+        {
+            return marker.Id;
         }
 
         // What an object shows is what is clicked on, a modifier's copies too.
@@ -1467,6 +1480,33 @@ public sealed class EditorApplication : IDisposable
     }
 
     /// <summary>The light whose icon is under the cursor, nearest the camera first, if any.</summary>
+    /// <summary>The marker whose middle is under the mouse, nearest the camera; null for none.</summary>
+    private VoxelObject? MarkerUnder(Vector2 mouse)
+    {
+        const float Reach = 14f;
+        VoxelObject? found = null;
+        float nearest = float.MaxValue;
+
+        foreach (VoxelObject o in _session.Scene.Objects)
+        {
+            if (!o.IsMarker || !o.Visible || o.Locked
+                || !_camera.TryProjectToScreen(o.Transform.Position, _viewport.Size, out Vector2 screen)
+                || Vector2.Distance(screen, mouse) > Reach)
+            {
+                continue;
+            }
+
+            float distance = Vector3.Distance(_camera.Position, o.Transform.Position);
+            if (distance < nearest)
+            {
+                nearest = distance;
+                found = o;
+            }
+        }
+
+        return found;
+    }
+
     private SceneLight? LightUnder(Vector2 mouse, Vector2 viewport)
     {
         const float Reach = 14f;
@@ -1760,6 +1800,22 @@ public sealed class EditorApplication : IDisposable
             bool marked = light.Id == _session.SelectedLightId || light.Id == ObjectListPanel.HoveredId;
             Vector3? aimedAt = _aim!.Light?.Id == light.Id ? _aim.Target : null;
             EditorOverlays.AddLight(gizmos, light, _camera, marked, aimedAt, aimLit: _aimHover?.Id == light.Id, aimLine: LightGizmos);
+        }
+
+        // Markers, in their object's colour when selected — they have no box to show it by.
+        if (View.Overlays)
+        {
+            foreach (VoxelObject marker in _session.Scene.Objects)
+            {
+                if (marker.IsMarker && marker.Visible)
+                {
+                    Color32 colour = marker.Id == _session.ActiveId && _session.IsSelected(marker.Id) ? EditorOverlays.ObjectActive
+                        : _session.IsSelected(marker.Id) ? EditorOverlays.ObjectSelected
+                        : marker.Id == ObjectListPanel.HoveredId ? EditorOverlays.Highlight
+                        : EditorOverlays.MarkerColour;
+                    EditorOverlays.AddMarker(gizmos, marker, colour);
+                }
+            }
         }
 
         // The cameras, but not the one the view is looking through.

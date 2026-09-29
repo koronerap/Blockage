@@ -103,10 +103,7 @@ public static class PropLibrary
             }
 
             VoxelObject copy = prop.Add(grid, o.Transform with { Position = o.Transform.Position - origin }, o.Name);
-            if (o.Modifiers.Count > 0)
-            {
-                copy.SetModifiers(o.Modifiers);
-            }
+            copy.CopyDataFrom(o);
 
             copyOf[o.Id] = copy.Id;
         }

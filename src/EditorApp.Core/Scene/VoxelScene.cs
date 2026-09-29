@@ -763,6 +763,8 @@ public sealed class VoxelScene
                 ParentId = o.ParentId,
                 ParentOffset = o.ParentOffset,
                 CollectionId = o.CollectionId,
+                Marker = o.Marker,
+                Properties = o.Properties,
             };
 
             if (o.Modifiers.Count > 0)
@@ -809,7 +811,8 @@ public sealed class VoxelScene
         List<int>? empty = null;
         foreach (VoxelObject o in _objects)
         {
-            if (o.IsEmpty)
+            // A marker has no voxels to lose.
+            if (o.IsEmpty && !o.IsMarker)
             {
                 (empty ??= []).Add(o.Id);
             }

@@ -64,10 +64,7 @@ public sealed partial class EditorSession
                 parentId: parent);
 
             command.Redo();
-            if (o.Modifiers.Count > 0)
-            {
-                command.Created!.SetModifiers(o.Modifiers);
-            }
+            command.Created!.CopyDataFrom(o);
 
             steps.Add(command);
             made.Add(command.Created!);

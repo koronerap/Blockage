@@ -812,6 +812,66 @@ public static class Icons
         }
     }
 
+    public static Painter For(Core.Scene.MarkerKind kind) => kind switch
+    {
+        Core.Scene.MarkerKind.Spawn => MarkerSpawn,
+        Core.Scene.MarkerKind.Trigger => MarkerTrigger,
+        Core.Scene.MarkerKind.Sound => MarkerSound,
+        _ => MarkerEmpty,
+    };
+
+    /// <summary>A plain empty: three crossed axes, as Blender draws one.</summary>
+    public static void MarkerEmpty(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Line(centre + new Vector2(-r * 0.85f, 0f), centre + new Vector2(r * 0.85f, 0f), 1.1f);
+        canvas.Line(centre + new Vector2(0f, -r * 0.85f), centre + new Vector2(0f, r * 0.85f), 1.1f);
+        canvas.Line(centre + new Vector2(-r * 0.55f, r * 0.55f), centre + new Vector2(r * 0.55f, -r * 0.55f), 1.1f);
+    }
+
+    /// <summary>A spawn point: a figure standing on a ring.</summary>
+    public static void MarkerSpawn(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Circle(centre + new Vector2(0f, -r * 0.55f), r * 0.25f, 1.1f);
+        canvas.Line(centre + new Vector2(0f, -r * 0.3f), centre + new Vector2(0f, r * 0.35f), 1.1f);
+        canvas.Line(centre + new Vector2(-r * 0.35f, -r * 0.05f), centre + new Vector2(r * 0.35f, -r * 0.05f), 1.1f);
+        canvas.Line(centre + new Vector2(0f, r * 0.35f), centre + new Vector2(-r * 0.3f, r * 0.75f), 1.1f);
+        canvas.Line(centre + new Vector2(0f, r * 0.35f), centre + new Vector2(r * 0.3f, r * 0.75f), 1.1f);
+    }
+
+    /// <summary>A trigger: a box drawn in dashes, a space rather than a thing.</summary>
+    public static void MarkerTrigger(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        float e = r * 0.8f;
+        for (int side = 0; side < 4; side++)
+        {
+            Vector2 from = side switch { 0 => new(-e, -e), 1 => new(e, -e), 2 => new(e, e), _ => new(-e, e) };
+            Vector2 to = side switch { 0 => new(e, -e), 1 => new(e, e), 2 => new(-e, e), _ => new(-e, -e) };
+            for (int dash = 0; dash < 3; dash++)
+            {
+                float a = dash / 3f;
+                float b = a + 0.2f;
+                canvas.Line(centre + Vector2.Lerp(from, to, a), centre + Vector2.Lerp(from, to, b), 1.1f);
+            }
+        }
+    }
+
+    /// <summary>A sound: a speaker and the waves leaving it.</summary>
+    public static void MarkerSound(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Polyline(
+        [
+            centre + new Vector2(-r * 0.8f, -r * 0.25f),
+            centre + new Vector2(-r * 0.45f, -r * 0.25f),
+            centre + new Vector2(-r * 0.05f, -r * 0.65f),
+            centre + new Vector2(-r * 0.05f, r * 0.65f),
+            centre + new Vector2(-r * 0.45f, r * 0.25f),
+            centre + new Vector2(-r * 0.8f, r * 0.25f),
+            centre + new Vector2(-r * 0.8f, -r * 0.25f),
+        ], 1.1f);
+        canvas.Line(centre + new Vector2(r * 0.3f, -r * 0.3f), centre + new Vector2(r * 0.3f, r * 0.3f), 1.1f);
+        canvas.Line(centre + new Vector2(r * 0.6f, -r * 0.55f), centre + new Vector2(r * 0.6f, r * 0.55f), 1.1f);
+    }
+
     /// <summary>A collection: a crate with its lid, as Blender draws one.</summary>
     public static void Collection(IIconCanvas canvas, Vector2 centre, float r)
     {

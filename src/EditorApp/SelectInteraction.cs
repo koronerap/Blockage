@@ -185,6 +185,13 @@ public sealed class SelectInteraction(EditorSession session)
             {
                 found.Add(o.Id);
             }
+            else if (o.IsMarker && scene.CanSelect(o.Id)
+                && camera.TryProjectToScreen(o.Transform.Position, viewport, out Vector2 at)
+                && at.X >= min.X && at.X <= max.X && at.Y >= min.Y && at.Y <= max.Y)
+            {
+                // A marker with no voxels is chosen by where it stands.
+                found.Add(o.Id);
+            }
         }
 
         foreach (SceneLight light in scene.Lights)

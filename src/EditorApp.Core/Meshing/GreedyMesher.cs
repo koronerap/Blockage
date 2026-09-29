@@ -94,6 +94,13 @@ public static class GreedyMesher
 
         foreach (Scene.VoxelObject o in scene.Objects)
         {
+            // A marker with nothing to mesh is a node of its own, where formats can say so.
+            if (instanceLinked && o.IsExported && o.IsMarker && o.IsEmpty)
+            {
+                combined.Instances.Add(new MeshInstance(o.Name, -1, o.Transform.ToMatrix(), ExtrasOf(o)));
+                continue;
+            }
+
             if (!o.IsExported || o.IsEmpty)
             {
                 continue;
@@ -110,7 +117,7 @@ public static class GreedyMesher
                     partOf[o.Grid] = part;
                 }
 
-                combined.Instances.Add(new MeshInstance(o.Name, part, o.Transform.ToMatrix()));
+                combined.Instances.Add(new MeshInstance(o.Name, part, o.Transform.ToMatrix(), ExtrasOf(o)));
                 continue;
             }
 
@@ -123,11 +130,41 @@ public static class GreedyMesher
             combined.BeginPart(o.Name, first, o.VoxelSize);
             if (instanceLinked)
             {
-                combined.Instances.Add(new MeshInstance(o.Name, combined.Parts.Count - 1, Matrix4x4.Identity));
+                combined.Instances.Add(new MeshInstance(o.Name, combined.Parts.Count - 1, Matrix4x4.Identity, ExtrasOf(o)));
             }
         }
 
         return combined;
+    }
+
+    /// <summary>
+    /// What a game is told about an object besides its mesh, as glTF extras: a marker's kind and
+    /// size, and its custom properties by name — a property named like one of those wins. Null for
+    /// an object with nothing to tell.
+    /// </summary>
+    public static System.Text.Json.Nodes.JsonObject? ExtrasOf(Scene.VoxelObject o)
+    {
+        if (o.Marker is null && o.Properties.Count == 0)
+        {
+            return null;
+        }
+
+        var extras = new System.Text.Json.Nodes.JsonObject();
+        if (o.Marker is { } marker)
+        {
+            extras["marker"] = Scene.ObjectMarker.KeyOf(marker.Kind);
+            extras["markerSize"] = new System.Text.Json.Nodes.JsonArray(marker.Size.X, marker.Size.Y, marker.Size.Z);
+        }
+
+        foreach (Scene.CustomProperty property in o.Properties)
+        {
+            if (property.Key.Length > 0)
+            {
+                extras[property.Key] = property.ToJson();
+            }
+        }
+
+        return extras;
     }
 
     private static void SweepDirection(

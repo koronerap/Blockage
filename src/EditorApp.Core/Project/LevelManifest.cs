@@ -68,6 +68,21 @@ public sealed class LevelManifest
         [JsonPropertyName("id")]
         public int Id { get; set; }
 
+        /// <summary>What it marks — "empty", "spawn", "trigger" or "sound" — when it is a marker; absent otherwise.</summary>
+        [JsonPropertyName("marker")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Marker { get; set; }
+
+        /// <summary>A marker's size, in world units.</summary>
+        [JsonPropertyName("markerSize")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public float[]? MarkerSize { get; set; }
+
+        /// <summary>Its custom properties, in order; absent for none.</summary>
+        [JsonPropertyName("properties")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public PropertyEntry[]? Properties { get; set; }
+
         /// <summary>
         /// A linked copy: the <see cref="Id"/> of the object whose voxels it shares, which alone has
         /// them written. Absent for an object with voxels of its own.
@@ -252,6 +267,19 @@ public sealed class LevelManifest
     [JsonPropertyName("lights")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LightEntry[]? Lights { get; set; }
+
+    /// <summary>One custom property: "text", "number" or "toggle", its value as text.</summary>
+    public sealed class PropertyEntry
+    {
+        [JsonPropertyName("key")]
+        public string Key { get; set; } = string.Empty;
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "text";
+
+        [JsonPropertyName("value")]
+        public string Value { get; set; } = string.Empty;
+    }
 
     /// <summary>The level's collections, each after the one it is inside; absent for none.</summary>
     [JsonPropertyName("collections")]

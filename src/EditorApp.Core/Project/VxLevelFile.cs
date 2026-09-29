@@ -158,6 +158,14 @@ public static class VxLevelFile
             {
                 Id = o.Id,
                 LinkedTo = linkedTo,
+                Marker = o.Marker is { } marker ? ObjectMarker.KeyOf(marker.Kind) : null,
+                MarkerSize = o.Marker is { } sized ? [sized.Size.X, sized.Size.Y, sized.Size.Z] : null,
+                Properties = o.Properties.Count == 0 ? null : [.. o.Properties.Select(p => new LevelManifest.PropertyEntry
+                {
+                    Key = p.Key,
+                    Type = p.Kind.ToString().ToLowerInvariant(),
+                    Value = p.Value,
+                })],
                 Name = o.Name,
                 Position = [o.Transform.Position.X, o.Transform.Position.Y, o.Transform.Position.Z],
                 Rotation =
@@ -385,6 +393,21 @@ public static class VxLevelFile
 
                 added.Visible = entry.Visible;
                 added.Locked = entry.Locked;
+                if (ObjectMarker.Parse(entry.Marker) is { } kind)
+                {
+                    Vector3 size = entry.MarkerSize is { Length: 3 } s ? new Vector3(s[0], s[1], s[2]) : ObjectMarker.Default(kind).Size;
+                    added.Marker = new ObjectMarker(kind, size).Clamped();
+                }
+
+                if (entry.Properties is { Length: > 0 } properties)
+                {
+                    added.Properties = [.. properties
+                        .Where(p => !string.IsNullOrWhiteSpace(p.Key))
+                        .Select(p => new CustomProperty(
+                            p.Key,
+                            p.Type switch { "number" => PropertyKind.Number, "toggle" => PropertyKind.Toggle, _ => PropertyKind.Text },
+                            p.Value ?? string.Empty).Clamped())];
+                }
                 if (entry.Collection is { } inCollection)
                 {
                     collected.Add((added, inCollection));

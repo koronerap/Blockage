@@ -791,7 +791,12 @@ public static class ObjectListPanel
                     : "Ctrl-click adds, Shift-click takes a range.\nDouble-click or F2 to rename, right-click for more.");
             }
 
-            DrawLabel(Icons.ObjectTab, o.Name, o.Visible, emphasised, $"{o.Grid.SolidCount:N0}");
+            DrawLabel(
+                o.Marker is { } marker ? Icons.For(marker.Kind) : Icons.ObjectTab,
+                o.Name,
+                o.Visible,
+                emphasised,
+                o.IsMarker && o.IsEmpty ? null : $"{o.Grid.SolidCount:N0}");
             DrawObjectMenu(session, camera, o);
         }
 

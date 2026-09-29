@@ -855,7 +855,7 @@ public sealed partial class EditorSession
             }
 
             var targets = new List<IPlaceable>();
-            targets.AddRange(Scene.SelectedObjects.Where(o => !o.Locked && !o.IsEmpty));
+            targets.AddRange(Scene.SelectedObjects.Where(o => !o.Locked && (!o.IsEmpty || o.IsMarker)));
             targets.AddRange(Scene.SelectedLights.Where(l => !l.Locked));
 
             targets.RemoveAll(t => targets.Any(other => other.Id != t.Id && Scene.IsDescendantOf(t.Id, other.Id)));
@@ -973,7 +973,7 @@ public sealed partial class EditorSession
 
     private IReadOnlyList<IPlaceable> DuplicateSelected(Vector3 towards, bool linked)
     {
-        List<VoxelObject> objects = [.. Scene.SelectedObjects.Where(o => !o.IsEmpty)];
+        List<VoxelObject> objects = [.. Scene.SelectedObjects.Where(o => !o.IsEmpty || o.IsMarker)];
         List<SceneLight> lights = [.. Scene.SelectedLights];
         if (objects.Count + lights.Count == 0)
         {
@@ -1005,10 +1005,7 @@ public sealed partial class EditorSession
                 source.CollectionId);
 
             command.Redo();
-            if (source.Modifiers.Count > 0)
-            {
-                command.Created!.SetModifiers(source.Modifiers);
-            }
+            command.Created!.CopyDataFrom(source);
 
             steps.Add(command);
             copies.Add(command.Created!);

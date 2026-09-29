@@ -58,16 +58,27 @@ public static class ObjectPropertiesPanel
             return;
         }
 
-        DrawName(focus.Id, focus.Name, Icons.ObjectTab, name => session.RenameObject(focus.Id, name));
+        DrawName(focus.Id, focus.Name, focus.Marker is { } marker ? Icons.For(marker.Kind) : Icons.ObjectTab, name => session.RenameObject(focus.Id, name));
 
         if (Props.Section("Transform"))
         {
             DrawTransform(session, focus);
         }
 
-        if (Props.Section("Voxels"))
+        if (focus.IsMarker && Props.Section("Marker"))
+        {
+            CustomPropertiesPanel.DrawMarker(session, focus);
+        }
+
+        // A marker has voxels only if some were put in it.
+        if ((!focus.IsMarker || !focus.IsEmpty) && Props.Section("Voxels"))
         {
             DrawVoxels(session, focus);
+        }
+
+        if (Props.Section("Custom Properties", openByDefault: focus.Properties.Count > 0))
+        {
+            CustomPropertiesPanel.DrawProperties(session, focus);
         }
 
         if (Props.Section("Volume", openByDefault: false))
