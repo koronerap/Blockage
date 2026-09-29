@@ -46,7 +46,7 @@ public sealed class ReferencePanel
             _browser.Show(
                 FileBrowserMode.Open,
                 "Import a reference model (.obj, .gltf, .glb)",
-                ".obj",
+                string.Join(";", ReferenceMeshLoader.SupportedExtensions),
                 _browser.CurrentDirectory,
                 suggestedName: null,
                 path => Load(reference, path));

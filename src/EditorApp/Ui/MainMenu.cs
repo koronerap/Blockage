@@ -195,6 +195,16 @@ public static class MainMenu
                     ImGui.SetTooltip("Ground as high as the image is bright, dressed in grass, earth and stone.");
                 }
 
+                if (ImGui.MenuItem("Mesh as Voxels (.obj, .gltf, .glb)...", Shortcut.Of(EditorAction.ImportMesh)))
+                {
+                    MeshImportDialog.Show();
+                }
+
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("A model made into voxels at the size you choose, in its colours and textures (PNG).");
+                }
+
                 ImGui.EndMenu();
             }
 

@@ -32,6 +32,9 @@ public sealed class FileBrowserDialog
     private FileBrowserMode _mode;
     private string _title = string.Empty;
     private string _extension = string.Empty;
+
+    /// <summary>The kinds of file listed: <see cref="_extension"/> split at its semicolons — the first is what a name typed without one gets.</summary>
+    private string[] _extensions = [];
     private string _directory = Directory.GetCurrentDirectory();
     private string _fileName = string.Empty;
     private string? _error;
@@ -57,6 +60,10 @@ public sealed class FileBrowserDialog
 
     public bool IsOpen { get; private set; }
 
+    /// <summary>Whether a file is of a kind the dialog is for — exactly, since a pattern like "*.vox" also finds ".voxel".</summary>
+    private bool IsListed(string path) =>
+        _extensions.Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>The current folder, so the next dialog opens where the last one left off.</summary>
     public string CurrentDirectory => _directory;
 
@@ -80,6 +87,7 @@ public sealed class FileBrowserDialog
         _mode = mode;
         _title = title;
         _extension = extension;
+        _extensions = extension.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         _onConfirm = onConfirm;
         _fileName = suggestedName ?? string.Empty;
         _error = null;
@@ -407,7 +415,8 @@ public sealed class FileBrowserDialog
             ImGui.TextDisabled(Modified(path, directory: true));
         }
 
-        foreach (string path in Directory.EnumerateFiles(_directory, "*" + _extension)
+        foreach (string path in Directory.EnumerateFiles(_directory)
+                     .Where(IsListed)
                      .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
         {
             string name = Path.GetFileName(path);
@@ -477,7 +486,7 @@ public sealed class FileBrowserDialog
         }
 
         ImGui.SameLine();
-        ImGui.TextDisabled(_extension);
+        ImGui.TextDisabled(string.Join(" ", _extensions));
 
         if (_pendingOverwrite is { } existing)
         {
@@ -532,9 +541,9 @@ public sealed class FileBrowserDialog
             return;
         }
 
-        string full = typed.EndsWith(_extension, StringComparison.OrdinalIgnoreCase)
+        string full = IsListed(typed) || _extensions.Length == 0
             ? typed
-            : typed + _extension;
+            : typed + _extensions[0];
 
         if (_mode == FileBrowserMode.Open && !File.Exists(full))
         {

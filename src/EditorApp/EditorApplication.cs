@@ -1335,6 +1335,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ExportVox: _project?.ExportVox(); break;
             case EditorAction.ImportSprite: ImageImportDialog.Show(ImageImport.Sprite); break;
             case EditorAction.ImportHeightmap: ImageImportDialog.Show(ImageImport.Heightmap); break;
+            case EditorAction.ImportMesh: MeshImportDialog.Show(); break;
 
             case EditorAction.ToolSelect: SwitchTool(EditorTool.Select); break;
             case EditorAction.ToolTransform: SwitchTool(EditorTool.Transform); break;
@@ -2231,7 +2232,8 @@ public sealed class EditorApplication : IDisposable
         ScatterWindow.Draw(_session);
         HistoryWindow.Draw(_session);
         ImageImportDialog.Draw();
-        PlaceImportedImage();
+        MeshImportDialog.Draw();
+        PlaceImported();
         if (_afterUi is { } afterUi)
         {
             _afterUi = null;
@@ -2300,10 +2302,10 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    /// <summary>An image made into voxels goes where the view looks, into a move as anything added does.</summary>
-    private void PlaceImportedImage()
+    /// <summary>An image or a mesh made into voxels goes where the view looks, into a move as anything added does.</summary>
+    private void PlaceImported()
     {
-        if (IsDragging() || ImageImportDialog.TakeMade() is not { } made)
+        if (IsDragging() || (ImageImportDialog.TakeMade() ?? MeshImportDialog.TakeMade()) is not { } made)
         {
             return;
         }
