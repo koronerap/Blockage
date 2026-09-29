@@ -287,13 +287,15 @@ public sealed class LastSessionTests : IDisposable
     [Fact]
     public void WhatIsKeptIsReadBack()
     {
+        // A path of this machine's own kind, as the one a level was saved to always is.
+        string castle = Path.Combine(_directory, "levels", "castle.vxlevel");
         var last = new LastSession(_directory);
-        last.Write(Session(LevelTemplate.Room, @"C:\levels\castle.vxlevel", unsaved: true));
+        last.Write(Session(LevelTemplate.Room, castle, unsaved: true));
 
         LastSessionInfo info = last.Read()!;
 
         Assert.Equal("castle", info.ProjectName);
-        Assert.Equal(@"C:\levels\castle.vxlevel", info.ProjectPath);
+        Assert.Equal(castle, info.ProjectPath);
         Assert.True(info.HadUnsavedChanges);
         Assert.Equal(2, VxLevelFile.LoadScene(info.LevelPath).Objects.Count);
     }

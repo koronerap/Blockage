@@ -83,16 +83,9 @@ public sealed class LevelStore(string directory)
             return "Untitled";
         }
 
-        char[] cleaned = name.ToCharArray();
-        char[] invalid = Path.GetInvalidFileNameChars();
-
-        for (int i = 0; i < cleaned.Length; i++)
-        {
-            if (Array.IndexOf(invalid, cleaned[i]) >= 0)
-            {
-                cleaned[i] = '_';
-            }
-        }
+        // What no system allows, not only what Android refuses: a level shared off the phone
+        // should still copy onto a Windows machine.
+        char[] cleaned = EditorApp.Core.Project.FileNames.Safe(name).ToCharArray();
 
         return new string(cleaned);
     }

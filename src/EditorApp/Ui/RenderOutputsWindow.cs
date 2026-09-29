@@ -292,8 +292,7 @@ public sealed class RenderOutputsWindow(GL gl) : IDisposable
         ImGui.EndDisabled();
     }
 
-    private static string Safe(string name) =>
-        string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+    private static string Safe(string name) => Core.Project.FileNames.Safe(name);
 
     private void Start(EditorSession session, string name, IReadOnlyList<RenderCamera> cameras, RenderSettings settings, Action<RenderBatch> whenDone)
     {

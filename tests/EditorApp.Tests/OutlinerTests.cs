@@ -72,6 +72,12 @@ public sealed class OutlinerTests : IDisposable
     }
 
     /// <summary>A click with a modifier key held down, as the keyboard would send it.</summary>
+    /// <summary>
+    /// What adds to a selection with a click: Ctrl, and on a Mac Command, as there Control and a
+    /// click is the right button.
+    /// </summary>
+    private static ImGuiKey ControlModifier => OperatingSystem.IsMacOS() ? ImGuiKey.ModSuper : ImGuiKey.ModCtrl;
+
     private void ClickWith(ImGuiKey modifier, Vector2 at)
     {
         ImGui.GetIO().AddKeyEvent(modifier, true);
@@ -99,7 +105,7 @@ public sealed class OutlinerTests : IDisposable
         Vector2 gate = RowOf(Named("Gate"));
 
         _ui.Click(wall, Draw);
-        ClickWith(ImGuiKey.ModCtrl, gate);
+        ClickWith(ControlModifier, gate);
         Assert.True(_session.IsSelected(Named("Wall").Id) && _session.IsSelected(Named("Gate").Id));
         Assert.False(_session.IsSelected(Named("Tower").Id));
 

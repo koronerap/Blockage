@@ -50,7 +50,7 @@ public static class PropLibrary
         Directory.CreateDirectory(directory);
         VoxelScene prop = Build(scene, objects);
 
-        string safe = string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim();
+        string safe = FileNames.Safe(name).Trim();
         if (safe.Length == 0)
         {
             safe = "Prop";
