@@ -197,7 +197,10 @@ public sealed partial class EditorSession
     /// <summary>Path of the open project, or null for an unsaved one.</summary>
     public string? ProjectPath { get; set; }
 
-    public string ProjectName => ProjectPath is null ? "Untitled" : Path.GetFileNameWithoutExtension(ProjectPath);
+    public string ProjectName => ProjectPath is null ? UntitledName ?? "Untitled" : Path.GetFileNameWithoutExtension(ProjectPath);
+
+    /// <summary>What a level never saved is called — the file it was imported from — until it is saved.</summary>
+    public string? UntitledName { get; set; }
 
     /// <summary>Number of voxels changed by the stroke in progress. Drives the status line.</summary>
     public int StrokeCellCount => _stroke?.RetainedCells ?? 0;
@@ -2547,6 +2550,7 @@ public sealed partial class EditorSession
         ExtrudeSteps = 0;
         Selection = null;
         Rulers.Clear();
+        UntitledName = null;
 
         Scene = scene;
         SelectedLightId = 0;

@@ -1331,6 +1331,8 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.PreviousLevel: CycleLevel(-1); break;
             case EditorAction.CloseLevel when _level is { } closing: CloseLevel(closing); break;
             case EditorAction.Export: _export?.Show(); break;
+            case EditorAction.ImportVox: _project?.ImportVox(); break;
+            case EditorAction.ExportVox: _project?.ExportVox(); break;
 
             case EditorAction.ToolSelect: SwitchTool(EditorTool.Select); break;
             case EditorAction.ToolTransform: SwitchTool(EditorTool.Transform); break;

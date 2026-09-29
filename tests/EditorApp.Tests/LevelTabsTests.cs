@@ -75,6 +75,30 @@ public sealed class LevelTabsTests : IDisposable
         Assert.Equal(512, front.Scene.SolidCount);
     }
 
+    /// <summary>A .vox comes in as a level of its own, unsaved, called after its file until it is saved.</summary>
+    [Fact]
+    public void AMagicaVoxelFileComesInAsALevelNamedAfterIt()
+    {
+        var scene = new VoxelScene();
+        var grid = new EditorApp.Core.Voxels.VoxelWorld();
+        grid.SetVoxel(0, 0, 0, EditorApp.Core.Voxels.Palette.WhiteIndex);
+        scene.Add(grid, ObjectTransform.Identity, "Crate");
+        string path = Path.Combine(_directory, "crate" + VoxFile.Extension);
+        VoxFile.Save(scene, path);
+
+        EditorSession front = Level(LevelTemplate.Cube, unsaved: true);
+        var tab = new EditorSession();
+        var project = new ProjectController(front, () => { }) { MakeRoom = () => tab, RemembersRecent = false };
+
+        project.OpenRecent(path);
+
+        Assert.Equal("crate", tab.ProjectName);
+        Assert.Null(tab.ProjectPath);
+        Assert.True(tab.HasUnsavedChanges);
+        Assert.Equal(["Crate"], tab.Scene.Objects.Select(o => o.Name));
+        Assert.Equal(512, front.Scene.SolidCount);
+    }
+
     [Fact]
     public void AFileOpenAlreadyIsBroughtForwardNotOpenedAgain()
     {

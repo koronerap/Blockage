@@ -113,6 +113,65 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
     /// <summary>Asks before letting the editor close on unsaved work.</summary>
     public void RequestExit(Action exit) => GuardUnsaved("exit", exit);
 
+    /// <summary>A MagicaVoxel file as a level of its own (Fullreleaseplan 8.1), named after it until it is saved.</summary>
+    public void ImportVox() => Guarded("import a MagicaVoxel file", () =>
+        _browser.Show(
+            FileBrowserMode.Open,
+            "Import MagicaVoxel",
+            VoxFile.Extension,
+            StartDirectory,
+            suggestedName: null,
+            ImportVoxFrom,
+            ProjectDirectory));
+
+    /// <summary>The level as a MagicaVoxel file. What cannot go across as it is, is said.</summary>
+    public void ExportVox() => _browser.Show(
+        FileBrowserMode.Save,
+        "Export MagicaVoxel",
+        VoxFile.Extension,
+        StartDirectory,
+        Session.ProjectName + VoxFile.Extension,
+        ExportVoxTo,
+        ProjectDirectory);
+
+    /// <summary>Opens a .vox the way Import does, without the dialog.</summary>
+    public void ImportVoxFrom(string path)
+    {
+        try
+        {
+            VoxelScene scene = VoxFile.Load(path);
+            EditorSession target = Place(scene, projectPath: null);
+            target.UntitledName = Path.GetFileNameWithoutExtension(path);
+            target.HasUnsavedChanges = true;
+            Report(
+                $"Imported {Path.GetFileName(path)} - {scene.SolidCount:N0} voxels in {scene.Objects.Count(o => !o.IsEmpty)} object(s). Save it to keep it as a level.",
+                isError: false);
+        }
+        catch (Exception exception)
+        {
+            Report($"Could not import {Path.GetFileName(path)}: {exception.Message}", isError: true);
+            CrashLog.Record($"importing {path}", exception);
+        }
+    }
+
+    private void ExportVoxTo(string path)
+    {
+        try
+        {
+            VoxReport report = VoxFile.Save(Session.Scene, path);
+            Report($"Exported {Path.GetFileName(path)} - {report.Models} model(s), placed {report.Instances} time(s).", isError: false);
+            foreach (string warning in report.Warnings)
+            {
+                ReportLog.Shared.Post(warning, ReportKind.Warning);
+            }
+        }
+        catch (Exception exception)
+        {
+            Report($"Could not export {Path.GetFileName(path)}: {exception.Message}", isError: true);
+            CrashLog.Record($"exporting {path}", exception);
+        }
+    }
+
     /// <summary>Asks before letting the level in front be closed on unsaved work.</summary>
     public void RequestClose(Action close) => GuardUnsaved("close it", close);
 
@@ -153,6 +212,13 @@ public sealed class ProjectController(EditorSession session, Action onWorldRepla
 
     private void LoadFrom(string path)
     {
+        // A MagicaVoxel file handed over as a level — on the command line, say — is imported.
+        if (path.EndsWith(VoxFile.Extension, StringComparison.OrdinalIgnoreCase))
+        {
+            ImportVoxFrom(path);
+            return;
+        }
+
         if (ShowOpen?.Invoke(path) == true)
         {
             Report($"{Path.GetFileName(path)} is open already.", isError: false);

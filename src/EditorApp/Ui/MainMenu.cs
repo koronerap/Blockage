@@ -164,16 +164,37 @@ public static class MainMenu
 
             ImGui.Separator();
 
-            if (ImGui.MenuItem("Export mesh...", Shortcut.Of(EditorAction.Export)))
+            // Blender's File > Import: another program's file, as a level of its own.
+            if (ImGui.BeginMenu("Import"))
             {
-                export.Show();
+                if (ImGui.MenuItem("MagicaVoxel (.vox)...", Shortcut.Of(EditorAction.ImportVox)))
+                {
+                    project.ImportVox();
+                }
+
+                ImGui.EndMenu();
             }
 
-            // Kept apart from the mesh export on purpose: nothing here is meshed and no texture is
-            // written. The voxels themselves go out, in the layout Mimicraft's own decoders read.
-            if (ImGui.MenuItem("Save for Mimicraft..."))
+            if (ImGui.BeginMenu("Export"))
             {
-                mimicraft.Show();
+                if (ImGui.MenuItem("Mesh (OBJ, glTF)...", Shortcut.Of(EditorAction.Export)))
+                {
+                    export.Show();
+                }
+
+                if (ImGui.MenuItem("MagicaVoxel (.vox)...", Shortcut.Of(EditorAction.ExportVox)))
+                {
+                    project.ExportVox();
+                }
+
+                // Kept apart from the mesh export on purpose: nothing here is meshed and no texture
+                // is written. The voxels themselves go out, in the layout Mimicraft's own decoders read.
+                if (ImGui.MenuItem("Mimicraft (.character, .weapons)..."))
+                {
+                    mimicraft.Show();
+                }
+
+                ImGui.EndMenu();
             }
 
             ImGui.Separator();
