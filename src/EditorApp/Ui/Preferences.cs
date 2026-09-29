@@ -48,6 +48,21 @@ public sealed class Preferences
     /// <summary>Whether the editor asks GitHub, as it starts, if a newer Blockage is out.</summary>
     public bool CheckForUpdates { get; set; } = true;
 
+    /// <summary>Orange, yellow and blue axes rather than red, green and blue.</summary>
+    public bool ColourBlindAxes { get; set; }
+
+    private int _interfaceScale;
+
+    /// <summary>
+    /// How large the interface is drawn, in percent, in steps of 25 from 100 to 300; 0 follows the
+    /// display. Taken up when the editor starts.
+    /// </summary>
+    public int InterfaceScale
+    {
+        get => _interfaceScale;
+        set => _interfaceScale = value <= 0 ? 0 : Math.Clamp((int)MathF.Round(value / 25f) * 25, 100, 300);
+    }
+
     // ---- Viewport ----------------------------------------------------------------------------
 
     /// <summary>Vertical field of view, in degrees.</summary>

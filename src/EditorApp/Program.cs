@@ -28,6 +28,7 @@ if (!OperatingSystem.IsWindows() && Environment.CurrentDirectory == "/")
 //                         level in Explorer passes. --level=<path> does the same.
 // --view=front|back|right|left|top|bottom
 //                         start looking along an axis, in orthographic — for the same reason.
+// --ui-scale=<factor>     draws the interface at that scale, over the preference and the display's.
 int smokeFrames = 0;
 int stressHalfExtent = 0;
 string? exportDirectory = null;
@@ -35,6 +36,7 @@ string? levelPath = null;
 string? screenshotPath = null;
 string? iconPath = null;
 string? shortcutsPath = null;
+float? uiScale = null;
 bool startUnlit = false;
 EditorApp.Rendering.AlignedView? startView = null;
 
@@ -88,6 +90,11 @@ foreach (string argument in args)
     {
         iconPath = argument["--write-icon=".Length..];
     }
+    else if (argument.StartsWith("--ui-scale=", StringComparison.Ordinal)
+        && float.TryParse(argument.AsSpan("--ui-scale=".Length), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float scale))
+    {
+        uiScale = Math.Clamp(scale, 0.5f, 4f);
+    }
     else if (argument.StartsWith("--write-shortcuts=", StringComparison.Ordinal))
     {
         shortcutsPath = argument["--write-shortcuts=".Length..];
@@ -128,6 +135,6 @@ if (exportDirectory is not null)
     return HeadlessExport.Run(exportDirectory, levelPath);
 }
 
-using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit, startView, levelPath);
+using var application = new EditorApplication(smokeFrames, screenshotPath, startUnlit, startView, levelPath, uiScale);
 application.Run();
 return 0;

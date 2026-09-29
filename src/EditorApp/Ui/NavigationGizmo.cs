@@ -46,15 +46,18 @@ public sealed class NavigationGizmo
     /// The six ends of the three axes, and which view each one stands for: the ball on +X is the
     /// view from +X, which is the right-hand view.
     /// </summary>
-    private static readonly (Vector3 Axis, AlignedView From, string Label, Vector4 Colour, bool Positive)[] Ends =
+    private static readonly (Vector3 Axis, AlignedView From, string Label, int Index, bool Positive)[] Ends =
     [
-        (Vector3.UnitX, AlignedView.Right, "X", Theme.AxisX, true),
-        (Vector3.UnitY, AlignedView.Top, "Y", Theme.AxisY, true),
-        (Vector3.UnitZ, AlignedView.Front, "Z", Theme.AxisZ, true),
-        (-Vector3.UnitX, AlignedView.Left, "-X", Theme.AxisX, false),
-        (-Vector3.UnitY, AlignedView.Bottom, "-Y", Theme.AxisY, false),
-        (-Vector3.UnitZ, AlignedView.Back, "-Z", Theme.AxisZ, false),
+        (Vector3.UnitX, AlignedView.Right, "X", 0, true),
+        (Vector3.UnitY, AlignedView.Top, "Y", 1, true),
+        (Vector3.UnitZ, AlignedView.Front, "Z", 2, true),
+        (-Vector3.UnitX, AlignedView.Left, "-X", 0, false),
+        (-Vector3.UnitY, AlignedView.Bottom, "-Y", 1, false),
+        (-Vector3.UnitZ, AlignedView.Back, "-Z", 2, false),
     ];
+
+    /// <summary>An axis's colour as it is now: a preference can change them.</summary>
+    private static Vector4 AxisColour(int index) => index switch { 0 => Theme.AxisX, 1 => Theme.AxisY, _ => Theme.AxisZ };
 
     /// <summary>The ball the press started on, or -1: a click only counts if it ends where it began.</summary>
     private int _pressed = -1;
@@ -182,7 +185,8 @@ public sealed class NavigationGizmo
 
         foreach (int i in order)
         {
-            (Vector3 axis, _, string label, Vector4 colour, bool positive) = Ends[i];
+            (Vector3 axis, _, string label, int index, bool positive) = Ends[i];
+            Vector4 colour = AxisColour(index);
             Vector2 at = BallPosition(camera, axis, centre);
 
             if (positive)

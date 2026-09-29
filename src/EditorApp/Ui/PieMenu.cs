@@ -58,7 +58,7 @@ public static class PieMenu
             return;
         }
 
-        Vector2 pointer = mouse.Position;
+        Vector2 pointer = mouse.Position / Theme.UiScale;
         int pointed = Pointed(pointer);
 
         if (keyboard.IsKeyPressed(Key.Escape) || mouse.IsButtonPressed(MouseButton.Right))

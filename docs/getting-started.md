@@ -61,6 +61,10 @@ Blockage opens on a welcome screen:
 | Numpad 1, 3, 7 | look from the front, right or top; with Ctrl, from the opposite side |
 | Numpad 5 | switch between perspective and orthographic |
 
+**Preferences › Interface** has the **interface scale**, which follows the display's own setting
+unless you choose one, and **colour-blind safe axes**: orange, yellow and blue in place of red, green
+and blue, everywhere an axis has a colour.
+
 The number keys along the top of the keyboard do the same as the numpad. **Z** opens a pie menu of
 shadings, and **\`** one of views.
 

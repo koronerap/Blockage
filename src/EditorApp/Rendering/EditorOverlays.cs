@@ -64,11 +64,18 @@ public static class EditorOverlays
 
     // The axis colours the whole editor agrees on: the gizmo, the corner indicator and the dimension
     // labels all come from here, and the ImGui theme converts these rather than repeating them.
-    public static readonly Color32 AxisX = new(0xEB, 0x5A, 0x5A);
+    public static Color32 AxisX => ColourBlindSafe ? new Color32(0xE6, 0x7A, 0x2E) : new Color32(0xEB, 0x5A, 0x5A);
 
-    public static readonly Color32 AxisY = new(0x78, 0xDC, 0x6E);
+    public static Color32 AxisY => ColourBlindSafe ? new Color32(0xF0, 0xE4, 0x42) : new Color32(0x78, 0xDC, 0x6E);
 
-    public static readonly Color32 AxisZ = new(0x64, 0x96, 0xFA);
+    public static Color32 AxisZ => ColourBlindSafe ? new Color32(0x56, 0xB4, 0xE9) : new Color32(0x64, 0x96, 0xFA);
+
+    /// <summary>
+    /// Axis colours for eyes that cannot tell red from green (Fullreleaseplan 9.11): orange, yellow
+    /// and sky blue, from Okabe and Ito's palette, which stay apart in every common kind of colour
+    /// blindness, and by their lightness as well as their hue.
+    /// </summary>
+    public static bool ColourBlindSafe { get; set; }
 
     public static readonly Color32 GizmoEdge = new(150, 150, 165);
 

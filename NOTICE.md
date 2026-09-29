@@ -15,6 +15,9 @@ carry, the work of others, each under its own license.
 
 Their full license texts are in their own repositories, linked above.
 
+`src/EditorApp/Rendering/ImGuiLayer.cs` is adapted from Silk.NET's `ImGuiController`
+(Silk.NET.OpenGL.Extensions.ImGui), copyright the .NET Foundation and contributors, MIT license.
+
 ## Material Symbols
 
 The Android app's icons are Material Symbols (Outlined) from

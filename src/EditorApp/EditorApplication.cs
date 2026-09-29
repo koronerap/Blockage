@@ -15,7 +15,6 @@ using Silk.NET.Core;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
-using Silk.NET.OpenGL.Extensions.ImGui;
 using Silk.NET.Windowing;
 
 namespace EditorApp;
@@ -66,7 +65,13 @@ public sealed class EditorApplication : IDisposable
 
     private GL? _gl;
     private IInputContext? _input;
-    private ImGuiController? _imgui;
+    private ImGuiLayer? _imgui;
+
+    /// <summary>Window pixels to an interface unit (see ImGuiLayer): what the mouse is divided by.</summary>
+    private float _uiScale = 1f;
+
+    /// <summary>A scale asked for on the command line, over the preference; for screenshots at a scale.</summary>
+    private readonly float? _uiScaleOverride;
     private GlRenderer? _renderer;
     private ProjectController? _project;
     private ExportController? _export;
@@ -203,8 +208,10 @@ public sealed class EditorApplication : IDisposable
         string? screenshotPath = null,
         bool startUnlit = false,
         AlignedView? startView = null,
-        string? startLevel = null)
+        string? startLevel = null,
+        float? uiScale = null)
     {
+        _uiScaleOverride = uiScale;
         _screenshotPath = screenshotPath;
         _startUnlit = startUnlit;
 
@@ -280,6 +287,9 @@ public sealed class EditorApplication : IDisposable
 
         _gl = _window.CreateOpenGL();
         _input = _window.CreateInput();
+        _uiScale = _uiScaleOverride ?? InterfaceScale();
+        Theme.UiScale = _uiScale;
+        FitWindowToScale(_uiScale);
         _imgui = CreateImGui(_gl, _input);
         Theme.Apply();
 
@@ -287,6 +297,9 @@ public sealed class EditorApplication : IDisposable
         {
             BackgroundColor = Color32.FromVector4(Theme.Viewport),
             BackgroundTopColor = Color32.FromVector4(Theme.ViewportTop),
+
+            // Drawn in framebuffer pixels: two of them are two interface units.
+            OutlineWidth = Math.Max(1, (int)MathF.Round(2f * _imgui.PixelsPerUnit)),
         };
 
         if (_startUnlit)
@@ -364,7 +377,7 @@ public sealed class EditorApplication : IDisposable
 
         if (_input.Mice.Count > 0)
         {
-            _previousMousePosition = _input.Mice[0].Position;
+            _previousMousePosition = Pointer(_input.Mice[0]);
             _input.Mice[0].Scroll += OnScroll;
         }
 
@@ -406,23 +419,71 @@ public sealed class EditorApplication : IDisposable
     /// 13px bitmap face, and it is the single loudest reason a tool looks like a debug overlay — but
     /// it is also the guaranteed fallback, so a missing font file must not stop the editor opening.
     /// </summary>
-    private ImGuiController CreateImGui(GL gl, IInputContext input)
+    private ImGuiLayer CreateImGui(GL gl, IInputContext input)
     {
-        if (Theme.ResolveFontPath() is not { } fontPath)
-        {
-            Console.WriteLine("No UI font found; falling back to the built-in bitmap font.");
-            return new ImGuiController(gl, _window, input, null, KeepImGuiSettings);
-        }
+        // Framebuffer pixels to an interface unit: the scale, and a Retina screen's two on top.
+        float pixels = _uiScale * _window.FramebufferSize.X / MathF.Max(_window.Size.X, 1f);
 
-        // Every text size goes into the atlas while it is being built, so changing size later is a
-        // pointer swap rather than a rebuilt texture.
-        return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels, _ => Theme.GlyphRanges), () =>
+        return new ImGuiLayer(gl, _window, input, _uiScale, () =>
         {
-            ImFontAtlasPtr atlas = ImGui.GetIO().Fonts;
-            Theme.AddFonts(atlas, fontPath, atlas.Fonts[0]);
             KeepImGuiSettings();
+            if (Theme.ResolveFontPath() is not { } fontPath)
+            {
+                Console.WriteLine("No UI font found; falling back to the built-in bitmap font.");
+                return;
+            }
+
+            // Every text size goes into the atlas while it is being built, so changing size later is
+            // a pointer swap rather than a rebuilt texture. Each is drawn at the pixels it takes up.
+            ImGuiIOPtr io = ImGui.GetIO();
+            ImFontPtr normal = io.Fonts.AddFontFromFileTTF(fontPath, Theme.FontSizePixels * pixels, new ImFontConfigPtr(IntPtr.Zero), Theme.GlyphRanges);
+            Theme.AddFonts(io.Fonts, fontPath, normal, pixels);
+            io.FontGlobalScale = 1f / pixels;
         });
     }
+
+    /// <summary>
+    /// How large the interface is drawn: the preference, or on Auto the display's own scale, in
+    /// quarter steps — 1.5 on a Windows display set to 150%. A Mac's Retina screen already counts in
+    /// points, so there it comes out as 1, and only the fonts are drawn sharper.
+    /// </summary>
+    private unsafe float InterfaceScale()
+    {
+        if (_preferences.InterfaceScale > 0)
+        {
+            return _preferences.InterfaceScale / 100f;
+        }
+
+        if (_window.Native?.Glfw is null)
+        {
+            return 1f;
+        }
+
+        // The window opens on the primary display, and that display's setting is the one asked for.
+        Silk.NET.GLFW.Glfw glfw = Silk.NET.GLFW.GlfwProvider.GLFW.Value;
+        glfw.GetMonitorContentScale(glfw.GetPrimaryMonitor(), out float content, out _);
+        float framebuffer = _window.FramebufferSize.X / MathF.Max(_window.Size.X, 1f);
+        return Math.Clamp(MathF.Round(content / MathF.Max(framebuffer, 1f) * 4f) / 4f, 1f, 3f);
+    }
+
+    /// <summary>The window grown with the interface, so as much of the level shows, but kept on the screen.</summary>
+    private void FitWindowToScale(float scale)
+    {
+        if (scale <= 1f || _window.Monitor is not { } monitor)
+        {
+            return;
+        }
+
+        Vector2D<int> screen = monitor.Bounds.Size;
+        var size = new Vector2D<int>(
+            Math.Min((int)(_window.Size.X * scale), (int)(screen.X * 0.9f)),
+            Math.Min((int)(_window.Size.Y * scale), (int)(screen.Y * 0.9f)));
+        _window.Size = size;
+        _window.Position = monitor.Bounds.Origin + ((screen - size) / 2);
+    }
+
+    /// <summary>Where the mouse is in interface units, as ImGui and every rectangle of the shell count.</summary>
+    private Vector2 Pointer(IMouse mouse) => mouse.Position / _uiScale;
 
     /// <summary>
     /// Where ImGui keeps what it remembers of its windows: beside the layout, not in whatever folder
@@ -453,6 +514,7 @@ public sealed class EditorApplication : IDisposable
 
         Keymap.Active = p.BuildKeymap();
         Theme.Apply(p.Theme, p.Accent);
+        EditorOverlays.ColourBlindSafe = p.ColourBlindAxes;
         Theme.UseTextSize(p.TextSize);
 
         if (_renderer is not null)
@@ -556,7 +618,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        if (_viewport.Contains(mouse.Position))
+        if (_viewport.Contains(Pointer(mouse)))
         {
             _camera.Zoom(_preferences.InvertZoom ? -wheel.Y : wheel.Y);
         }
@@ -594,7 +656,7 @@ public sealed class EditorApplication : IDisposable
         IKeyboard keyboard = _input.Keyboards[0];
         ImGuiIOPtr io = ImGui.GetIO();
 
-        Vector2 mousePosition = mouse.Position;
+        Vector2 mousePosition = Pointer(mouse);
         Vector2 mouseDelta = mousePosition - _previousMousePosition;
         _previousMousePosition = mousePosition;
 
@@ -799,7 +861,7 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        if (pressedNow && !io.WantCaptureMouse && _viewport.Contains(mouse.Position))
+        if (pressedNow && !io.WantCaptureMouse && _viewport.Contains(Pointer(mouse)))
         {
             bool shift = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
             bool control = ControlKey.IsHeld(keyboard);
@@ -889,7 +951,7 @@ public sealed class EditorApplication : IDisposable
         }
 
         // Picking is in viewport-local pixels, because the 3D view no longer fills the window.
-        Vector2 mouse = _input.Mice[0].Position;
+        Vector2 mouse = Pointer(_input.Mice[0]);
         if (!_viewport.Contains(mouse))
         {
             return;
@@ -933,17 +995,17 @@ public sealed class EditorApplication : IDisposable
         bool leftDown = mouse.IsButtonPressed(MouseButton.Left)
             && !ImGui.GetIO().WantCaptureMouse
             && !_looking
-            && _viewport.Contains(mouse.Position);
+            && _viewport.Contains(Pointer(mouse));
 
         bool pressed = leftDown && !_leftButtonWasDown;
         bool released = !leftDown && _leftButtonWasDown;
         _leftButtonWasDown = leftDown;
 
-        Vector2 local = _viewport.ToLocal(mouse.Position);
+        Vector2 local = _viewport.ToLocal(Pointer(mouse));
         Vector2 viewport = _viewport.Size;
 
         // Hover marks are for a pointer over the model, not over a panel in front of it.
-        bool pointing = !ImGui.GetIO().WantCaptureMouse && !_looking && _viewport.Contains(mouse.Position);
+        bool pointing = !ImGui.GetIO().WantCaptureMouse && !_looking && _viewport.Contains(Pointer(mouse));
         _aimHover = null;
         _extrudeWouldPull = false;
 
@@ -1491,11 +1553,11 @@ public sealed class EditorApplication : IDisposable
 
             // At the mouse, where what is picked will be set down.
             case EditorAction.MoveToCollection when !IsDragging() && _input is { Mice.Count: > 0 } mice:
-                CollectionMenu.Open(mice.Mice[0].Position);
+                CollectionMenu.Open(Pointer(mice.Mice[0]));
                 break;
 
             case EditorAction.AddMenu when !IsDragging() && _input is { Mice.Count: > 0 } input:
-                AddMenu.Open(input.Mice[0].Position);
+                AddMenu.Open(Pointer(input.Mice[0]));
                 break;
 
             case EditorAction.ClearParent when !IsDragging() && !_session.InEditMode:
@@ -1516,13 +1578,13 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.WalkMode: BeginWalk(); break;
             case EditorAction.UndoHistory: HistoryWindow.Toggle(); break;
             case EditorAction.ShadingPie when _input is { Mice.Count: > 0 } pieMouse:
-                PieMenu.Open("Shading", ShadingSlices(), pieMouse.Mice[0].Position, _lastKey, _clock);
+                PieMenu.Open("Shading", ShadingSlices(), Pointer(pieMouse.Mice[0]), _lastKey, _clock);
                 break;
             case EditorAction.ViewPie when _input is { Mice.Count: > 0 } viewMouse:
-                PieMenu.Open("View", ViewSlices(), viewMouse.Mice[0].Position, _lastKey, _clock);
+                PieMenu.Open("View", ViewSlices(), Pointer(viewMouse.Mice[0]), _lastKey, _clock);
                 break;
             case EditorAction.QuickFavorites when _input is { Mice.Count: > 0 } favouritesMouse:
-                QuickFavorites.Open(favouritesMouse.Mice[0].Position);
+                QuickFavorites.Open(Pointer(favouritesMouse.Mice[0]));
                 break;
             case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
             case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
@@ -1825,7 +1887,7 @@ public sealed class EditorApplication : IDisposable
         BuildOverlayLines();
 
         var framebuffer = new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y);
-        var logical = new Vector2(_window.Size.X, _window.Size.Y);
+        var logical = new Vector2(_window.Size.X, _window.Size.Y) / _uiScale;
         Vector2 scale = new(
             framebuffer.X / MathF.Max(logical.X, 1f),
             framebuffer.Y / MathF.Max(logical.Y, 1f));
@@ -3059,7 +3121,7 @@ public sealed class EditorApplication : IDisposable
             || _looking
             || ImGui.GetIO().WantCaptureMouse
             || _input is not { Mice.Count: > 0 }
-            || !_viewport.Contains(_input.Mice[0].Position))
+            || !_viewport.Contains(Pointer(_input.Mice[0])))
         {
             return null;
         }
@@ -3087,7 +3149,7 @@ public sealed class EditorApplication : IDisposable
         && !_looking
         && !ImGui.GetIO().WantCaptureMouse
         && _input is { Mice.Count: > 0 }
-        && _viewport.Contains(_input.Mice[0].Position);
+        && _viewport.Contains(Pointer(_input.Mice[0]));
 
     private string CurrentDragReadout()
     {

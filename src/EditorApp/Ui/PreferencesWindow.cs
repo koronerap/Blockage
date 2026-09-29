@@ -161,6 +161,34 @@ public static class PreferencesWindow
             }
 
             changed |= DrawAccents(p);
+
+            bool safe = p.ColourBlindAxes;
+            if (Props.Check("Axes", "pref-axes", "Colour-blind safe: orange, yellow, blue", ref safe))
+            {
+                p.ColourBlindAxes = safe;
+                changed = true;
+            }
+
+            string current = p.InterfaceScale == 0 ? $"Auto, {Percent(Theme.UiScale)}" : $"{p.InterfaceScale}%";
+            if (Props.BeginCombo("Interface scale", "pref-ui-scale", current))
+            {
+                foreach (int option in (int[])[0, 100, 125, 150, 175, 200, 250, 300])
+                {
+                    if (ImGui.Selectable(option == 0 ? "Auto, as the display is set" : $"{option}%", option == p.InterfaceScale))
+                    {
+                        p.InterfaceScale = option;
+                        changed = true;
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+
+            if (p.InterfaceScale != 0 && MathF.Abs((p.InterfaceScale / 100f) - Theme.UiScale) > 0.01f)
+            {
+                Props.Label(string.Empty);
+                ImGui.TextDisabled("Blockage takes it up when it starts again.");
+            }
         }
 
         if (Props.Section("Text"))
@@ -216,8 +244,12 @@ public static class PreferencesWindow
             p.MouseHints = d.MouseHints;
             p.ShowWelcome = d.ShowWelcome;
             p.CheckForUpdates = d.CheckForUpdates;
+            p.ColourBlindAxes = d.ColourBlindAxes;
+            p.InterfaceScale = d.InterfaceScale;
         });
     }
+
+    private static string Percent(float scale) => $"{(int)MathF.Round(scale * 100f)}%";
 
     /// <summary>A swatch for each accent, the chosen one ringed.</summary>
     private static bool DrawAccents(Preferences p)

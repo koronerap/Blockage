@@ -28,6 +28,11 @@ Performance, platforms and the road to 1.0.
 - After a crash, Blockage offers to report it the next time it starts: GitHub's bug form, filled in
   with the version and the crash log, to read over before sending. **Help › Report a Problem**
   opens the form at any time.
+- An interface scale. On a display set to 150% or 200%, the whole interface is drawn that much
+  larger, text sharp at every size, and Preferences can set a scale of its own. On a Retina Mac the
+  text is drawn at the screen's full resolution.
+- Colour-blind safe axes, in Preferences: orange, yellow and blue in place of red, green and blue,
+  from Okabe and Ito's palette.
 - A manual, published from `docs/` by GitHub Pages and linked from the welcome screen and the Help
   menu. Its page of keys is written by `--write-shortcuts` from the Default keymap.
 

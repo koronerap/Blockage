@@ -22,6 +22,18 @@ public sealed class PreferencesFileTests : IDisposable
         }
     }
 
+    /// <summary>An interface scale is a quarter step from 100% to 300%, or 0 to follow the display.</summary>
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(-20, 0)]
+    [InlineData(90, 100)]
+    [InlineData(140, 150)]
+    [InlineData(160, 150)]
+    [InlineData(175, 175)]
+    [InlineData(1000, 300)]
+    public void AnInterfaceScaleIsAQuarterStepOrAuto(int asked, int kept) =>
+        Assert.Equal(kept, new Preferences { InterfaceScale = asked }.InterfaceScale);
+
     [Fact]
     public void WhatIsSavedIsWhatComesBack()
     {
@@ -42,6 +54,9 @@ public sealed class PreferencesFileTests : IDisposable
             UndoMemory = 32,
             AutosaveMinutes = 5,
             RecentFilesKept = 20,
+            CheckForUpdates = false,
+            ColourBlindAxes = true,
+            InterfaceScale = 150,
         };
 
         saved.Viewport.Grid = false;
@@ -61,6 +76,9 @@ public sealed class PreferencesFileTests : IDisposable
         Preferences loaded = Preferences.Load(_path);
 
         Assert.Equal(ThemeKind.Light, loaded.Theme);
+        Assert.False(loaded.CheckForUpdates);
+        Assert.True(loaded.ColourBlindAxes);
+        Assert.Equal(150, loaded.InterfaceScale);
         Assert.Equal(AccentKind.Rose, loaded.Accent);
         Assert.Equal(TextSize.Large, loaded.TextSize);
         Assert.False(loaded.MouseHints);

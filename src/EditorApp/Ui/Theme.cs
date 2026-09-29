@@ -101,9 +101,15 @@ public static class Theme
     // means the same axis everywhere in the interface.
     // Taken from the overlay table rather than repeated, so an axis is the same colour in the
     // gizmo, the corner indicator and the dimension labels.
-    public static readonly Vector4 AxisX = Rendering.EditorOverlays.AxisX.ToVector4();
-    public static readonly Vector4 AxisY = Rendering.EditorOverlays.AxisY.ToVector4();
-    public static readonly Vector4 AxisZ = Rendering.EditorOverlays.AxisZ.ToVector4();
+    public static Vector4 AxisX => Rendering.EditorOverlays.AxisX.ToVector4();
+    public static Vector4 AxisY => Rendering.EditorOverlays.AxisY.ToVector4();
+    public static Vector4 AxisZ => Rendering.EditorOverlays.AxisZ.ToVector4();
+
+    /// <summary>
+    /// How many window pixels one interface unit is (see Rendering.ImGuiLayer): 1.5 on a 150%
+    /// display. Set once as the editor starts; what reads the mouse directly divides by it.
+    /// </summary>
+    public static float UiScale { get; set; } = 1f;
 
     /// <summary>The 3D viewport's gradient, lighter at the top so the scene reads as having a horizon.</summary>
     public static Vector4 Viewport { get; private set; } = Rgb(0x323232);
@@ -173,7 +179,11 @@ public static class Theme
     private static IntPtr _glyphRanges;
 
     /// <summary>Called while the font atlas is being built: one face at every size.</summary>
-    public static void AddFonts(ImFontAtlasPtr atlas, string path, ImFontPtr normal)
+    /// <param name="pixelsPerUnit">
+    /// Framebuffer pixels to an interface unit. Each font is drawn into the atlas that many times its
+    /// size and shown at its size (ImGui's FontGlobalScale), so text stays sharp at any scale.
+    /// </param>
+    public static void AddFonts(ImFontAtlasPtr atlas, string path, ImFontPtr normal, float pixelsPerUnit = 1f)
     {
         Fonts[TextSize.Normal] = normal;
 
@@ -181,11 +191,11 @@ public static class Theme
         {
             if (size != TextSize.Normal)
             {
-                Fonts[size] = atlas.AddFontFromFileTTF(path, PixelsFor(size), new ImFontConfigPtr(IntPtr.Zero), GlyphRanges);
+                Fonts[size] = atlas.AddFontFromFileTTF(path, PixelsFor(size) * pixelsPerUnit, new ImFontConfigPtr(IntPtr.Zero), GlyphRanges);
             }
         }
 
-        _title = atlas.AddFontFromFileTTF(path, TitlePixels, new ImFontConfigPtr(IntPtr.Zero), GlyphRanges);
+        _title = atlas.AddFontFromFileTTF(path, TitlePixels * pixelsPerUnit, new ImFontConfigPtr(IntPtr.Zero), GlyphRanges);
     }
 
     /// <summary>Whether the text size can be changed — not with ImGui's built-in bitmap font, which comes in one size.</summary>
