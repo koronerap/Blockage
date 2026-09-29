@@ -171,20 +171,25 @@ public static class ToolOptions
     {
         float size = ImGui.GetFrameHeight();
 
-        if (IconButton.Toggle(
-                "extrude-select",
-                (Icons.BoxSelect, "Box select"),
-                (Icons.FaceSelect, "Whole face"),
-                session.ExtrudeSelectionMode == ExtrudeSelectionMode.Face,
-                Shortcut.Of(EditorAction.ToolOtherMode),
-                size))
+        (ExtrudeSelectionMode Mode, Icons.Painter Icon, string Tip)[] shapes =
+        [
+            (ExtrudeSelectionMode.Box, Icons.BoxSelect, "Box - drag a rectangle on a face"),
+            (ExtrudeSelectionMode.Ellipse, Icons.EllipseSelect, "Ellipse - drag an ellipse on a face"),
+            (ExtrudeSelectionMode.Line, Icons.LineSelect, "Line - drag a line on a face, a voxel wide"),
+            (ExtrudeSelectionMode.Face, Icons.FaceSelect, "Whole face - a click takes the flat patch entire"),
+        ];
+
+        foreach ((ExtrudeSelectionMode mode, Icons.Painter icon, string tip) in shapes)
         {
-            session.ExtrudeSelectionMode = session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box
-                ? ExtrudeSelectionMode.Face
-                : ExtrudeSelectionMode.Box;
+            if (IconButton.Draw($"extrude-select-{mode}", icon, session.ExtrudeSelectionMode == mode, $"{tip}{Shortcut.Hint(EditorAction.ToolOtherMode)}", size))
+            {
+                session.ExtrudeSelectionMode = mode;
+            }
+
+            ImGui.SameLine(0f, 4f);
         }
 
-        ImGui.SameLine(0f, 4f);
+        ImGui.SameLine(0f, 8f);
 
         // A switch that stays lit while on: pulled voxels go into an object of their own.
         if (IconButton.Draw(

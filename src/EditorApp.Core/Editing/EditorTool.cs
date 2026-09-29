@@ -69,6 +69,12 @@ public enum ExtrudeSelectionMode
 
     /// <summary>One click takes the whole connected, coplanar, externally visible patch.</summary>
     Face,
+
+    /// <summary>Drag out an ellipse on the face: a round hole, a column, a dome's first ring.</summary>
+    Ellipse,
+
+    /// <summary>Drag a line on the face, one voxel wide: a wall's footprint, a groove.</summary>
+    Line,
 }
 
 /// <summary>What a drag does to the current selection. Captured when the drag starts.</summary>

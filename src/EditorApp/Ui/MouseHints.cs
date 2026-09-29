@@ -77,6 +77,8 @@ public static class MouseHints
             EditorTool.Extrude when alt => "Remove from selection",
             EditorTool.Extrude when shift => "Add to selection",
             EditorTool.Extrude when session.ExtrudeSelectionMode == ExtrudeSelectionMode.Face => "Select a whole face",
+            EditorTool.Extrude when session.ExtrudeSelectionMode == ExtrudeSelectionMode.Ellipse => "Drag an ellipse",
+            EditorTool.Extrude when session.ExtrudeSelectionMode == ExtrudeSelectionMode.Line => "Drag a line",
             EditorTool.Extrude => "Drag to select",
 
             EditorTool.Paint when alt => "Pick a colour",

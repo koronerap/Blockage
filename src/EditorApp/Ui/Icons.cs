@@ -247,6 +247,28 @@ public static class Icons
         }
     }
 
+    /// <summary>Ellipse selection: a dashed round.</summary>
+    public static void EllipseSelect(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        const int Dashes = 10;
+        for (int i = 0; i < Dashes; i++)
+        {
+            float a = i / (float)Dashes * MathF.Tau;
+            float b = (i + 0.55f) / Dashes * MathF.Tau;
+            canvas.Line(centre + (new Vector2(MathF.Cos(a), MathF.Sin(a)) * r), centre + (new Vector2(MathF.Cos(b), MathF.Sin(b)) * r));
+        }
+    }
+
+    /// <summary>Line selection: a stroke from corner to corner, a dot at each end.</summary>
+    public static void LineSelect(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 from = centre + new Vector2(-r * 0.8f, r * 0.8f);
+        Vector2 to = centre + new Vector2(r * 0.8f, -r * 0.8f);
+        canvas.Line(from, to, 1.5f);
+        canvas.FilledCircle(from, r * 0.2f);
+        canvas.FilledCircle(to, r * 0.2f);
+    }
+
     /// <summary>Face selection: one whole filled face.</summary>
     public static void FaceSelect(IIconCanvas canvas, Vector2 centre, float r) =>
         canvas.FilledRect(centre - new Vector2(r * 0.8f), centre + new Vector2(r * 0.8f), 2f);

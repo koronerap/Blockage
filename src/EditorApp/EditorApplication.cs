@@ -1429,9 +1429,14 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case EditorTool.Extrude:
-                _session.ExtrudeSelectionMode = _session.ExtrudeSelectionMode == ExtrudeSelectionMode.Box
-                    ? ExtrudeSelectionMode.Face
-                    : ExtrudeSelectionMode.Box;
+                // Box, Ellipse, Line, whole Face, and round again.
+                _session.ExtrudeSelectionMode = _session.ExtrudeSelectionMode switch
+                {
+                    ExtrudeSelectionMode.Box => ExtrudeSelectionMode.Ellipse,
+                    ExtrudeSelectionMode.Ellipse => ExtrudeSelectionMode.Line,
+                    ExtrudeSelectionMode.Line => ExtrudeSelectionMode.Face,
+                    _ => ExtrudeSelectionMode.Box,
+                };
                 break;
         }
     }

@@ -249,7 +249,12 @@ public sealed class ExtrudeInteraction(EditorSession session)
     }
 
     private void UpdatePending() =>
-        PendingSelection = FaceSelection.Box(session.World, _dragFace, _dragPlane, _dragAnchor, _dragCurrent);
+        PendingSelection = session.ExtrudeSelectionMode switch
+        {
+            ExtrudeSelectionMode.Ellipse => FaceSelection.Ellipse(session.World, _dragFace, _dragPlane, _dragAnchor, _dragCurrent),
+            ExtrudeSelectionMode.Line => FaceSelection.Line(session.World, _dragFace, _dragPlane, _dragAnchor, _dragCurrent),
+            _ => FaceSelection.Box(session.World, _dragFace, _dragPlane, _dragAnchor, _dragCurrent),
+        };
 
     public void OnRelease()
     {

@@ -131,9 +131,9 @@ public static class ToolPanel
     {
         if (Props.Section("Options"))
         {
-            int mode = Props.Choice("Select", "extrude-select", [(Icons.BoxSelect, "Box"), (Icons.FaceSelect, "Whole face")], (int)session.ExtrudeSelectionMode);
+            int mode = Props.Choice("Select", "extrude-select", [(Icons.BoxSelect, "Box"), (Icons.FaceSelect, "Face"), (Icons.EllipseSelect, "Ellipse"), (Icons.LineSelect, "Line")], (int)session.ExtrudeSelectionMode);
             session.ExtrudeSelectionMode = (ExtrudeSelectionMode)mode;
-            Tooltip("F switches. Shift adds to a selection, Alt takes away.");
+            Tooltip("The tool's other-mode key goes round them. Shift adds to a selection, Alt takes away.");
 
             bool creates = session.ExtrudeCreatesObject;
             if (Props.Check(string.Empty, "extrude-creates", "Pull out a new object", ref creates))

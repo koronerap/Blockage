@@ -267,6 +267,8 @@ public static class SearchCommands
         commands.Add(new("tool.transform.local", "Local axes", "Transform", () => { run(EditorAction.ToolTransform); session.TransformSpace = TransformSpace.Local; }) { Keywords = "object space" });
         commands.Add(new("tool.extrude.box", "Box select", "Extrude", () => { run(EditorAction.ToolExtrude); session.ExtrudeSelectionMode = ExtrudeSelectionMode.Box; }) { Keywords = "rectangle selection" });
         commands.Add(new("tool.extrude.face", "Face select", "Extrude", () => { run(EditorAction.ToolExtrude); session.ExtrudeSelectionMode = ExtrudeSelectionMode.Face; }) { Keywords = "patch selection" });
+        commands.Add(new("tool.extrude.ellipse", "Ellipse select", "Extrude", () => { run(EditorAction.ToolExtrude); session.ExtrudeSelectionMode = ExtrudeSelectionMode.Ellipse; }) { Keywords = "circle round disc column" });
+        commands.Add(new("tool.extrude.line", "Line select", "Extrude", () => { run(EditorAction.ToolExtrude); session.ExtrudeSelectionMode = ExtrudeSelectionMode.Line; }) { Keywords = "stroke wall groove" });
         commands.Add(new("tool.extrude.newobject", "New object", "Extrude", () => { run(EditorAction.ToolExtrude); session.ExtrudeCreatesObject = !session.ExtrudeCreatesObject; }) { Keywords = "create separate" });
         commands.Add(new("tool.paint.brush", "Brush", "Paint", () => { run(EditorAction.ToolPaint); session.PaintMode = PaintMode.Brush; }) { Keywords = "colour color" });
         commands.Add(new("tool.paint.bucket", "Bucket fill", "Paint", () => { run(EditorAction.ToolPaint); session.PaintMode = PaintMode.Bucket; }) { Keywords = "colour color flood" });

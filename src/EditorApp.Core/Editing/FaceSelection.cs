@@ -92,6 +92,101 @@ public sealed class FaceSelection
     }
 
     /// <summary>
+    /// The exposed faces inside the ellipse that fits the rectangle between two corners, in the
+    /// plane of <paramref name="direction"/> — Extrude's Ellipse: a round shape drawn straight onto
+    /// the surface, to be pulled out or pushed in.
+    /// </summary>
+    public static FaceSelection Ellipse(VoxelWorld world, Face direction, int plane, Int3 cornerA, Int3 cornerB)
+    {
+        int axis = FaceInfo.Axis(direction);
+        (int u, int v) = Across(axis);
+        VoxelBox box = VoxelBox.FromCorners(
+            VoxelBox.WithComponent(cornerA, axis, plane),
+            VoxelBox.WithComponent(cornerB, axis, plane));
+
+        float cu = (VoxelBox.Component(box.Min, u) + VoxelBox.Component(box.Max, u) + 1) * 0.5f;
+        float cv = (VoxelBox.Component(box.Min, v) + VoxelBox.Component(box.Max, v) + 1) * 0.5f;
+        float ru = (VoxelBox.Component(box.Max, u) - VoxelBox.Component(box.Min, u) + 1) * 0.5f;
+        float rv = (VoxelBox.Component(box.Max, v) - VoxelBox.Component(box.Min, v) + 1) * 0.5f;
+
+        var voxels = new HashSet<Int3>();
+        for (int y = box.Min.Y; y <= box.Max.Y; y++)
+        {
+            for (int z = box.Min.Z; z <= box.Max.Z; z++)
+            {
+                for (int x = box.Min.X; x <= box.Max.X; x++)
+                {
+                    var cell = new Int3(x, y, z);
+                    float du = (VoxelBox.Component(cell, u) + 0.5f - cu) / ru;
+                    float dv = (VoxelBox.Component(cell, v) + 0.5f - cv) / rv;
+                    if ((du * du) + (dv * dv) <= 1f && IsFaceExposed(world, cell, direction))
+                    {
+                        voxels.Add(cell);
+                    }
+                }
+            }
+        }
+
+        return new FaceSelection(direction, plane, voxels);
+    }
+
+    /// <summary>
+    /// The exposed faces along a line from one cell to another, one voxel wide, in the plane of
+    /// <paramref name="direction"/> — Extrude's Line.
+    /// </summary>
+    public static FaceSelection Line(VoxelWorld world, Face direction, int plane, Int3 from, Int3 to)
+    {
+        int axis = FaceInfo.Axis(direction);
+        (int u, int v) = Across(axis);
+        int u0 = VoxelBox.Component(from, u), v0 = VoxelBox.Component(from, v);
+        int u1 = VoxelBox.Component(to, u), v1 = VoxelBox.Component(to, v);
+
+        var voxels = new HashSet<Int3>();
+
+        // Bresenham: every cell the line steps through, without gaps at a corner.
+        int du = Math.Abs(u1 - u0), dv = -Math.Abs(v1 - v0);
+        int su = u0 < u1 ? 1 : -1, sv = v0 < v1 ? 1 : -1;
+        int error = du + dv;
+        int cu = u0, cv = v0;
+        for (int guard = 0; guard <= du - dv + 1; guard++)
+        {
+            Int3 cell = VoxelBox.WithComponent(VoxelBox.WithComponent(VoxelBox.WithComponent(Int3.Zero, axis, plane), u, cu), v, cv);
+            if (IsFaceExposed(world, cell, direction))
+            {
+                voxels.Add(cell);
+            }
+
+            if (cu == u1 && cv == v1)
+            {
+                break;
+            }
+
+            int twice = 2 * error;
+            if (twice >= dv)
+            {
+                error += dv;
+                cu += su;
+            }
+
+            if (twice <= du)
+            {
+                error += du;
+                cv += sv;
+            }
+        }
+
+        return new FaceSelection(direction, plane, voxels);
+    }
+
+    /// <summary>The two axes that lie across a face whose normal is along <paramref name="axis"/>.</summary>
+    private static (int U, int V) Across(int axis) => axis switch
+    {
+        0 => (1, 2),
+        1 => (0, 2),
+        _ => (0, 1),
+    };
+
+    /// <summary>
     /// The whole connected patch of exposed faces reachable from a seed, staying in the seed's
     /// plane. This is Extrude's Face sub-mode: one click takes a flat surface entire.
     /// </summary>
