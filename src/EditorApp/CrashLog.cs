@@ -23,6 +23,12 @@ public static class CrashLog
         "crash.log");
 
     /// <summary>
+    /// What the log said of a crash in the session before this one, read as the editor starts and
+    /// before it adds to the log; null when that session ended well. See <see cref="CrashReport"/>.
+    /// </summary>
+    public static string? PreviousCrash { get; private set; }
+
+    /// <summary>
     /// Raised once something has escaped and the process is going down — the last moment anything
     /// can still be written. Autosave uses it to put the unsaved level in the recovery folder.
     /// </summary>
@@ -50,7 +56,20 @@ public static class CrashLog
             }
         };
 
+        PreviousCrash = ReadPreviousCrash();
         Note($"started, version {typeof(CrashLog).Assembly.GetName().Version}");
+    }
+
+    private static string? ReadPreviousCrash()
+    {
+        try
+        {
+            return File.Exists(Path) ? CrashReport.LastSessionCrash(File.ReadAllText(Path)) : null;
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public static void Record(string context, Exception exception) =>

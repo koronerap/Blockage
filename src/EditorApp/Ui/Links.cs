@@ -5,6 +5,8 @@ public static class Links
 {
     public const string Repository = "https://github.com/koronerap/Blockage";
 
+    public const string Releases = Repository + "/releases";
+
     /// <summary>The manual: docs/ of the repository, published as its GitHub Pages site.</summary>
     public const string Manual = "https://koronerap.github.io/Blockage/";
 

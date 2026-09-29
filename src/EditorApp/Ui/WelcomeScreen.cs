@@ -33,6 +33,9 @@ public sealed class WelcomeActions
 
     public required Action<string> OpenUrl { get; init; }
 
+    /// <summary>A newer release GitHub has, when the editor has heard of one.</summary>
+    public Func<NewRelease?> NewRelease { get; init; } = () => null;
+
     public required Action ShowShortcuts { get; init; }
 
     /// <summary>Where "show this at startup" is kept.</summary>
@@ -278,6 +281,15 @@ public static class WelcomeScreen
         if (Link("shortcuts", Icons.Keyboard, "Keyboard Shortcuts", $"Every key of the keymap in use{Shortcut.Hint(EditorAction.ShortcutSheet)}"))
         {
             chosen = actions.ShowShortcuts;
+        }
+
+        if (actions.NewRelease() is { } release)
+        {
+            ImGui.SameLine(0f, margin * 0.5f);
+            if (Link("new-release", Icons.Plus, $"Blockage {release.Version} is out", $"{release.Url}\nWhat is new in it, and the downloads."))
+            {
+                chosen = () => actions.OpenUrl(release.Url);
+            }
         }
 
         string label = "Show at startup";

@@ -389,6 +389,16 @@ public static class MainMenu
 
         if (ImGui.BeginMenu("Help"))
         {
+            if (UpdateCheck.Found is { } release)
+            {
+                if (ImGui.MenuItem($"Get Blockage {release.Version}..."))
+                {
+                    Links.Open(release.Url);
+                }
+
+                ImGui.Separator();
+            }
+
             if (ImGui.MenuItem("Welcome Screen"))
             {
                 WelcomeScreen.Open();
@@ -407,6 +417,11 @@ public static class MainMenu
             if (ImGui.MenuItem("Manual"))
             {
                 Links.Open(Links.Manual);
+            }
+
+            if (ImGui.MenuItem("Report a Problem..."))
+            {
+                Links.Open(CrashReport.IssueUrl(null, AppVersion.Number, CrashReport.Platform));
             }
 
             ImGui.EndMenu();

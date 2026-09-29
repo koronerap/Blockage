@@ -199,6 +199,13 @@ public static class PreferencesWindow
                 p.ShowWelcome = welcome;
                 changed = true;
             }
+
+            bool updates = p.CheckForUpdates;
+            if (Props.Check("New versions", "pref-updates", "Ask GitHub whether a newer Blockage is out. Nothing else is sent.", ref updates))
+            {
+                p.CheckForUpdates = updates;
+                changed = true;
+            }
         }
 
         return changed | RestoreDefaults(p, d =>
@@ -208,6 +215,7 @@ public static class PreferencesWindow
             p.TextSize = d.TextSize;
             p.MouseHints = d.MouseHints;
             p.ShowWelcome = d.ShowWelcome;
+            p.CheckForUpdates = d.CheckForUpdates;
         });
     }
 

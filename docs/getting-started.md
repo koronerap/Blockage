@@ -72,3 +72,13 @@ work back the next time it starts.
 
 Several levels can be open at once, each in its own tab. **Ctrl+Tab** moves between them, and copy
 and paste work from one to another.
+
+## New versions and problems
+
+- When a newer Blockage is out, the welcome screen and the **Help** menu say so. Blockage asks
+  GitHub once as it starts, and sends nothing else. **Preferences › Startup › New versions** turns
+  the check off.
+- If Blockage crashes, the next time it starts it offers to report it. **Report on GitHub** opens
+  GitHub's bug form with the version and the crash log's account filled in, for you to read over
+  before you send it. Nothing is sent unless you send it.
+- **Help › Report a Problem** opens the same form at any time.

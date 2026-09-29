@@ -45,6 +45,9 @@ public sealed class Preferences
     /// <summary>The welcome screen when the editor starts without a level to open.</summary>
     public bool ShowWelcome { get; set; } = true;
 
+    /// <summary>Whether the editor asks GitHub, as it starts, if a newer Blockage is out.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
     // ---- Viewport ----------------------------------------------------------------------------
 
     /// <summary>Vertical field of view, in degrees.</summary>

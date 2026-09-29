@@ -23,6 +23,11 @@ Performance, platforms and the road to 1.0.
   props, to look round and take apart.
 - A tour, from the welcome screen or **Help › Take the Tour**: seven steps on a fresh cube, each
   passed as soon as it is done, naming the keys as the keymap has them.
+- News of a newer release, on the welcome screen and in the Help menu. Blockage asks GitHub once as it
+  starts and sends nothing else; **Preferences › Startup › New versions** turns it off.
+- After a crash, Blockage offers to report it the next time it starts: GitHub's bug form, filled in
+  with the version and the crash log, to read over before sending. **Help › Report a Problem**
+  opens the form at any time.
 - A manual, published from `docs/` by GitHub Pages and linked from the welcome screen and the Help
   menu. Its page of keys is written by `--write-shortcuts` from the Default keymap.
 

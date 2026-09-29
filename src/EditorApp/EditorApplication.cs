@@ -354,6 +354,12 @@ public sealed class EditorApplication : IDisposable
             {
                 WelcomeScreen.Open();
             }
+
+            CrashNotice.Show(CrashLog.PreviousCrash);
+            if (_preferences.CheckForUpdates)
+            {
+                UpdateCheck.Start(AppVersion.Number);
+            }
         }
 
         if (_input.Mice.Count > 0)
@@ -2266,6 +2272,13 @@ public sealed class EditorApplication : IDisposable
             Tour.Draw(_viewport.Position, _viewport.Size, ReadTourState());
         }
 
+        CrashNotice.Draw(_viewport.Position, _viewport.Size);
+        if (!_releaseAnnounced && UpdateCheck.Found is { } release)
+        {
+            _releaseAnnounced = true;
+            ReportLog.Shared.Post($"Blockage {release.Version} is out: Help > Get Blockage {release.Version}.", ReportKind.Info);
+        }
+
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
 
@@ -2901,6 +2914,7 @@ public sealed class EditorApplication : IDisposable
         CanRecoverAutoSave = () => _project!.CanRecover,
         RecoverAutoSave = () => _project!.OfferRecovery(),
         OpenUrl = OpenUrl,
+        NewRelease = () => UpdateCheck.Found,
         ShowShortcuts = () =>
         {
             if (!ShortcutSheet.IsOpen)
@@ -2912,6 +2926,9 @@ public sealed class EditorApplication : IDisposable
     };
 
     private static void OpenUrl(string url) => Links.Open(url);
+
+    /// <summary>Whether the status bar has said that a newer Blockage is out; it says so once.</summary>
+    private bool _releaseAnnounced;
 
     /// <summary>The tour, on a fresh cube of its own.</summary>
     private void StartTour()
