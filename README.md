@@ -13,8 +13,8 @@ export clean meshes for a game engine.
 It grew out of the level and prop pipeline for the game *Mimic Busters*, and writes that game's
 `.character` and `.weapons` files as well as OBJ and glTF.
 
-> **Status: early — 0.8, with 0.9 in development.** In daily use, but expect rough edges. The file
-> format is frozen for 1.0 from 0.9 on. The downloads below are still the 0.1.0 release.
+> **Status: beta — 0.9.** In daily use; the last round before 1.0, so reports of anything that goes
+> wrong are especially welcome. The file format is frozen for 1.0 from 0.9 on.
 
 ## Download
 
@@ -22,9 +22,12 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
 
 | Platform | File | Notes |
 |---|---|---|
-| Windows 10/11, x64 | `Blockage-0.1.0-win-x64.zip` | Unzip and run `Blockage.exe`. No .NET install needed. The build is not code-signed, so SmartScreen may stop it the first time: **More info → Run anyway**. |
-| macOS, Apple Silicon | `Blockage-0.1.0-osx-arm64.tar.gz` | **Experimental: built, but not yet run on a Mac.** Unpack, clear the download quarantine with `xattr -dr com.apple.quarantine Blockage-0.1.0-osx-arm64`, and start `./Blockage` from a terminal inside it. |
-| Android 8+ | `Blockage-0.1.0-android.apk` | Sideload it. A lighter companion on the same core: the four tools, the palette, undo, open and save. |
+| Windows 10/11, x64 | `Blockage-0.9.0-win-x64.zip` | Unzip and run `Blockage.exe`. No .NET install needed. The build is not code-signed, so SmartScreen may stop it the first time: **More info → Run anyway**. |
+| macOS 14+, Apple Silicon | `Blockage-0.9.0-osx-arm64.zip` | **Experimental: built, but not yet run on a Mac.** Unzip, clear the download quarantine with `xattr -dr com.apple.quarantine Blockage.app`, and open `Blockage.app`. |
+| Linux, x64 | `Blockage-0.9.0-linux-x64.tar.gz` | Unpack and run `./Blockage`; `./install.sh` adds it to the applications menu. Needs OpenGL 3.3. |
+
+The Android app is still the one from 0.1.0 (`Blockage-0.1.0-android.apk` on that release): a
+lighter companion on the same core, with the four tools, the palette, undo, open and save.
 
 ## What it does
 

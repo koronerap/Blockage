@@ -4,9 +4,9 @@ What each version of Blockage brought. Only 0.1.0 has been published as a releas
 versions after it are the milestones of the development builds. Until 1.0 the `.vxlevel` format can
 still change, but every version opens the levels saved by the ones before it.
 
-## [0.9.0] — in development
+## [0.9.0] — 2026-09-29
 
-Performance, platforms and the road to 1.0.
+Performance, platforms and the road to 1.0: the beta.
 
 ### Added
 - Continuous integration: both test suites run on Windows, Linux and macOS for every push and pull
@@ -39,6 +39,8 @@ Performance, platforms and the road to 1.0.
 ### Fixed
 - The welcome screen said the project's page asked to sign in; it is public.
 - **File › Export** named OBJ and glTF but not FBX.
+
+- Blockage's own tests no longer write to your crash log.
 
 ### Changed
 - Large levels are much faster. On a 512 × 128 × 512 level of hills and caves, every part is ready
