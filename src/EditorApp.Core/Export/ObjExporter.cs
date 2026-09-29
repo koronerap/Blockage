@@ -116,9 +116,12 @@ public sealed class ObjExporter : IMeshExporter
         // One "o" per object in the level, so a scene built from several pieces arrives as several
         // objects rather than as a single lump that has to be split by hand. The vertex lists above
         // are shared and the indices are global, which is exactly how OBJ expects this to be done.
+        // A "g" of the same name as well: Unity splits an OBJ by its groups and not by its objects,
+        // and without one it welds the whole level into a single mesh (Fullreleaseplan 8.6).
         foreach (MeshPart part in mesh.PartsOrWhole)
         {
             builder.Append(culture, $"o {Sanitize(part.Name)}\n");
+            builder.Append(culture, $"g {Sanitize(part.Name)}\n");
 
             // Corners come in groups of four, so the faces stay quads instead of being split into
             // triangles — half the face lines and a cleaner mesh in Blender.

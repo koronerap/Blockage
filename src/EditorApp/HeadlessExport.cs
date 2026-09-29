@@ -1,99 +1,154 @@
 using System.Diagnostics;
+using System.Numerics;
 using EditorApp.Core.Export;
 using EditorApp.Core.Meshing;
 using EditorApp.Core.Project;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 
 namespace EditorApp;
 
 /// <summary>
-/// Runs the whole export chain on a level without opening a window: save, greedy mesh, write OBJ
-/// and GLB, report the reduction. Used to check the pipeline end to end on a real-size level, and
-/// usable from a build script.
+/// Runs the whole export chain on a level without opening a window: greedy mesh, the surface-area
+/// check, then every format — OBJ, glTF, GLB, FBX and MagicaVoxel. Used to check the pipeline end to
+/// end on a real-size level, by the script that opens the files in Blender and Unity
+/// (Fullreleaseplan 8.6), and usable from a build script.
 /// </summary>
 public static class HeadlessExport
 {
     /// <param name="outputDirectory">Where the files are written.</param>
-    /// <param name="levelPath">A .vxlevel to load, or null to use the built-in demo scene.</param>
+    /// <param name="levelPath">A .vxlevel or .vox to load, or null for the sample level: a little of everything an export carries.</param>
     public static int Run(string outputDirectory, string? levelPath)
     {
         Directory.CreateDirectory(outputDirectory);
 
-        VoxelWorld world;
+        VoxelScene scene;
         string name;
 
         if (levelPath is not null)
         {
-            world = VxLevelFile.Load(levelPath);
+            scene = levelPath.EndsWith(VoxFile.Extension, StringComparison.OrdinalIgnoreCase)
+                ? VoxFile.Load(levelPath)
+                : VxLevelFile.LoadScene(levelPath);
             name = Path.GetFileNameWithoutExtension(levelPath);
         }
         else
         {
-            world = new VoxelWorld();
-            DemoScene.Fill(world);
-            name = "demo";
+            scene = Sample();
+            name = "sample";
 
             string projectPath = Path.Combine(outputDirectory, name + VxLevelFile.Extension);
-            VxLevelFile.Save(world, projectPath, name);
+            VxLevelFile.Save(scene, projectPath, name);
             Console.WriteLine($"Saved  {projectPath}  ({new FileInfo(projectPath).Length / 1024.0:0.0} KB)");
         }
 
-        Console.WriteLine($"Level  {world.SolidCount:N0} voxels in {world.Chunks.Count} chunks");
+        Console.WriteLine($"Level  {scene.SolidCount:N0} voxels in {scene.Objects.Count} objects, {scene.Lights.Count} lights");
 
+        // The §4b invariant, checked on the real level and not only in unit tests: merging must not
+        // change the surface by a single unit.
         var stopwatch = Stopwatch.StartNew();
-        var naive = new MeshBuilder();
-        EditMesher.BuildWorldNaive(world, naive);
-        double naiveMs = stopwatch.Elapsed.TotalMilliseconds;
+        double naiveArea = 0, greedyArea = 0;
+        int naiveQuads = 0, greedyQuads = 0;
+        foreach (VoxelObject o in scene.Objects.Where(o => o.IsExported && !o.IsEmpty))
+        {
+            var naive = new MeshBuilder();
+            EditMesher.BuildWorldNaive(o.Shown, naive);
+            ExportMesh greedy = GreedyMesher.Build(o.Shown, uvSelector: null, mergeAcrossColors: true);
+            naiveArea += naive.TotalArea();
+            greedyArea += greedy.TotalArea();
+            naiveQuads += naive.QuadCount;
+            greedyQuads += greedy.QuadCount;
+        }
 
-        stopwatch.Restart();
-        ExportMesh greedy = GreedyMesher.Build(world, uvSelector: null, mergeAcrossColors: true);
-        double greedyMs = stopwatch.Elapsed.TotalMilliseconds;
-
-        double naiveArea = naive.TotalArea();
-        double greedyArea = greedy.TotalArea();
-
-        Console.WriteLine($"Naive  {naive.QuadCount,9:N0} quads  {naive.VertexCount,10:N0} vertices  ({naiveMs:0} ms)");
-        Console.WriteLine($"Greedy {greedy.QuadCount,9:N0} quads  {greedy.VertexCount,10:N0} vertices  ({greedyMs:0} ms)");
-        Console.WriteLine($"       -{100.0 * (1.0 - greedy.VertexCount / (double)naive.VertexCount):0.0}% vertices");
+        Console.WriteLine($"Greedy {greedyQuads:N0} quads from {naiveQuads:N0} ({stopwatch.Elapsed.TotalMilliseconds:0} ms)");
         Console.WriteLine($"Area   naive {naiveArea:0.###}  greedy {greedyArea:0.###}  delta {Math.Abs(naiveArea - greedyArea):0.######}");
-
-        // The §4b invariant, checked on the real level and not only in unit tests.
         if (Math.Abs(naiveArea - greedyArea) > 1e-3)
         {
             Console.Error.WriteLine("FAIL: greedy meshing changed the surface area.");
             return 1;
         }
 
-        // The same default the dialog offers: a real sheet the model can be textured on.
-        UvAtlas atlas = UvUnwrap.Apply(greedy);
-        Console.WriteLine(
-            $"Atlas  {atlas.Width} x {atlas.Height}  ({atlas.Charts.Count:N0} charts from "
-            + $"{atlas.Islands.Count:N0} faces, {atlas.TexelsPerVoxel} texels per voxel, "
-            + $"{atlas.Coverage:P0} covered)");
+        // Baked where it stands for OBJ; nodes, lights and collision for the formats with a scene.
+        ExportMesh baked = GreedyMesher.BuildScene(scene, uvSelector: null, mergeAcrossColors: true);
+        UvAtlas bakedAtlas = UvUnwrap.Apply(baked);
+        ExportMesh nodes = GreedyMesher.BuildScene(scene, uvSelector: null, mergeAcrossColors: true, instanceLinked: true, lights: true, colliders: true);
+        UvAtlas nodesAtlas = UvUnwrap.Apply(nodes);
+        Console.WriteLine($"Atlas  {nodesAtlas.Width} x {nodesAtlas.Height}  ({nodesAtlas.Charts.Count:N0} charts, {nodesAtlas.TexelsPerVoxel} texels per voxel)");
 
-        long sheetArea = (long)atlas.Width * atlas.Height;
-        long chartArea = atlas.Charts.Sum(c => (long)c.Width * c.Height);
-        long faceArea = atlas.Islands.Sum(i => (long)i.Width * i.Height);
-        long packedArea = (long)atlas.Width
-            * atlas.Charts.Max(c => c.Y + c.Height + atlas.Padding);
+        var written = new List<string>();
+        written.AddRange(new ObjExporter().Export(baked, scene.Palette, Path.Combine(outputDirectory, name + ".obj"),
+            new ExportOptions { Atlas = bakedAtlas, TextureFileName = name + "-obj.png" }).FilesWritten);
 
-        Console.WriteLine(
-            $"       charts occupy {chartArea / (double)sheetArea:P0} of the sheet "
-            + $"({chartArea / (double)packedArea:P0} of what the packer laid out, before rounding), "
-            + $"and faces fill {faceArea / (double)chartArea:P0} of the charts");
-
-        var options = new ExportOptions { Atlas = atlas };
-        foreach (IMeshExporter exporter in new IMeshExporter[] { new ObjExporter(), new GltfExporter(binary: true) })
+        var sceneOptions = new ExportOptions { Atlas = nodesAtlas, TextureFileName = name + ".png" };
+        foreach (IMeshExporter exporter in new IMeshExporter[] { new GltfExporter(binary: true), new GltfExporter(binary: false), new FbxExporter() })
         {
-            string path = Path.Combine(outputDirectory, name + exporter.Extension);
-            ExportResult result = exporter.Export(greedy, world.Palette, path, options);
+            written.AddRange(exporter.Export(nodes, scene.Palette, Path.Combine(outputDirectory, name + exporter.Extension), sceneOptions).FilesWritten);
+        }
 
-            foreach (string file in result.FilesWritten)
-            {
-                Console.WriteLine($"Wrote  {file}  ({new FileInfo(file).Length / 1024.0:0.0} KB)");
-            }
+        string voxPath = Path.Combine(outputDirectory, name + VoxFile.Extension);
+        VoxReport vox = VoxFile.Save(scene, voxPath);
+        written.Add(voxPath);
+        foreach (string warning in vox.Warnings)
+        {
+            Console.WriteLine($"vox    {warning}");
+        }
+
+        foreach (string file in written.Distinct())
+        {
+            Console.WriteLine($"Wrote  {file}  ({new FileInfo(file).Length / 1024.0:0.0} KB)");
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// A little of everything an export carries: the demo ground, a crate and a turned linked copy
+    /// of it, a cup parented to a table, a crate of smaller voxels, metal and glass, a spawn point
+    /// with properties for the game, the sun and a lamp.
+    /// </summary>
+    private static VoxelScene Sample()
+    {
+        var scene = new VoxelScene();
+
+        var ground = new VoxelWorld();
+        DemoScene.Fill(ground);
+        scene.Add(ground, ObjectTransform.Identity with { Position = new Vector3(0f, -24f, 0f) }, "Demo");
+
+        const byte Wood = 60, Metal = 100, Glass = 140;
+        scene.Palette.SetMaterial(Metal, VoxelMaterial.Of(0f, 1f, 0.25f, 1f));
+        scene.Palette.SetMaterial(Glass, VoxelMaterial.Of(0f, 0f, 0.1f, 0.4f));
+
+        VoxelWorld crate = Box(4, 4, 4, (x, y, z) => x == 0 || x == 3 || z == 0 || z == 3 ? Wood : Metal);
+        scene.Add(crate, ObjectTransform.Identity with { Position = new Vector3(-20f, 0f, 0f) }, "Crate");
+        scene.Add(crate, new ObjectTransform(new Vector3(-28f, 0f, 4f), Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f), 1f), "Crate copy");
+
+        VoxelObject table = scene.Add(Box(6, 3, 4, (_, _, _) => Wood), ObjectTransform.Identity with { Position = new Vector3(20f, 0f, 0f) }, "Table");
+        VoxelObject cup = scene.Add(Box(1, 2, 1, (_, _, _) => Glass), ObjectTransform.Identity with { Position = new Vector3(22f, 3f, 1f) }, "Cup");
+        scene.SetParent(cup.Id, table.Id);
+
+        scene.Add(Box(4, 4, 4, (_, y, _) => y < 2 ? Metal : Wood), new ObjectTransform(new Vector3(0f, 0f, -24f), Quaternion.Identity, 0.5f), "Small crate");
+
+        VoxelObject spawn = scene.Add(new VoxelWorld(), ObjectTransform.Identity with { Position = new Vector3(0f, 1f, 20f) }, "Spawn");
+        spawn.Marker = ObjectMarker.Default(MarkerKind.Spawn);
+        spawn.Properties = [new CustomProperty("team", PropertyKind.Text, "red"), new CustomProperty("lives", PropertyKind.Number, "3")];
+
+        scene.AddDefaultSun();
+        SceneLight lamp = scene.AddLight(LightKind.Point, "Lamp");
+        lamp.Transform = lamp.Transform with { Position = new Vector3(20f, 8f, 0f) };
+        lamp.Range = 20f;
+        return scene;
+    }
+
+    private static VoxelWorld Box(int width, int height, int depth, Func<int, int, int, byte> colour)
+    {
+        var grid = new VoxelWorld();
+        for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++)
+        for (int z = 0; z < depth; z++)
+        {
+            grid.SetVoxel(x, y, z, colour(x, y, z));
+        }
+
+        return grid;
     }
 }

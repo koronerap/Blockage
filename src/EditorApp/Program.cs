@@ -11,8 +11,9 @@ CrashLog.Install();
 
 // --smoke[=frames]        opens the window, renders a few frames and exits. Lets a build pipeline
 //                         verify GL context creation, shader compilation and the first upload.
-// --export-to=<dir>       runs the whole export chain with no window and exits. Add --level=<path>
-//                         to export an existing .vxlevel instead of the built-in demo scene.
+// --export-to=<dir>       runs the whole export chain with no window and exits: every format, for
+//                         tools/validate-exports.ps1 to open in Blender and Unity. Add --level=<path>
+//                         to export an existing .vxlevel or .vox instead of the sample level.
 // --stress[=halfExtent]   measures build, mesh, greedy and file times on a large level and exits.
 // --shading=lit|unlit     which shading mode to start in. Mainly so a screenshot run can capture
 //                         either one, since a shading change is only ever visible in a picture.

@@ -127,17 +127,29 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
             string metallicName = $"{stem}-metallic-roughness{extension}";
             string emissiveName = $"{stem}-emissive{extension}";
 
+            // The callback names each image and is left to write it: the writer only puts the name in.
             var settings = new WriteSettings
             {
                 ImageWriting = ResourceWriteMode.SatelliteFile,
                 ImageWriteCallback = (_, _, image) =>
-                    metallicRoughness is not null && image.Content.Span.SequenceEqual(metallicRoughness) ? metallicName
-                    : emissive is not null && image.Content.Span.SequenceEqual(emissive) ? emissiveName
-                    : textureFileName,
+                {
+                    string imageName = metallicRoughness is not null && image.Content.Span.SequenceEqual(metallicRoughness) ? metallicName
+                        : emissive is not null && image.Content.Span.SequenceEqual(emissive) ? emissiveName
+                        : textureFileName;
+                    File.WriteAllBytes(Path.Combine(directory, imageName), image.Content.ToArray());
+                    return imageName;
+                },
             };
 
             model.Save(path, settings);
             written.Add(path);
+
+            // The buffers go beside it under its own name.
+            string buffers = Path.ChangeExtension(path, ".bin");
+            if (File.Exists(buffers))
+            {
+                written.Add(buffers);
+            }
 
             if (metallicRoughness is not null)
             {
