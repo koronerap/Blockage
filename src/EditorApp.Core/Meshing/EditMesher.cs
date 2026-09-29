@@ -27,6 +27,7 @@ public static class EditMesher
 
         Int3 origin = coord.Origin;
         Palette palette = world.Palette;
+        var reader = new VoxelReader(world);
 
         for (int y = 0; y < Chunk.Size; y++)
         {
@@ -52,7 +53,7 @@ public static class EditMesher
                         // Per face, not per voxel: an edge voxel can carry a different colour on
                         // each side it shows.
                         byte index = chunk.GetFace(x, y, z, face);
-                        EmitFace(builder, worldPosition, face, palette[index].Rgba, index);
+                        EmitFace(builder, ref reader, worldPosition, face, palette[index].Rgba, index);
                     }
                 }
             }
@@ -82,18 +83,55 @@ public static class EditMesher
         return world.IsSolid(worldPosition + offset);
     }
 
-    private static void EmitFace(MeshBuilder builder, Int3 voxel, Face face, uint rgba, byte paletteIndex)
+    private static void EmitFace(MeshBuilder builder, ref VoxelReader reader, Int3 voxel, Face face, uint rgba, byte paletteIndex)
     {
         Vector3 basePosition = voxel.ToVector3();
+
+        int a0 = Occlusion(ref reader, voxel, face, 0);
+        int a1 = Occlusion(ref reader, voxel, face, 1);
+        int a2 = Occlusion(ref reader, voxel, face, 2);
+        int a3 = Occlusion(ref reader, voxel, face, 3);
 
         builder.AddQuad(
             basePosition + FaceInfo.Corner(face, 0).ToVector3(),
             basePosition + FaceInfo.Corner(face, 1).ToVector3(),
             basePosition + FaceInfo.Corner(face, 2).ToVector3(),
             basePosition + FaceInfo.Corner(face, 3).ToVector3(),
-            rgba,
-            MeshVertex.Pack(face, paletteIndex));
+            WithOcclusion(rgba, a0),
+            WithOcclusion(rgba, a1),
+            WithOcclusion(rgba, a2),
+            WithOcclusion(rgba, a3),
+            MeshVertex.Pack(face, paletteIndex),
+            flip: a0 + a2 < a1 + a3);
     }
+
+    /// <summary>
+    /// How open a face's corner is, 0 to 3 — the classic voxel ambient occlusion: the two cells
+    /// beside it and the one across the corner, in the layer of air the face looks into. Both sides
+    /// filled closes the corner whatever the diagonal holds.
+    /// </summary>
+    public static int Occlusion(ref VoxelReader reader, Int3 voxel, Face face, int corner)
+    {
+        Int3 normal = FaceInfo.Offset(face);
+        Int3 at = FaceInfo.Corner(face, corner);
+        int axis = FaceInfo.Axis(face);
+        Int3 u = axis == 0 ? new Int3(0, (at.Y * 2) - 1, 0) : new Int3((at.X * 2) - 1, 0, 0);
+        Int3 v = axis == 2 ? new Int3(0, (at.Y * 2) - 1, 0) : new Int3(0, 0, (at.Z * 2) - 1);
+        Int3 outside = voxel + normal;
+
+        bool side1 = reader.IsSolid(outside + u);
+        bool side2 = reader.IsSolid(outside + v);
+        if (side1 && side2)
+        {
+            return 0;
+        }
+
+        bool across = reader.IsSolid(outside + u + v);
+        return 3 - (side1 ? 1 : 0) - (side2 ? 1 : 0) - (across ? 1 : 0);
+    }
+
+    /// <summary>The colour with a corner's openness in its alpha: 255 fully open, less the more enclosed.</summary>
+    private static uint WithOcclusion(uint rgba, int openness) => (rgba & 0x00FFFFFFu) | ((uint)(openness * 85) << 24);
 
     /// <summary>
     /// Builds the whole world as one mesh with no merging. Only used as the reference the greedy

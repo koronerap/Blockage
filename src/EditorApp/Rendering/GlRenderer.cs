@@ -37,6 +37,19 @@ public sealed class GlRenderer : IDisposable
     /// <summary>Core profile refuses to draw without a bound VAO, even for a vertex-less shader.</summary>
     private readonly uint _emptyVao;
     private readonly ShaderProgram _imageShader;
+    private readonly ShaderProgram _shadowShader;
+
+    /// <summary>How many texels across the sun's depth map is.</summary>
+    private const int ShadowSize = 2048;
+
+    private uint _shadowFramebuffer;
+    private uint _shadowTexture;
+
+    /// <summary>How much a corner enclosed by voxels darkens: 0 for none, 1 for the full shade.</summary>
+    public float AmbientOcclusion { get; set; } = 1f;
+
+    /// <summary>Whether the sun casts shadows, in Lit shading.</summary>
+    public bool Shadows { get; set; } = true;
 
     /// <summary>
     /// Rendered shading's picture, drawn in the voxels' place; 0 draws the voxels. They still go into
@@ -98,7 +111,9 @@ public sealed class GlRenderer : IDisposable
     public GlRenderer(GL gl)
     {
         _gl = gl;
-        _voxelShader = new ShaderProgram(gl, Shaders.VoxelVertex, Shaders.VoxelFragment);
+        // The desktop's voxel shader has the sun's shadows; a head without them leaves the define out.
+        _voxelShader = new ShaderProgram(gl, Shaders.VoxelVertex, Shaders.VoxelFragment.Replace("#version 330 core", "#version 330 core\n#define BLOCKAGE_SHADOWS"));
+        _shadowShader = new ShaderProgram(gl, Shaders.ShadowVertex, Shaders.ShadowFragment);
         _lineShader = new ShaderProgram(gl, Shaders.LineVertex, Shaders.LineFragment);
         _backgroundShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.BackgroundFragment);
         _imageShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.ImageFragment);
@@ -182,6 +197,7 @@ public sealed class GlRenderer : IDisposable
 
             stepClock.Restart();
             ApplyChunkMesh(key);
+            _meshRevision++;
             LastUploadMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             LastRemeshedChunks++;
@@ -366,12 +382,27 @@ public sealed class GlRenderer : IDisposable
 
         bool wireframe = Lighting.Mode == ShadingMode.Wireframe;
 
+        // The sun's shadow map first, drawn in a framebuffer of its own; the viewport is put back after.
+        UploadLightsForShadow(scene);
+        Matrix4x4? shadow = Shadows && Lighting.IsLit && _shadowLight >= 0 ? RenderShadowMap(scene) : null;
+        if (shadow is not null)
+        {
+            _gl.Viewport((int)viewportPosition.X, glY, width, height);
+        }
+
         _voxelShader.Use();
         UploadMaterials(scene.Palette);
         _gl.ActiveTexture(TextureUnit.Texture1);
         _gl.BindTexture(TextureTarget.Texture2D, _materialTexture);
+        _gl.ActiveTexture(TextureUnit.Texture2);
+        _gl.BindTexture(TextureTarget.Texture2D, _shadowTexture);
         _gl.ActiveTexture(TextureUnit.Texture0);
         _voxelShader.SetInt("uMaterials", 1);
+        _voxelShader.SetInt("uShadowMap", 2);
+        _voxelShader.SetInt("uShadowLight", shadow is not null ? _shadowLight : -1);
+        _voxelShader.SetMatrix4("uShadowMatrix", shadow ?? Matrix4x4.Identity);
+        _voxelShader.SetFloat("uShadowBias", _shadowBias);
+        _voxelShader.SetFloat("uOcclusion", Lighting.Mode == ShadingMode.Wireframe ? 0f : AmbientOcclusion);
         _voxelShader.SetVector3("uCameraPosition", camera.Position);
         _voxelShader.SetInt("uPass", 2);
         _voxelShader.SetMatrix4("uViewProjection", viewProjection);
@@ -461,6 +492,140 @@ public sealed class GlRenderer : IDisposable
     }
 
     /// <summary>The level's own lights and ambient floor. Whether they are used at all is the Lit switch.</summary>
+    /// <summary>Which of the uploaded lights is the first sun, the one that casts shadows; -1 for none.</summary>
+    private int _shadowLight = -1;
+
+    /// <summary>How far a point is pushed off its face before its shadow is looked up, in world units.</summary>
+    private float _shadowBias;
+
+    /// <summary>What the shadow map was last drawn for, so a still scene is not drawn into it every frame.</summary>
+    private int _shadowKey;
+    private Matrix4x4? _shadowMatrix;
+
+    /// <summary>Goes up with every chunk meshed again: a change the shadow map has to follow.</summary>
+    private long _meshRevision;
+
+    private void UploadLightsForShadow(VoxelScene scene)
+    {
+        _lights.Pack(scene.Lights);
+        _shadowLight = -1;
+        for (int i = 0; i < _lights.Count; i++)
+        {
+            if (_lights.Positions[i].W == 0f)
+            {
+                _shadowLight = i;
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The depth of every shown object as the sun sees it, fitted round what there is to see, and the
+    /// matrix that takes a point of the world into it; null when there is nothing to cast a shadow.
+    /// </summary>
+    private unsafe Matrix4x4? RenderShadowMap(VoxelScene scene)
+    {
+        Vector3 min = new(float.MaxValue);
+        Vector3 max = new(float.MinValue);
+        foreach (VoxelObject o in scene.Objects)
+        {
+            if (o.Visible && o.TryGetWorldBounds(out Vector3 low, out Vector3 high))
+            {
+                min = Vector3.Min(min, low);
+                max = Vector3.Max(max, high);
+            }
+        }
+
+        if (min.X > max.X)
+        {
+            return null;
+        }
+
+        if (_shadowFramebuffer == 0)
+        {
+            _shadowTexture = _gl.GenTexture();
+            _gl.BindTexture(TextureTarget.Texture2D, _shadowTexture);
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.DepthComponent24, ShadowSize, ShadowSize, 0, PixelFormat.DepthComponent, PixelType.Float, null);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureCompareMode, (int)TextureCompareMode.CompareRefToTexture);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureCompareFunc, (int)DepthFunction.Lequal);
+
+            _shadowFramebuffer = _gl.GenFramebuffer();
+            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _shadowFramebuffer);
+            _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, TextureTarget.Texture2D, _shadowTexture, 0);
+            _gl.DrawBuffer(DrawBufferMode.None);
+            _gl.ReadBuffer(ReadBufferMode.None);
+            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+            _gl.BindTexture(TextureTarget.Texture2D, 0);
+        }
+
+        // The sun looks along the way it shines, from far enough out to see all of it.
+        Vector3 shining = Vector3.Normalize(-new Vector3(_lights.Positions[_shadowLight].X, _lights.Positions[_shadowLight].Y, _lights.Positions[_shadowLight].Z));
+
+        // Drawn again only when something it shows could have changed: the sun, where things stand, their meshes.
+        var key = new HashCode();
+        key.Add(shining);
+        key.Add(min);
+        key.Add(max);
+        key.Add(TotalVertices);
+        key.Add(_meshRevision);
+        foreach (VoxelObject o in scene.Objects)
+        {
+            key.Add(o.Visible);
+            key.Add(o.Transform);
+        }
+
+        int shadowKey = key.ToHashCode();
+        if (shadowKey == _shadowKey && _shadowMatrix is { } kept)
+        {
+            return kept;
+        }
+
+        Vector3 centre = (min + max) * 0.5f;
+        float radius = MathF.Max((max - min).Length() * 0.5f, 1f);
+        Vector3 up = MathF.Abs(shining.Y) > 0.95f ? Vector3.UnitZ : Vector3.UnitY;
+        Matrix4x4 view = Matrix4x4.CreateLookAt(centre - (shining * radius * 2f), centre, up);
+        Matrix4x4 projection = Matrix4x4.CreateOrthographic(radius * 2f, radius * 2f, radius * 0.5f, radius * 3.5f);
+        Matrix4x4 lightViewProjection = view * projection;
+
+        // A texel's width, as far as a face is pushed off itself.
+        _shadowBias = (radius * 2f / ShadowSize) * 1.5f;
+
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _shadowFramebuffer);
+        _gl.Viewport(0, 0, ShadowSize, ShadowSize);
+        _gl.Clear(ClearBufferMask.DepthBufferBit);
+        _gl.Enable(EnableCap.DepthTest);
+        _gl.Disable(EnableCap.CullFace);
+
+        _shadowShader.Use();
+        _shadowShader.SetMatrix4("uLightViewProjection", lightViewProjection);
+        foreach (VoxelObject o in scene.Objects)
+        {
+            if (!o.Visible || !_buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+            {
+                continue;
+            }
+
+            _shadowShader.SetMatrix4("uModel", o.Transform.ToMatrix());
+            foreach (ChunkMeshBuffer buffer in chunks.Values)
+            {
+                if (!buffer.IsEmpty)
+                {
+                    buffer.Draw();
+                }
+            }
+        }
+
+        _gl.Enable(EnableCap.CullFace);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        _shadowKey = shadowKey;
+        _shadowMatrix = lightViewProjection;
+        return lightViewProjection;
+    }
+
     private void UploadLights(VoxelScene scene)
     {
         _lights.Pack(scene.Lights);
@@ -648,6 +813,13 @@ public sealed class GlRenderer : IDisposable
         _gl.DeleteVertexArray(_emptyVao);
         _voxelShader.Dispose();
         _imageShader.Dispose();
+        _shadowShader.Dispose();
+        if (_shadowFramebuffer != 0)
+        {
+            _gl.DeleteFramebuffer(_shadowFramebuffer);
+            _gl.DeleteTexture(_shadowTexture);
+        }
+
         _lineShader.Dispose();
         if (_materialTexture != 0)
         {

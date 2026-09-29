@@ -103,6 +103,12 @@ public sealed class ViewportSettings
 
     public bool XRay { get; set; }
 
+    /// <summary>Corners closed in by voxels drawn darker — what makes a voxel model's shape read (Fullreleaseplan 7.1).</summary>
+    public bool AmbientOcclusion { get; set; } = true;
+
+    /// <summary>The sun's shadows, in Lit shading.</summary>
+    public bool Shadows { get; set; } = true;
+
     /// <summary>How solid a face stays with X-Ray on.</summary>
     public float XRayAlpha
     {

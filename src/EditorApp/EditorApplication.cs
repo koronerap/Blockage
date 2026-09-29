@@ -418,6 +418,8 @@ public sealed class EditorApplication : IDisposable
         _renderer.SingleColour = View.SingleColour;
         _renderer.WireOverlay = View.Overlays && View.Wireframe ? View.WireframeOpacity : 0f;
         _renderer.XRay = View.XRay ? View.XRayAlpha : 0f;
+        _renderer.AmbientOcclusion = View.AmbientOcclusion ? 1f : 0f;
+        _renderer.Shadows = View.Shadows;
 
         (Vector4 bottom, Vector4 top) = View.Background == BackgroundMode.Custom
             ? (new Vector4(View.BackgroundColour, 1f), new Vector4(View.BackgroundColour, 1f))

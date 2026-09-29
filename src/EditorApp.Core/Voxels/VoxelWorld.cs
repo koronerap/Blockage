@@ -129,16 +129,29 @@ public sealed class VoxelWorld
     public bool SetVoxel(Int3 position, byte paletteIndex) =>
         SetVoxel(position.X, position.Y, position.Z, paletteIndex);
 
-    // A voxel on a chunk face is a neighbour's culling input: adding it hides one of their faces,
-    // removing it reveals one. Without this the seam between two chunks shows holes or z-fighting.
+    // A voxel on a chunk's edge is a neighbour's input: adding it hides one of their faces and
+    // shades the corners beside it, removing it does the reverse. Without this the seam between two
+    // chunks shows holes, z-fighting or a corner shaded for a voxel that is not there — so every
+    // chunk it touches, across an edge or a corner too, is meshed again.
     private void MarkTouchedNeighbours(ChunkCoord coord, int lx, int ly, int lz)
     {
-        if (lx == 0) MarkDirtyIfPresent(coord.Offset(-1, 0, 0));
-        if (lx == Chunk.SizeMask) MarkDirtyIfPresent(coord.Offset(1, 0, 0));
-        if (ly == 0) MarkDirtyIfPresent(coord.Offset(0, -1, 0));
-        if (ly == Chunk.SizeMask) MarkDirtyIfPresent(coord.Offset(0, 1, 0));
-        if (lz == 0) MarkDirtyIfPresent(coord.Offset(0, 0, -1));
-        if (lz == Chunk.SizeMask) MarkDirtyIfPresent(coord.Offset(0, 0, 1));
+        int dx = lx == 0 ? -1 : lx == Chunk.SizeMask ? 1 : 0;
+        int dy = ly == 0 ? -1 : ly == Chunk.SizeMask ? 1 : 0;
+        int dz = lz == 0 ? -1 : lz == Chunk.SizeMask ? 1 : 0;
+        if (dx == 0 && dy == 0 && dz == 0)
+        {
+            return;
+        }
+
+        for (int x = Math.Min(dx, 0); x <= Math.Max(dx, 0); x++)
+        for (int y = Math.Min(dy, 0); y <= Math.Max(dy, 0); y++)
+        for (int z = Math.Min(dz, 0); z <= Math.Max(dz, 0); z++)
+        {
+            if (x != 0 || y != 0 || z != 0)
+            {
+                MarkDirtyIfPresent(coord.Offset(x, y, z));
+            }
+        }
     }
 
     private void MarkDirtyIfPresent(ChunkCoord coord)

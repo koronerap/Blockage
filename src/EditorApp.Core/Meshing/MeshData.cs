@@ -84,6 +84,49 @@ public sealed class MeshBuilder
         _indices.Add(baseIndex + 3);
     }
 
+    /// <summary>
+    /// The same with a colour for each corner — the viewport's shade of ambient occlusion rides in
+    /// their alpha — cut along the other diagonal when <paramref name="flip"/> is set, so the darkening
+    /// runs the way the corners say rather than the way the triangles happen to.
+    /// </summary>
+    public void AddQuad(
+        Vector3 corner0,
+        Vector3 corner1,
+        Vector3 corner2,
+        Vector3 corner3,
+        uint rgba0,
+        uint rgba1,
+        uint rgba2,
+        uint rgba3,
+        float faceIndex,
+        bool flip)
+    {
+        uint baseIndex = (uint)_vertices.Count;
+
+        _vertices.Add(new MeshVertex(corner0, rgba0, faceIndex));
+        _vertices.Add(new MeshVertex(corner1, rgba1, faceIndex));
+        _vertices.Add(new MeshVertex(corner2, rgba2, faceIndex));
+        _vertices.Add(new MeshVertex(corner3, rgba3, faceIndex));
+
+        if (flip)
+        {
+            _indices.Add(baseIndex + 1);
+            _indices.Add(baseIndex + 2);
+            _indices.Add(baseIndex + 3);
+            _indices.Add(baseIndex + 1);
+            _indices.Add(baseIndex + 3);
+            _indices.Add(baseIndex);
+            return;
+        }
+
+        _indices.Add(baseIndex);
+        _indices.Add(baseIndex + 1);
+        _indices.Add(baseIndex + 2);
+        _indices.Add(baseIndex);
+        _indices.Add(baseIndex + 2);
+        _indices.Add(baseIndex + 3);
+    }
+
     /// <summary>Total surface area of the mesh. The invariant that validates greedy meshing (§4b).</summary>
     public double TotalArea()
     {

@@ -165,4 +165,29 @@ public class EditMesherTests
         MeshBuilder mesh = MeshOf(world, new ChunkCoord(3, 3, 3));
         Assert.True(mesh.IsEmpty);
     }
+
+    [Fact]
+    public void ALoneVoxelIsOpenAtEveryCornerAndAWallDarkensTheCornersBesideIt()
+    {
+        var alone = new VoxelWorld();
+        alone.SetVoxel(0, 0, 0, Palette.WhiteIndex);
+        var builder = new MeshBuilder();
+        EditMesher.BuildChunk(alone, new ChunkCoord(0, 0, 0), builder);
+        Assert.All(builder.Vertices.ToArray(), v => Assert.Equal(255u, v.Rgba >> 24));
+
+        // A floor with a wall standing on it: where they meet, the floor's corners are closed in.
+        var corner = new VoxelWorld();
+        for (int x = 0; x < 3; x++)
+        {
+            corner.SetVoxel(x, 0, 0, Palette.WhiteIndex);
+        }
+
+        corner.SetVoxel(0, 1, 0, Palette.WhiteIndex);
+        EditMesher.BuildChunk(corner, new ChunkCoord(0, 0, 0), builder);
+
+        var reader = new VoxelReader(corner);
+        int[] openness = [.. Enumerable.Range(0, 4).Select(c => EditMesher.Occlusion(ref reader, new Int3(1, 0, 0), Face.PosY, c))];
+        Assert.Contains(openness, o => o < 3);
+        Assert.Contains(builder.Vertices.ToArray(), v => (v.Rgba >> 24) < 255u);
+    }
 }

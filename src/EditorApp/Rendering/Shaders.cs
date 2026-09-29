@@ -108,6 +108,42 @@ public static class Shaders
         uniform float uXRay;
         uniform float uAmbient;
 
+        // How much a corner enclosed by voxels darkens, 0 for not at all. The mesher leaves how open
+        // each corner is in the colour's alpha: 1 fully open, 0 closed in on both sides.
+        uniform float uOcclusion;
+
+        #ifdef BLOCKAGE_SHADOWS
+        // The sun's shadow: a depth map seen from it, and which of the lights it is for (-1 none).
+        uniform sampler2DShadow uShadowMap;
+        uniform mat4 uShadowMatrix;
+        uniform int uShadowLight;
+        uniform float uShadowBias;
+
+        /// How much of the sun gets to this point: 1 in the open, 0 in shadow, soft at the edge.
+        float sunlit(vec3 normal)
+        {
+            // Pushed off the face along its normal, so a face does not shadow itself.
+            vec4 at = uShadowMatrix * vec4(vWorldPosition + (normal * uShadowBias), 1.0);
+            vec3 q = (at.xyz / at.w) * 0.5 + 0.5;
+            if (q.x <= 0.0 || q.x >= 1.0 || q.y <= 0.0 || q.y >= 1.0 || q.z >= 1.0)
+            {
+                return 1.0;
+            }
+
+            vec2 texel = 1.0 / vec2(textureSize(uShadowMap, 0));
+            float sum = 0.0;
+            for (int x = -1; x <= 1; x++)
+            {
+                for (int y = -1; y <= 1; y++)
+                {
+                    sum += texture(uShadowMap, vec3(q.xy + (vec2(x, y) * texel), q.z - 0.0008));
+                }
+            }
+
+            return sum / 9.0;
+        }
+        #endif
+
         uniform int uLightCount;
         uniform vec4 uLightPosition[{{LightUniforms.MaxLights}}];
         uniform vec3 uLightDirection[{{LightUniforms.MaxLights}}];
@@ -152,6 +188,13 @@ public static class Shaders
                     strength *= smoothstep(uLightShape[i].y, uLightShape[i].z, dot(-towards, uLightDirection[i]));
                 }
 
+                #ifdef BLOCKAGE_SHADOWS
+                if (i == uShadowLight)
+                {
+                    strength *= sunlit(normal);
+                }
+                #endif
+
                 total += uLightColor[i] * (max(dot(normal, towards), 0.0) * strength);
             }
 
@@ -185,6 +228,13 @@ public static class Shaders
                     strength = reach * reach;
                     strength *= smoothstep(uLightShape[i].y, uLightShape[i].z, dot(-towards, uLightDirection[i]));
                 }
+
+                #ifdef BLOCKAGE_SHADOWS
+                if (i == uShadowLight)
+                {
+                    strength *= sunlit(normal);
+                }
+                #endif
 
                 if (dot(normal, towards) > 0.0)
                 {
@@ -221,6 +271,13 @@ public static class Shaders
 
             vec3 albedo = uColorMode == 1 ? uSingleColor : uColorMode == 2 ? uObjectColor : vColor.rgb;
             vec3 light = uUnlit == 2 ? vec3(1.0) : uUnlit != 0 ? vec3(vFaceShade) : lightArriving(normalize(vNormal));
+
+            // Corners closed in by voxels are darker: what makes a voxel model's shape read at a glance.
+            if (uUnlit != 2)
+            {
+                light *= mix(1.0, mix(0.45, 1.0, vColor.a), uOcclusion);
+            }
+
             vec3 lit = albedo * light;
 
             // A metal's colour is in its reflection, not its diffuse; a smooth face catches the lights
@@ -245,7 +302,7 @@ public static class Shaders
             vec3 highlighted = mix(lit * 0.82, mix(lit, vec3(1.0), 0.10), uFocus);
             lit = mix(lit, highlighted, uFocusStrength);
 
-            float alpha = uXRay > 0.0 ? uXRay * opacity : vColor.a * opacity;
+            float alpha = uXRay > 0.0 ? uXRay * opacity : opacity;
 
             if (uWireOnly != 0)
             {
@@ -299,6 +356,28 @@ public static class Shaders
         void main()
         {
             fragColor = vec4(texture(uImage, vec2(vUv.x, 1.0 - vUv.y)).rgb, 1.0);
+        }
+        """;
+
+    /// <summary>The depth of everything as the sun sees it, for the shadows it casts: positions only.</summary>
+    public const string ShadowVertex = """
+        #version 330 core
+        layout(location = 0) in vec3 aPosition;
+
+        uniform mat4 uLightViewProjection;
+        uniform mat4 uModel;
+
+        void main()
+        {
+            gl_Position = uLightViewProjection * (uModel * vec4(aPosition, 1.0));
+        }
+        """;
+
+    public const string ShadowFragment = """
+        #version 330 core
+
+        void main()
+        {
         }
         """;
 

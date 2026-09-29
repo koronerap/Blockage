@@ -194,6 +194,9 @@ public static class ViewportHeader
 
         ImGui.Spacing();
         ImGui.TextUnformatted("Options");
+        Check("Ambient occlusion", "Corners closed in by voxels drawn darker, so the shape reads.", v.AmbientOcclusion, on => v.AmbientOcclusion = on);
+        ImGui.SameLine();
+        Check("Shadows", "The sun casts shadows, in Lit shading.", v.Shadows, on => v.Shadows = on);
         Check("X-Ray", "See through the model: what is behind shows through it.", v.XRay, on => v.XRay = on);
 
         ImGui.SameLine();
