@@ -52,6 +52,12 @@ public sealed class ExportController(EditorSession session)
     /// <summary>glTF only: boxes filling each object, for an engine to collide with.</summary>
     private bool _collision;
 
+    /// <summary>glTF and FBX: a second set of coordinates for lightmaps (Fullreleaseplan 8.8).</summary>
+    private bool _lightmapUvs = true;
+
+    /// <summary>FBX only: coarser copies of each object, named as Unity makes an LOD group of.</summary>
+    private bool _lods;
+
     private UvAtlas? _atlas;
     private ExportMesh? _analysis;
     private int _naiveVertexCount;
@@ -129,13 +135,19 @@ public sealed class ExportController(EditorSession session)
             mergeAcrossColors: unwrapped,
             instanceLinked: Current is GltfExporter or FbxExporter,
             lights: _lights,
-            colliders: _collision);
+            colliders: _collision,
+            lods: _lods && Current is FbxExporter);
 
         // Unwrapping rewrites the mesh's UVs, so it belongs here with the meshing rather than inside
         // an exporter — both formats have to be handed the same layout and the same sheet.
         _atlas = unwrapped
             ? UvUnwrap.Apply(_analysis, _texelsPerVoxel)
             : null;
+
+        if (_lightmapUvs && Current is GltfExporter or FbxExporter)
+        {
+            UvUnwrap.AddLightmapUvs(_analysis);
+        }
 
         // The naive reference covers the whole scene too, so the reduction figure is the one that
         // actually applies to the file being written.
@@ -283,7 +295,34 @@ public sealed class ExportController(EditorSession session)
             ImGui.SetTooltip("The UVs are written either way.\nTurn this off to paint from a blank sheet.");
         }
 
-        // What only glTF can carry: the lights, and boxes to collide with.
+        // What only the formats with a scene carry: lightmap UVs, levels of detail, lights, collision.
+        if (Current is GltfExporter or FbxExporter)
+        {
+            bool lightmaps = ImGui.Checkbox("Lightmap UVs", ref _lightmapUvs);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("A second set of UVs for baking light: each object's faces apart, filling its own square.");
+            }
+
+            if (lightmaps)
+            {
+                Analyze();
+            }
+        }
+
+        if (Current is FbxExporter)
+        {
+            if (ImGui.Checkbox("Levels of detail", ref _lods))
+            {
+                Analyze();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Half and quarter-size copies of each object as its _LOD1 and _LOD2.\nUnity makes one LOD group of the whole file of them;\nthe Blockage Importer package gives each object its own.");
+            }
+        }
+
         if (Current is GltfExporter)
         {
             bool changed = ImGui.Checkbox("Lights", ref _lights);

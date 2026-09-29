@@ -70,13 +70,15 @@ public static class GreedyMesher
     /// </param>
     /// <param name="lights">With nodes, the level's lights go too.</param>
     /// <param name="colliders">With nodes, each object gets the boxes that fill its voxels.</param>
+    /// <param name="lods">With nodes, each object gets coarser copies to be seen from further off.</param>
     public static ExportMesh BuildScene(
         Scene.VoxelScene scene,
         Func<byte, Vector2>? uvSelector = null,
         bool mergeAcrossColors = false,
         bool instanceLinked = false,
         bool lights = true,
-        bool colliders = false)
+        bool colliders = false,
+        bool lods = false)
     {
         var combined = new ExportMesh();
 
@@ -97,6 +99,7 @@ public static class GreedyMesher
 
         var partOf = new Dictionary<Voxels.VoxelWorld, int>(ReferenceEqualityComparer.Instance);
         var collidersOf = new Dictionary<int, int>();
+        var lodsOf = new Dictionary<int, int[]>();
 
         foreach (Scene.VoxelObject o in scene.Objects)
         {
@@ -134,9 +137,25 @@ public static class GreedyMesher
                         combined.Colliders.Add(CollisionBoxes.Of(voxels));
                         collidersOf[part] = combined.Colliders.Count - 1;
                     }
+
+                    // Each coarser copy meshed in blocks and scaled back up to the voxels' size.
+                    if (lods)
+                    {
+                        var levels = new List<int>();
+                        foreach (int factor in VoxelLod.Factors)
+                        {
+                            int lodStart = combined.QuadCount;
+                            combined.Append(Build(VoxelLod.Downsample(voxels, factor), uvSelector, mergeAcrossColors), Scene.ObjectTransform.Identity with { VoxelSize = factor });
+                            combined.BeginPart($"{o.Name}_LOD{levels.Count + 1}", lodStart, factor);
+                            levels.Add(combined.Parts.Count - 1);
+                        }
+
+                        lodsOf[part] = [.. levels];
+                    }
                 }
 
-                combined.Instances.Add(new MeshInstance(o.Name, part, o.Transform.ToMatrix(), ExtrasOf(o), o.Id, o.ParentId, collidersOf.GetValueOrDefault(part, -1)));
+                combined.Instances.Add(new MeshInstance(
+                    o.Name, part, o.Transform.ToMatrix(), ExtrasOf(o), o.Id, o.ParentId, collidersOf.GetValueOrDefault(part, -1), lodsOf.GetValueOrDefault(part)));
                 continue;
             }
 

@@ -37,6 +37,7 @@ public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount
 /// <param name="Id">The object's id, so a child can find its parent's node; 0 for none.</param>
 /// <param name="ParentId">The id of what it is parented to; 0 for nothing.</param>
 /// <param name="Colliders">Which of <see cref="ExportMesh.Colliders"/> fills it, or −1 for none.</param>
+/// <param name="Lods">The parts of its coarser levels of detail, half and then a quarter as fine; null for none.</param>
 public readonly record struct MeshInstance(
     string Name,
     int Part,
@@ -44,7 +45,8 @@ public readonly record struct MeshInstance(
     System.Text.Json.Nodes.JsonObject? Extras = null,
     int Id = 0,
     int ParentId = 0,
-    int Colliders = -1);
+    int Colliders = -1,
+    IReadOnlyList<int>? Lods = null);
 
 /// <summary>A light put down in the level (Fullreleaseplan 8.4), for formats that carry lights: it shines along its −Y.</summary>
 public readonly record struct ExportLight(
@@ -93,6 +95,12 @@ public sealed class ExportMesh
 
     /// <summary>Boxes filling each part's voxels, in its own cells, for the instances that ask for them.</summary>
     public List<IReadOnlyList<(Int3 Min, Int3 Max)>> Colliders { get; } = [];
+
+    /// <summary>
+    /// A second layout, one per vertex, for lightmaps (Fullreleaseplan 8.8): each part's charts apart
+    /// and filling its own square. Empty when none was asked for.
+    /// </summary>
+    public List<Vector2> LightmapUvs { get; } = [];
 
     public int VertexCount => Positions.Count;
 

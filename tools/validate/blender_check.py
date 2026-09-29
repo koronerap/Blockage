@@ -66,6 +66,8 @@ def look_over(label, scene_graph, lights, spaces):
         check(all(near(h - l, 2) for l, h in zip(low, high)), f"{label}: Small crate is half-size voxels, 2 a side")
 
     if scene_graph:
+        table = objects.get("Table")
+        check(table is not None and table.type == "MESH" and len(table.data.uv_layers) >= 2, f"{label}: Table has lightmap UVs as its second UV map")
         cup = objects.get("Cup")
         check(cup is not None and cup.parent is not None and cup.parent.name == "Table", f"{label}: Cup is under Table")
         crate, copy = objects.get("Crate"), objects.get("Crate copy")

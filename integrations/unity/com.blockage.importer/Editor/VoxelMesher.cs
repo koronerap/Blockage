@@ -259,6 +259,63 @@ namespace Blockage.Importer
             return true;
         }
 
+        /// <summary>
+        /// A coarser copy, as Blockage makes one for its exports: each block of factor³ voxels one voxel,
+        /// solid when at least half the block is, in the colour most of its voxels have.
+        /// </summary>
+        public static VoxelGrid Downsample(VoxelGrid grid, int factor)
+        {
+            var blocks = new Dictionary<Vector3Int, Dictionary<byte, int>>();
+            foreach (KeyValuePair<Vector3Int, byte[]> pair in grid.Chunks)
+            {
+                for (int index = 0; index < pair.Value.Length; index++)
+                {
+                    byte colour = pair.Value[index];
+                    if (colour == 0)
+                    {
+                        continue;
+                    }
+
+                    Vector3Int cell = VoxelGrid.CellOf(pair.Key, index);
+                    var block = new Vector3Int(Down(cell.x, factor), Down(cell.y, factor), Down(cell.z, factor));
+                    if (!blocks.TryGetValue(block, out Dictionary<byte, int> colours))
+                    {
+                        colours = new Dictionary<byte, int>();
+                        blocks[block] = colours;
+                    }
+
+                    colours.TryGetValue(colour, out int count);
+                    colours[colour] = count + 1;
+                }
+            }
+
+            var coarse = new VoxelGrid();
+            int volume = factor * factor * factor;
+            foreach (KeyValuePair<Vector3Int, Dictionary<byte, int>> block in blocks)
+            {
+                int solid = 0, best = 0;
+                byte chosen = 0;
+                foreach (KeyValuePair<byte, int> colour in block.Value)
+                {
+                    solid += colour.Value;
+                    if (colour.Value > best || (colour.Value == best && colour.Key < chosen))
+                    {
+                        best = colour.Value;
+                        chosen = colour.Key;
+                    }
+                }
+
+                if (solid * 2 >= volume)
+                {
+                    coarse.Set(block.Key.x, block.Key.y, block.Key.z, chosen);
+                }
+            }
+
+            return coarse;
+        }
+
+        private static int Down(int value, int factor) => value >= 0 ? value / factor : ((value + 1) / factor) - 1;
+
         /// <summary>Blockage's right-handed axes to Unity's left-handed ones: X turned round.</summary>
         public static Vector3 Mirror(Vector3 v) => new Vector3(-v.x, v.y, v.z);
 

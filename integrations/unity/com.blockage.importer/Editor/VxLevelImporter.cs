@@ -14,7 +14,7 @@ namespace Blockage.Importer
     /// copies sharing one mesh; colliders; markers and custom properties for the game to read; the
     /// level's lights. Saved again in Blockage, it is imported again by itself.
     /// </summary>
-    [ScriptedImporter(2, "vxlevel")]
+    [ScriptedImporter(3, "vxlevel")]
     public sealed class VxLevelImporter : ScriptedImporter
     {
         public enum ColliderMode
@@ -39,6 +39,12 @@ namespace Blockage.Importer
         [Tooltip("Marks the level's objects static, for lightmapping and batching. Markers stay movable.")]
         public bool markStatic = true;
 
+        [Tooltip("A second set of UVs for baking light, laid out by Unity's own unwrapper.")]
+        public bool lightmapUVs = true;
+
+        [Tooltip("Half and quarter-size copies of each object in an LOD group, to be seen from further off.")]
+        public bool lods;
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
             Level level;
@@ -59,6 +65,7 @@ namespace Blockage.Importer
             Material material = PaletteMaterial(ctx, level);
             var made = new Dictionary<int, GameObject>();
             var meshes = new Dictionary<VoxelGrid, Mesh>();
+            var levels = new Dictionary<(VoxelGrid, int), Mesh>();
 
             foreach (LevelObject o in level.Objects)
             {
@@ -81,13 +88,23 @@ namespace Blockage.Importer
                     if (!meshes.TryGetValue(shown, out Mesh mesh))
                     {
                         mesh = VoxelMesher.Build(shown, o.Name);
+                        if (lightmapUVs)
+                        {
+                            Unwrapping.GenerateSecondaryUVSet(mesh);
+                        }
+
                         ctx.AddObjectToAsset($"mesh-{o.Id}", mesh);
                         meshes[shown] = mesh;
                     }
 
                     node.AddComponent<MeshFilter>().sharedMesh = mesh;
-                    node.AddComponent<MeshRenderer>().sharedMaterial = material;
+                    MeshRenderer renderer = node.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterial = material;
                     AddColliders(node, shown, mesh);
+                    if (lods)
+                    {
+                        AddLevelsOfDetail(ctx, node, o, shown, renderer, material, levels);
+                    }
                     if (markStatic)
                     {
                         GameObjectUtility.SetStaticEditorFlags(node,
@@ -127,6 +144,45 @@ namespace Blockage.Importer
                     }
                 }
             }
+        }
+
+        /// <summary>How much coarser each level after the first is, and the share of the screen below which it takes over.</summary>
+        private static readonly (int Factor, float Below)[] Levels = { (2, 0.08f), (4, 0.01f) };
+
+        /// <summary>
+        /// The object's coarser copies as children, each block of voxels one voxel, scaled back up to
+        /// its size — and an LOD group choosing between them by how much of the screen it fills.
+        /// </summary>
+        private void AddLevelsOfDetail(AssetImportContext ctx, GameObject node, LevelObject o, VoxelGrid shown, MeshRenderer full, Material material, Dictionary<(VoxelGrid, int), Mesh> made)
+        {
+            var steps = new List<LOD> { new LOD(0.25f, new Renderer[] { full }) };
+            for (int level = 0; level < Levels.Length; level++)
+            {
+                (int factor, float below) = Levels[level];
+                if (!made.TryGetValue((shown, factor), out Mesh coarse))
+                {
+                    coarse = VoxelMesher.Build(VoxelMesher.Downsample(shown, factor), $"{o.Name}_LOD{level + 1}");
+                    ctx.AddObjectToAsset($"mesh-{o.Id}-lod{level + 1}", coarse);
+                    made[(shown, factor)] = coarse;
+                }
+
+                var child = new GameObject($"{o.Name}_LOD{level + 1}");
+                child.transform.SetParent(node.transform, false);
+                child.transform.localScale = Vector3.one * factor;
+                child.AddComponent<MeshFilter>().sharedMesh = coarse;
+                MeshRenderer renderer = child.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                steps.Add(new LOD(below, new Renderer[] { renderer }));
+                if (markStatic)
+                {
+                    GameObjectUtility.SetStaticEditorFlags(child, GameObjectUtility.GetStaticEditorFlags(node));
+                }
+            }
+
+            // Full detail while it fills a quarter of the screen's height; the coarsest until it is a speck.
+            LODGroup group = node.AddComponent<LODGroup>();
+            group.SetLODs(steps.ToArray());
+            group.RecalculateBounds();
         }
 
         private void AddColliders(GameObject node, VoxelGrid grid, Mesh mesh)

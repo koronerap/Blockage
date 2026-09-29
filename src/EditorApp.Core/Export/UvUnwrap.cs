@@ -125,6 +125,35 @@ public static class UvUnwrap
     }
 
     /// <summary>
+    /// A second layout for lightmaps (Fullreleaseplan 8.8), into <see cref="ExportMesh.LightmapUvs"/>:
+    /// each part unwrapped on its own, so its charts never overlap and fill its own square — which is
+    /// how a lightmapper packs, a mesh at a time. The texture's UVs are left as they were.
+    /// </summary>
+    public static void AddLightmapUvs(ExportMesh mesh, int texelsPerVoxel = 2, int padding = DefaultPadding)
+    {
+        mesh.LightmapUvs.Clear();
+        mesh.LightmapUvs.AddRange(new Vector2[mesh.VertexCount]);
+        foreach (MeshPart part in mesh.PartsOrWhole)
+        {
+            var alone = new ExportMesh();
+            for (int quad = part.FirstQuad; quad < part.FirstQuad + part.QuadCount; quad++)
+            {
+                int first = quad * 4;
+                alone.AddQuad(
+                    mesh.Positions[first], mesh.Positions[first + 1], mesh.Positions[first + 2], mesh.Positions[first + 3],
+                    mesh.Normals[first], mesh.Uvs[first], mesh.QuadPaletteIndices[quad], mesh.QuadCells[quad]);
+            }
+
+            alone.BeginPart(part.Name, 0, part.VoxelSize);
+            Apply(alone, texelsPerVoxel, padding);
+            for (int i = 0; i < alone.VertexCount; i++)
+            {
+                mesh.LightmapUvs[(part.FirstQuad * 4) + i] = alone.Uvs[i];
+            }
+        }
+    }
+
+    /// <summary>
     /// Reads each quad back as a rectangle in its own plane.
     ///
     /// A quad is emitted as p0, p0+e1, p0+e1+e2, p0+e2, so its two edges are the first and last steps

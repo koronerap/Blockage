@@ -29,6 +29,10 @@ What comes across:
   ```
 
 - **Lights.** The level's sun, point and spot lights come across as Unity lights.
+- **Lightmap UVs.** A second UV set is laid out by Unity's own unwrapper, for baking light. It's on
+  by default, and the objects are marked static to go with it.
+- **Levels of detail.** Turn on **Lods** in the importer and each object gets half- and
+  quarter-size copies in an LOD group of its own.
 
 What stays behind:
 

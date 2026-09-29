@@ -62,31 +62,10 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         // material and the sheet, so this stays a single texture and a single draw call's worth of
         // state — it only stops the pieces arriving welded into one lump that has to be separated
         // by hand on the other side.
-        var builders = new List<MeshBuilder<VertexPositionNormal, VertexTexture1>>();
-        foreach (MeshPart part in mesh.PartsOrWhole)
-        {
-            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexTexture1>(part.Name);
-            PrimitiveBuilder<MaterialBuilder, VertexPositionNormal, VertexTexture1, VertexEmpty> primitive =
-                meshBuilder.UsePrimitive(material);
-            PrimitiveBuilder<MaterialBuilder, VertexPositionNormal, VertexTexture1, VertexEmpty>? glassPrimitive =
-                glass is null ? null : meshBuilder.UsePrimitive(glass);
-
-            for (int quad = part.FirstQuad; quad < part.FirstQuad + part.QuadCount; quad++)
-            {
-                var target = glassPrimitive is not null && IsSeeThrough(mesh, palette, quad) ? glassPrimitive : primitive;
-
-                // Six indices per quad, two triangles.
-                for (int i = quad * 6; i < (quad * 6) + 6; i += 3)
-                {
-                    target.AddTriangle(
-                        Vertex(mesh, mesh.Indices[i]),
-                        Vertex(mesh, mesh.Indices[i + 1]),
-                        Vertex(mesh, mesh.Indices[i + 2]));
-                }
-            }
-
-            builders.Add(meshBuilder);
-        }
+        // With lightmap UVs, a second set of coordinates at every corner: TEXCOORD_1.
+        List<IMeshBuilder<MaterialBuilder>> builders = mesh.LightmapUvs.Count == mesh.VertexCount && mesh.VertexCount > 0
+            ? BuildParts(mesh, palette, material, glass, i => new VertexTexture2(mesh.Uvs[i], mesh.LightmapUvs[i]))
+            : BuildParts(mesh, palette, material, glass, i => new VertexTexture1(mesh.Uvs[i]));
 
         // A node for every object, marker and light, under its parent's where it has one and placed
         // relative to it; linked copies share one mesh. What the game is told about each besides is
@@ -176,7 +155,38 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
     /// <summary>glTF's lights shine along their −Z, the level's along their −Y: a quarter turn about X before the light's own.</summary>
     private static readonly Matrix4x4 LightFacing = Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f));
 
-    private static void AddNodes(SceneBuilder scene, ExportMesh mesh, List<MeshBuilder<VertexPositionNormal, VertexTexture1>> builders)
+    private static List<IMeshBuilder<MaterialBuilder>> BuildParts<TTexture>(
+        ExportMesh mesh, Palette palette, MaterialBuilder material, MaterialBuilder? glass, Func<int, TTexture> texture)
+        where TTexture : struct, IVertexMaterial
+    {
+        var builders = new List<IMeshBuilder<MaterialBuilder>>();
+        foreach (MeshPart part in mesh.PartsOrWhole)
+        {
+            var meshBuilder = new MeshBuilder<VertexPositionNormal, TTexture>(part.Name);
+            var primitive = meshBuilder.UsePrimitive(material);
+            var glassPrimitive = glass is null ? null : meshBuilder.UsePrimitive(glass);
+
+            for (int quad = part.FirstQuad; quad < part.FirstQuad + part.QuadCount; quad++)
+            {
+                var target = glassPrimitive is not null && IsSeeThrough(mesh, palette, quad) ? glassPrimitive : primitive;
+
+                // Six indices per quad, two triangles.
+                for (int i = quad * 6; i < (quad * 6) + 6; i += 3)
+                {
+                    target.AddTriangle(Corner(mesh.Indices[i]), Corner(mesh.Indices[i + 1]), Corner(mesh.Indices[i + 2]));
+                }
+            }
+
+            builders.Add(meshBuilder);
+        }
+
+        return builders;
+
+        VertexBuilder<VertexPositionNormal, TTexture, VertexEmpty> Corner(int index) =>
+            new(new VertexPositionNormal(mesh.Positions[index], mesh.Normals[index]), texture(index));
+    }
+
+    private static void AddNodes(SceneBuilder scene, ExportMesh mesh, List<IMeshBuilder<MaterialBuilder>> builders)
     {
         // Everything that can be a parent, by id: where it stands in the world, and what it is under.
         var things = new Dictionary<int, (string Name, Matrix4x4 World, int ParentId)>();
@@ -357,8 +367,4 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         return quad < mesh.QuadPaletteIndices.Count && palette.Material(mesh.QuadPaletteIndices[quad]).IsTransparent;
     }
 
-    private static VertexBuilder<VertexPositionNormal, VertexTexture1, VertexEmpty> Vertex(ExportMesh mesh, int index) =>
-        new(
-            new VertexPositionNormal(mesh.Positions[index], mesh.Normals[index]),
-            new VertexTexture1(mesh.Uvs[index]));
 }

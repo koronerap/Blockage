@@ -54,7 +54,7 @@ if ($Unity) {
         & $editor.FullName -batchmode -nographics -createProject $project -quit -logFile (Join-Path $Out 'unity-create.log') | Out-Null
         $imported = New-Item -ItemType Directory -Force (Join-Path $project 'Assets\Imported')
         $scripts = New-Item -ItemType Directory -Force (Join-Path $project 'Assets\Editor')
-        foreach ($file in 'sample.fbx', 'sample.png', 'sample.obj', 'sample.mtl', 'sample-obj.png') {
+        foreach ($file in 'sample.fbx', 'sample.png', 'sample.obj', 'sample.mtl', 'sample-obj.png', 'sample-lods.fbx', 'sample-lods.png') {
             Copy-Item (Join-Path $Out $file) $imported
         }
 

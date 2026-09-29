@@ -71,7 +71,17 @@ public sealed class FbxExporter : IMeshExporter
             }
         }
 
-        int empties = 0;
+        int empties = 0, levelModels = 0;
+        void Empty(long model)
+        {
+            long attribute = NewId();
+            var node = new FbxNode("NodeAttribute", attribute, FbxNode.ObjectName(string.Empty, "NodeAttribute"), "Null");
+            node.Add("TypeFlags", "Null");
+            objects.Children.Add(node);
+            connections.Add("C", "OO", attribute, model);
+            empties++;
+        }
+
         for (int i = 0; i < placed.Count; i++)
         {
             MeshInstance instance = placed[i];
@@ -84,22 +94,33 @@ public sealed class FbxExporter : IMeshExporter
             }
 
             bool isMesh = instance.Part >= 0 && instance.Part < parts.Count;
-            objects.Children.Add(Model(ids[i], instance.Name, local, isMesh, instance.Extras));
+            bool levels = isMesh && instance.Lods is { Count: > 0 };
+            objects.Children.Add(Model(ids[i], instance.Name, local, isMesh && !levels, instance.Extras));
             connections.Add("C", "OO", ids[i], parent);
 
-            if (isMesh)
+            if (levels)
+            {
+                // Its levels of detail as children named _LOD0, _LOD1 and on, which Unity makes an LOD group of.
+                Empty(ids[i]);
+                List<int> detail = [instance.Part, .. instance.Lods!];
+                for (int level = 0; level < detail.Count; level++)
+                {
+                    long lod = NewId();
+                    objects.Children.Add(Model(lod, $"{instance.Name}_LOD{level}", Matrix4x4.Identity, isMesh: true, extras: null));
+                    connections.Add("C", "OO", lod, ids[i]);
+                    connections.Add("C", "OO", geometries[detail[level]], lod);
+                    connections.Add("C", "OO", material, lod);
+                    levelModels++;
+                }
+            }
+            else if (isMesh)
             {
                 connections.Add("C", "OO", geometries[instance.Part], ids[i]);
                 connections.Add("C", "OO", material, ids[i]);
             }
             else
             {
-                long attribute = NewId();
-                var node = new FbxNode("NodeAttribute", attribute, FbxNode.ObjectName(string.Empty, "NodeAttribute"), "Null");
-                node.Add("TypeFlags", "Null");
-                objects.Children.Add(node);
-                connections.Add("C", "OO", attribute, ids[i]);
-                empties++;
+                Empty(ids[i]);
             }
         }
 
@@ -112,7 +133,7 @@ public sealed class FbxExporter : IMeshExporter
             GlobalSettings(),
             Documents(NewId()),
             new("References"),
-            Definitions(placed.Count, parts.Count, empties),
+            Definitions(placed.Count + levelModels, parts.Count, empties),
             objects,
             connections,
             Takes(),
@@ -148,6 +169,10 @@ public sealed class FbxExporter : IMeshExporter
         var uvIndexOf = new Dictionary<Vector2, int>();
         var uvs = new List<double>();
         var uvIndices = new List<int>();
+        bool lightmapped = mesh.LightmapUvs.Count == mesh.VertexCount && mesh.VertexCount > 0;
+        var lightIndexOf = new Dictionary<Vector2, int>();
+        var lightUvs = new List<double>();
+        var lightIndices = new List<int>();
 
         for (int quad = part.FirstQuad; quad < part.FirstQuad + part.QuadCount; quad++)
         {
@@ -177,6 +202,19 @@ public sealed class FbxExporter : IMeshExporter
                 }
 
                 uvIndices.Add(uvIndex);
+
+                if (lightmapped)
+                {
+                    var light = new Vector2(mesh.LightmapUvs[i].X, 1f - mesh.LightmapUvs[i].Y);
+                    if (!lightIndexOf.TryGetValue(light, out int lightIndex))
+                    {
+                        lightIndex = lightIndexOf.Count;
+                        lightIndexOf[light] = lightIndex;
+                        lightUvs.AddRange([light.X, light.Y]);
+                    }
+
+                    lightIndices.Add(lightIndex);
+                }
             }
         }
 
@@ -207,6 +245,17 @@ public sealed class FbxExporter : IMeshExporter
         materialLayer.Add("ReferenceInformationType", "IndexToDirect");
         materialLayer.Add("Materials", new[] { 0 });
 
+        if (lightmapped)
+        {
+            FbxNode lightLayer = geometry.Add("LayerElementUV", 1);
+            lightLayer.Add("Version", 101);
+            lightLayer.Add("Name", "Lightmap");
+            lightLayer.Add("MappingInformationType", "ByPolygonVertex");
+            lightLayer.Add("ReferenceInformationType", "IndexToDirect");
+            lightLayer.Add("UV", lightUvs.ToArray());
+            lightLayer.Add("UVIndex", lightIndices.ToArray());
+        }
+
         FbxNode layer = geometry.Add("Layer", 0);
         layer.Add("Version", 100);
         foreach (string element in new[] { "LayerElementNormal", "LayerElementUV", "LayerElementMaterial" })
@@ -214,6 +263,16 @@ public sealed class FbxExporter : IMeshExporter
             FbxNode entry = layer.Add("LayerElement");
             entry.Add("Type", element);
             entry.Add("TypedIndex", 0);
+        }
+
+        // A second set of coordinates lives in a layer of its own, as FBX keeps them.
+        if (lightmapped)
+        {
+            FbxNode second = geometry.Add("Layer", 1);
+            second.Add("Version", 100);
+            FbxNode entry = second.Add("LayerElement");
+            entry.Add("Type", "LayerElementUV");
+            entry.Add("TypedIndex", 1);
         }
 
         return geometry;

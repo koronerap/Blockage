@@ -73,6 +73,7 @@ public static class HeadlessExport
         UvAtlas bakedAtlas = UvUnwrap.Apply(baked);
         ExportMesh nodes = GreedyMesher.BuildScene(scene, uvSelector: null, mergeAcrossColors: true, instanceLinked: true, lights: true, colliders: true);
         UvAtlas nodesAtlas = UvUnwrap.Apply(nodes);
+        UvUnwrap.AddLightmapUvs(nodes);
         Console.WriteLine($"Atlas  {nodesAtlas.Width} x {nodesAtlas.Height}  ({nodesAtlas.Charts.Count:N0} charts, {nodesAtlas.TexelsPerVoxel} texels per voxel)");
 
         var written = new List<string>();
@@ -84,6 +85,13 @@ public static class HeadlessExport
         {
             written.AddRange(exporter.Export(nodes, scene.Palette, Path.Combine(outputDirectory, name + exporter.Extension), sceneOptions).FilesWritten);
         }
+
+        // And an FBX with levels of detail, which changes how its objects are laid out.
+        ExportMesh detailed = GreedyMesher.BuildScene(scene, uvSelector: null, mergeAcrossColors: true, instanceLinked: true, lods: true);
+        UvAtlas detailedAtlas = UvUnwrap.Apply(detailed);
+        UvUnwrap.AddLightmapUvs(detailed);
+        written.AddRange(new FbxExporter().Export(detailed, scene.Palette, Path.Combine(outputDirectory, name + "-lods.fbx"),
+            new ExportOptions { Atlas = detailedAtlas, TextureFileName = name + "-lods.png", WriteImportNotes = false }).FilesWritten);
 
         string voxPath = Path.Combine(outputDirectory, name + VoxFile.Extension);
         VoxReport vox = VoxFile.Save(scene, voxPath);

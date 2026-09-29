@@ -62,6 +62,8 @@ public static class CheckVxLevel
                 Check(Mathf.Abs(Mathf.Min(low.x, high.x) + 26f) < 0.01f && Mathf.Abs(Mathf.Min(low.z, high.z)) < 0.01f, "Table stands where it stood, X turned round for Unity");
             }
 
+            Check(table != null && table.TryGetComponent(out MeshFilter lit) && lit.sharedMesh.uv2.Length > 0, "Table has lightmap UVs");
+
             Transform cup = Find("Cup");
             Check(cup != null && cup.parent == table, "Cup is under Table");
 
@@ -88,6 +90,27 @@ public static class CheckVxLevel
             Check(sun != null && sun.TryGetComponent(out Light sunLight) && sunLight.type == LightType.Directional, "the sun is a directional light");
             Check(sun != null && Vector3.Dot(sun.forward, Vector3.down) > 0.3f, "the sun shines down");
             Check(lamp != null && lamp.TryGetComponent(out Light lampLight) && lampLight.type == LightType.Point && Mathf.Abs(lampLight.range - 20f) < 0.01f, "the lamp is a point light that reaches 20 metres");
+
+            // Levels of detail, asked of the importer.
+            var importer = (Blockage.Importer.VxLevelImporter)AssetImporter.GetAtPath(LevelPath);
+            importer.lods = true;
+            EditorUtility.SetDirty(importer);
+            importer.SaveAndReimport();
+            var detailed = AssetDatabase.LoadAssetAtPath<GameObject>(LevelPath);
+            Transform detailedTable = detailed.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Table");
+            LODGroup group = detailedTable != null ? detailedTable.GetComponent<LODGroup>() : null;
+            Check(group != null && group.lodCount == 3, "with levels of detail, Table is an LOD group of three");
+            if (group != null && group.lodCount == 3)
+            {
+                int[] counts = group.GetLODs().Select(lod => lod.renderers[0].GetComponent<MeshFilter>().sharedMesh.vertexCount).ToArray();
+                Check(counts[0] > 0 && counts[1] > 0 && counts[1] <= counts[0] && counts[2] <= counts[1], $"each level is coarser ({string.Join(", ", counts)} vertices)");
+                Bounds whole = group.GetLODs()[0].renderers[0].bounds, coarse = group.GetLODs()[1].renderers[0].bounds;
+                Check(Vector3.Distance(whole.center, coarse.center) < 1.5f && Mathf.Abs(whole.size.x - coarse.size.x) < 2.01f, "the coarser levels stand where the object does");
+            }
+
+            importer.lods = false;
+            EditorUtility.SetDirty(importer);
+            importer.SaveAndReimport();
 
             // Saved again in Blockage: the file changes under Unity, which imports it again.
             string edited = Path.Combine(Path.GetTempPath(), "blockage-check.vxlevel");

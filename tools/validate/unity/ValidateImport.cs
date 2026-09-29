@@ -69,12 +69,31 @@ public static class ValidateImport
 
             if (sceneGraph)
             {
+                Check(table != null && table.TryGetComponent(out MeshFilter lit) && lit.sharedMesh.uv2.Length > 0, $"{file}: Table has lightmap UVs");
                 Transform cup = Find("Cup");
                 Check(cup != null && cup.parent != null && cup.parent.name == "Table", $"{file}: Cup is under Table");
                 Transform crate = Find("Crate"), copy = Find("Crate copy");
                 Check(crate != null && copy != null && crate.GetComponent<MeshFilter>().sharedMesh == copy.GetComponent<MeshFilter>().sharedMesh,
                     $"{file}: Crate and its copy share one mesh");
                 Check(Find("Spawn") != null, $"{file}: Spawn is there");
+            }
+        }
+
+        // Levels of detail, named as Unity makes an LOD group of: one, on the model's root, for the whole file.
+        var detailed = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Imported/sample-lods.fbx");
+        Check(detailed != null, "Assets/Imported/sample-lods.fbx: imports");
+        if (detailed != null)
+        {
+            LODGroup group = detailed.GetComponent<LODGroup>();
+            Check(group != null && group.lodCount == 3, "Assets/Imported/sample-lods.fbx: the model is an LOD group of three");
+            Check(group != null && group.GetLODs()[0].renderers.Any(r => r.name == "Table_LOD0") && group.GetLODs()[2].renderers.Any(r => r.name == "Table_LOD2"),
+                "Assets/Imported/sample-lods.fbx: Table's levels are in it");
+            Check(group != null && group.GetLODs().All(lod => lod.renderers.Length > 0 && lod.renderers[0].GetComponent<MeshFilter>().sharedMesh.vertexCount > 0),
+                "Assets/Imported/sample-lods.fbx: every level has a mesh");
+            if (group != null && group.lodCount == 3)
+            {
+                int[] counts = group.GetLODs().Select(lod => lod.renderers.Sum(r => r.GetComponent<MeshFilter>().sharedMesh.vertexCount)).ToArray();
+                Check(counts[1] <= counts[0] && counts[2] <= counts[1], $"Assets/Imported/sample-lods.fbx: each level is coarser ({string.Join(", ", counts)} vertices)");
             }
         }
 
