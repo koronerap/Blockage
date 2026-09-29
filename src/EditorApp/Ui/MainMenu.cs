@@ -96,6 +96,14 @@ public static class MainMenu
 
             ImGui.Separator();
 
+            // Blender's Menu Search: every command, found by typing part of its name.
+            if (ImGui.MenuItem("Search...", Shortcut.Of(EditorAction.Search)))
+            {
+                CommandSearch.Open();
+            }
+
+            ImGui.Separator();
+
             // What a copy takes is worth saying before it is taken: the selection, or everything.
             string what = session.CopiesSelection ? "Selection" : "Object";
 

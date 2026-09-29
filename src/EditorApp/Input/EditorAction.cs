@@ -35,6 +35,7 @@ public enum EditorAction
     Subdivide,
     SetParent,
     ClearParent,
+    Search,
     KeepExtrude,
     Cancel,
 
@@ -116,6 +117,7 @@ public static class EditorActions
         new(EditorAction.Subdivide, "edit.subdivide", "Subdivide", Edit),
         new(EditorAction.SetParent, "edit.setparent", "Parent to...", Edit),
         new(EditorAction.ClearParent, "edit.clearparent", "Clear parent", Edit),
+        new(EditorAction.Search, "edit.search", "Search for a command", Edit),
         new(EditorAction.KeepExtrude, "edit.keepextrude", "Keep an extrude", Edit),
         new(EditorAction.Cancel, "edit.cancel", "Cancel, or let go", Edit),
 

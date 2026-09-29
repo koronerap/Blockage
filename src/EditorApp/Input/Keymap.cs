@@ -200,6 +200,7 @@ public sealed class Keymap
             [EditorAction.Rename] = [new(Key.F2)],
             [EditorAction.SetParent] = [KeyChord.Ctrl(Key.P)],
             [EditorAction.ClearParent] = [KeyChord.AltOf(Key.P)],
+            [EditorAction.Search] = [new(Key.F3)],
             [EditorAction.KeepExtrude] = [new(Key.Enter), new(Key.KeypadEnter)],
             [EditorAction.Cancel] = [new(Key.Escape)],
 

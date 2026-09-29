@@ -140,6 +140,11 @@ public sealed class Preferences
 
     private int _recentFilesKept = 10;
 
+    // ---- Search ------------------------------------------------------------------------------
+
+    /// <summary>The F3 search's commands last done, newest first, by id: what it offers before anything is typed.</summary>
+    public List<string> RecentCommands { get; set; } = [];
+
     // ---- Keeping them ------------------------------------------------------------------------
 
     public static string DefaultPath { get; } = Path.Combine(
@@ -172,6 +177,7 @@ public sealed class Preferences
                 loaded.KeymapChanges ??= [];
                 loaded.Snap ??= new SnapSettings();
                 loaded.Viewport ??= new ViewportSettings();
+                loaded.RecentCommands ??= [];
                 return loaded;
             }
         }

@@ -798,7 +798,8 @@ public sealed class EditorApplication : IDisposable
             return;
         }
 
-        if (ImGui.GetIO().WantCaptureKeyboard)
+        // Typing into the search, or about to: the keys are its.
+        if (ImGui.GetIO().WantCaptureKeyboard || CommandSearch.IsOpen)
         {
             return;
         }
@@ -962,6 +963,8 @@ public sealed class EditorApplication : IDisposable
                 }
 
                 break;
+
+            case EditorAction.Search when !IsDragging(): CommandSearch.Open(); break;
 
             case EditorAction.ClearParent when !IsDragging():
                 if ((_session.SelectedLight as IPlaceable ?? _session.Scene.Focus) is { } freed)
@@ -1493,6 +1496,21 @@ public sealed class EditorApplication : IDisposable
         _mimicraft!.Draw();
         _referencePanel.DrawDialogs();
         ToolOptions.DrawDialogs();
+
+        // Before the Parent list: a search that picks "Parent to..." opens it in the same frame.
+        CommandSearch.Draw(
+            () => SearchCommands.Build(new SearchSources
+            {
+                Session = _session,
+                Project = _project,
+                Mimicraft = _mimicraft,
+                View = context.View,
+                Preferences = _preferences,
+                Run = Run,
+                ApplyPreferences = ApplyPreferences,
+                Exit = () => _closeRequested = true,
+            }),
+            _preferences.RecentCommands);
         ParentMenu.DrawPopup(_session);
 
         // The asterisk in the title is the only always-visible unsaved-changes indicator.

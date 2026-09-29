@@ -565,6 +565,15 @@ public static class Icons
     }
 
     /// <summary>Zoom: a magnifying glass with a plus in it.</summary>
+    /// <summary>Search: a lens on its handle.</summary>
+    public static void Search(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 lens = centre - new Vector2(r * 0.18f);
+
+        canvas.Circle(lens, r * 0.56f);
+        canvas.Line(lens + new Vector2(r * 0.4f), centre + new Vector2(r * 0.9f), 1.3f);
+    }
+
     public static void Zoom(IIconCanvas canvas, Vector2 centre, float r)
     {
         Vector2 lens = centre - new Vector2(r * 0.18f);
