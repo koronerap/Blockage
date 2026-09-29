@@ -27,6 +27,7 @@ public sealed class VoxelScene
 
     private readonly List<VoxelObject> _objects = [];
     private readonly List<SceneLight> _lights = [];
+    private readonly List<SceneCamera> _cameras = [];
     private readonly HashSet<int> _selected = [];
 
     // One counter for objects and lights alike, so an id names one thing in the level and nothing else.
@@ -74,6 +75,35 @@ public sealed class VoxelScene
 
     /// <summary>The level's lights, in the order the outliner lists them. Never exported.</summary>
     public IReadOnlyList<SceneLight> Lights => _lights;
+
+    /// <summary>The level's cameras, in the order the outliner lists them. Never exported.</summary>
+    public IReadOnlyList<SceneCamera> Cameras => _cameras;
+
+    /// <summary>The camera a render is seen from; 0 for none, when a render is seen from the view.</summary>
+    public int ActiveCameraId { get; private set; }
+
+    public SceneCamera? ActiveCamera => FindCamera(ActiveCameraId);
+
+    public SceneCamera? FindCamera(int id) => id == 0 ? null : _cameras.Find(c => c.Id == id);
+
+    /// <summary>An id for a new camera, from the counter objects and lights take theirs from.</summary>
+    public int NewCameraId() => _nextId++;
+
+    /// <summary>
+    /// Replaces the cameras, and which is active — an active id that is not among them is none.
+    /// Commands and loading set them this way, as a whole.
+    /// </summary>
+    public void SetCameras(IEnumerable<SceneCamera> cameras, int activeId)
+    {
+        List<SceneCamera> list = [.. cameras];
+        _cameras.Clear();
+        _cameras.AddRange(list);
+        ActiveCameraId = _cameras.Any(c => c.Id == activeId) ? activeId : 0;
+        foreach (SceneCamera camera in _cameras)
+        {
+            _nextId = Math.Max(_nextId, camera.Id + 1);
+        }
+    }
 
     /// <summary>
     /// How much light every face gets whichever way it points — without it, faces turned away from
@@ -491,7 +521,10 @@ public sealed class VoxelScene
             FocusId = FocusId,
             Palette = Palette.Clone(),
             RenderSettings = RenderSettings,
+            ActiveCameraId = ActiveCameraId,
         };
+
+        copy._cameras.AddRange(_cameras);
 
         copy._selected.UnionWith(_selected);
 
@@ -594,8 +627,10 @@ public sealed class VoxelScene
 
         _objects.Clear();
         _lights.Clear();
+        _cameras.Clear();
         _selected.Clear();
         FocusId = 0;
+        ActiveCameraId = 0;
         _nextId = 1;
     }
 

@@ -68,6 +68,15 @@ public sealed class AddMenuTests : IDisposable
     }
 
     [Fact]
+    public void ACameraIsOnTheMenuItself()
+    {
+        Open();
+        _ui.Click(Centre(AddMenu.ItemRect("Camera")), Draw);
+
+        Assert.True(AddMenu.TakePending()!.Value.Choice.Camera);
+    }
+
+    [Fact]
     public void APickIsTakenOnce()
     {
         AddMenu.Choose(new AddChoice(Shape: ShapeKind.Cube), null);

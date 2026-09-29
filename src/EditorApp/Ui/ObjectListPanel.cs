@@ -91,7 +91,7 @@ public static class ObjectListPanel
 
     public static void StartRename(IPlaceable thing) => StartRename(thing.Id, thing.Name);
 
-    private static void StartRename(int id, string name)
+    public static void StartRename(int id, string name)
     {
         _renamingId = id;
         _renameBuffer = name;
@@ -161,6 +161,16 @@ public static class ObjectListPanel
                         DrawLightRow(session, camera, light, row, lightMoved, 0);
                         ImGui.PopID();
                     }
+                }
+            }
+
+            if (ShowLights)
+            {
+                foreach (SceneCamera sceneCamera in scene.Cameras.ToArray())
+                {
+                    ImGui.PushID(sceneCamera.Id);
+                    DrawCameraRow(session, sceneCamera, row);
+                    ImGui.PopID();
                 }
             }
 
@@ -567,6 +577,94 @@ public static class ObjectListPanel
         }
     }
 
+    /// <summary>
+    /// A camera's row: picked by a click, renamed by a double one; its switch makes it the camera
+    /// renders are seen from, and its menu looks through it or moves it to the view.
+    /// </summary>
+    private static void DrawCameraRow(EditorSession session, SceneCamera sceneCamera, float row)
+    {
+        bool picked = session.PickedCameraId == sceneCamera.Id;
+        bool active = session.Scene.ActiveCameraId == sceneCamera.Id;
+        DrawLead(sceneCamera.Id, 0, hasChildren: false, row);
+        float width = NameWidth(row);
+
+        if (_renamingId == sceneCamera.Id)
+        {
+            DrawRenameField(session, sceneCamera.Id, width);
+        }
+        else
+        {
+            if (DrawSelectable(picked, picked, row, width))
+            {
+                session.PickCamera(sceneCamera.Id);
+                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                {
+                    StartRename(sceneCamera.Id, sceneCamera.Name);
+                }
+            }
+
+            RowRects[sceneCamera.Id] = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+            if (ImGui.IsItemHovered())
+            {
+                HoveredId = sceneCamera.Id;
+                ImGui.SetTooltip($"A camera - look through it with{Shortcut.Hint(EditorAction.ViewCamera)} when renders are seen from it, or from its menu.");
+            }
+
+            DrawLabel(Icons.Camera, sceneCamera.Name, true, picked, null);
+            DrawCameraMenu(session, sceneCamera);
+        }
+
+        // Two switches' room, as the other rows have: the render switch sits where their eye does.
+        ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X + row + ToggleGap);
+        if (DrawToggle(sceneCamera.Id, "render", active ? Icons.CameraActive : Icons.Camera, active, row, active ? "Renders are seen from this camera - click to render the view instead" : "Render from this camera"))
+        {
+            session.SetActiveCamera(active ? 0 : sceneCamera.Id);
+        }
+    }
+
+    private static void DrawCameraMenu(EditorSession session, SceneCamera sceneCamera)
+    {
+        if (!ImGui.BeginPopupContextItem("##camera-menu"))
+        {
+            return;
+        }
+
+        if (ImGui.IsWindowAppearing())
+        {
+            session.PickCamera(sceneCamera.Id);
+        }
+
+        if (ImGui.MenuItem("Look Through"))
+        {
+            CameraPropertiesPanel.LookThrough(sceneCamera);
+        }
+
+        if (ImGui.MenuItem("Move to View"))
+        {
+            CameraPropertiesPanel.MoveToView(sceneCamera);
+        }
+
+        bool active = session.Scene.ActiveCameraId == sceneCamera.Id;
+        if (ImGui.MenuItem("Render from This Camera", string.Empty, active))
+        {
+            session.SetActiveCamera(active ? 0 : sceneCamera.Id);
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename)))
+        {
+            StartRename(sceneCamera.Id, sceneCamera.Name);
+        }
+
+        if (ImGui.MenuItem("Delete"))
+        {
+            session.DeleteCamera(sceneCamera.Id);
+        }
+
+        ImGui.EndPopup();
+    }
+
     /// <summary>What is left of a row for the name, once the switches have their place at the end.</summary>
     private static float NameWidth(float row) =>
         MathF.Max(ImGui.GetContentRegionAvail().X - (row * 2f) - ToggleGap - ImGui.GetStyle().ItemSpacing.X, row);
@@ -790,6 +888,10 @@ public static class ObjectListPanel
                 if (session.Scene.FindLight(id) is not null)
                 {
                     session.RenameLight(id, _renameBuffer);
+                }
+                else if (session.Scene.FindCamera(id) is not null)
+                {
+                    session.RenameCamera(id, _renameBuffer);
                 }
                 else
                 {

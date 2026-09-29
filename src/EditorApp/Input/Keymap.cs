@@ -303,6 +303,10 @@ public sealed class Keymap
         Add(EditorAction.ViewBottom, Key.Keypad7, Key.Number7, control: true);
         Add(EditorAction.ViewTurnRound, Key.Keypad9, Key.Number9);
         Add(EditorAction.ToggleOrthographic, Key.Keypad5, Key.Number5);
+        Add(EditorAction.ViewCamera, Key.Keypad0, Key.Number0);
+        map[EditorAction.CameraToView] = digitsToo
+            ? [KeyChord.CtrlAlt(Key.Keypad0), KeyChord.CtrlAlt(Key.Number0)]
+            : [KeyChord.CtrlAlt(Key.Keypad0)];
         Add(EditorAction.OrbitLeft, Key.Keypad4, Key.Number4);
         Add(EditorAction.OrbitRight, Key.Keypad6, Key.Number6);
         Add(EditorAction.OrbitUp, Key.Keypad8, Key.Number8);

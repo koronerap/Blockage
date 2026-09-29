@@ -265,6 +265,25 @@ public static class MainMenu
                 view.RenderImage();
             }
 
+            // Which camera a render is seen from: one of the level's, or the view.
+            if (ImGui.BeginMenu("Render From"))
+            {
+                if (ImGui.MenuItem("The View", string.Empty, session.Scene.ActiveCameraId == 0))
+                {
+                    session.SetActiveCamera(0);
+                }
+
+                foreach (Core.Scene.SceneCamera camera in session.Scene.Cameras)
+                {
+                    if (ImGui.MenuItem(camera.Name, string.Empty, session.Scene.ActiveCameraId == camera.Id))
+                    {
+                        session.SetActiveCamera(camera.Id);
+                    }
+                }
+
+                ImGui.EndMenu();
+            }
+
             if (ImGui.MenuItem("Save Viewport Image..."))
             {
                 view.SaveViewportImage();
@@ -332,6 +351,18 @@ public static class MainMenu
         if (ImGui.MenuItem("Orthographic", Shortcut.Of(EditorAction.ToggleOrthographic), view.Camera.Orthographic))
         {
             view.Camera.Orthographic = !view.Camera.Orthographic;
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Camera", Shortcut.Of(EditorAction.ViewCamera)))
+        {
+            view.ViewCamera();
+        }
+
+        if (ImGui.MenuItem("Move Camera to View", Shortcut.Of(EditorAction.CameraToView)))
+        {
+            view.CameraToView();
         }
 
         ImGui.Separator();

@@ -120,6 +120,8 @@ public static class VxLevelFile
             Ambient = scene.Ambient,
             Active = scene.Focus?.Id,
             Render = WriteRender(scene.RenderSettings),
+            Cameras = scene.Cameras.Count > 0 ? [.. scene.Cameras.Select(WriteCamera)] : null,
+            ActiveCamera = scene.ActiveCamera?.Id,
             Materials = scene.Palette.Materials().Any()
                 ? [.. scene.Palette.Materials().Select(m => new LevelManifest.MaterialEntry
                 {
@@ -409,6 +411,14 @@ public static class VxLevelFile
             scene.RenderSettings = ReadRender(render);
         }
 
+        // Cameras keep the ids the file gave them only as far as telling which is active: each gets a fresh one.
+        if (manifest.Cameras is { Length: > 0 } cameras)
+        {
+            var read = cameras.Select(entry => (FileId: entry.Id, Camera: ReadCamera(scene.NewCameraId(), entry))).ToList();
+            int activeCamera = read.Where(c => c.FileId == manifest.ActiveCamera).Select(c => c.Camera.Id).FirstOrDefault();
+            scene.SetCameras(read.Select(c => c.Camera), activeCamera);
+        }
+
         if (manifest.Active is { } active && byFileId.TryGetValue(active, out VoxelObject? focused))
         {
             scene.SetFocus(focused.Id);
@@ -445,6 +455,40 @@ public static class VxLevelFile
             Selected = scene.IsSelected(light.Id),
         };
     }
+
+    private static LevelManifest.CameraEntry WriteCamera(SceneCamera camera) => new()
+    {
+        Id = camera.Id,
+        Name = camera.Name,
+        Position = [camera.Position.X, camera.Position.Y, camera.Position.Z],
+        Yaw = camera.Yaw * (180f / MathF.PI),
+        Pitch = camera.Pitch * (180f / MathF.PI),
+        Kind = camera.Kind switch
+        {
+            CameraKind.Orthographic => "orthographic",
+            CameraKind.Isometric => "isometric",
+            _ => "perspective",
+        },
+        FieldOfView = camera.FieldOfView,
+        OrthographicHeight = camera.OrthographicHeight,
+        PivotDistance = camera.PivotDistance,
+    };
+
+    private static SceneCamera ReadCamera(int id, LevelManifest.CameraEntry entry) => new SceneCamera(
+        id,
+        string.IsNullOrWhiteSpace(entry.Name) ? "Camera" : entry.Name,
+        entry.Position.Length == 3 ? new Vector3(entry.Position[0], entry.Position[1], entry.Position[2]) : Vector3.Zero,
+        entry.Yaw * (MathF.PI / 180f),
+        entry.Pitch * (MathF.PI / 180f),
+        entry.FieldOfView,
+        entry.Kind switch
+        {
+            "orthographic" => CameraKind.Orthographic,
+            "isometric" => CameraKind.Isometric,
+            _ => CameraKind.Perspective,
+        },
+        entry.OrthographicHeight,
+        entry.PivotDistance).Clamped();
 
     private static LevelManifest.RenderEntry WriteRender(Rendering.RenderSettings settings) => new()
     {

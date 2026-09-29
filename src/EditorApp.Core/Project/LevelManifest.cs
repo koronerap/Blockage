@@ -235,6 +235,48 @@ public sealed class LevelManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LightEntry[]? Lights { get; set; }
 
+    /// <summary>The level's cameras; absent for none.</summary>
+    [JsonPropertyName("cameras")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CameraEntry[]? Cameras { get; set; }
+
+    /// <summary>The <see cref="CameraEntry.Id"/> a render is seen from; absent for the view.</summary>
+    [JsonPropertyName("activeCamera")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ActiveCamera { get; set; }
+
+    /// <summary>One camera. Angles in degrees, as a person reading the file would expect.</summary>
+    public sealed class CameraEntry
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "Camera";
+
+        [JsonPropertyName("position")]
+        public float[] Position { get; set; } = [0f, 0f, 0f];
+
+        [JsonPropertyName("yaw")]
+        public float Yaw { get; set; }
+
+        [JsonPropertyName("pitch")]
+        public float Pitch { get; set; }
+
+        /// <summary>"perspective", "orthographic" or "isometric".</summary>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = "perspective";
+
+        [JsonPropertyName("fov")]
+        public float FieldOfView { get; set; } = 60f;
+
+        [JsonPropertyName("orthographicHeight")]
+        public float OrthographicHeight { get; set; } = 20f;
+
+        [JsonPropertyName("pivotDistance")]
+        public float PivotDistance { get; set; } = 20f;
+    }
+
     /// <summary>The ambient floor, 0 to 1. Absent where lights are.</summary>
     [JsonPropertyName("ambient")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

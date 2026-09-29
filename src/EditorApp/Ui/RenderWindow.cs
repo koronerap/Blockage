@@ -102,7 +102,8 @@ public sealed class RenderWindow(GL gl) : IDisposable
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
             string engine = shown.Engine == RenderEngine.Gpu ? "GPU" : "CPU";
-            ImGui.TextDisabled($"{shown.SamplesDone} of {shown.Settings.Samples} samples  ·  {_clock.Elapsed.TotalSeconds:0.0} s  ·  {shown.Width} x {shown.Height}  ·  {engine}");
+            string from = session.Scene.ActiveCamera is { } active ? active.Name : "the view";
+            ImGui.TextDisabled($"{shown.SamplesDone} of {shown.Settings.Samples} samples  ·  {_clock.Elapsed.TotalSeconds:0.0} s  ·  {shown.Width} x {shown.Height}  ·  {engine}  ·  from {from}");
 
             if (shown.Fallback is { } why)
             {

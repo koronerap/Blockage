@@ -45,6 +45,8 @@ public class KeymapTests
             (KeyChord.Ctrl(Key.Keypad1), EditorAction.ViewBack),
             (K(Key.Keypad5), EditorAction.ToggleOrthographic),
             (K(Key.Keypad9), EditorAction.ViewTurnRound),
+            (K(Key.Keypad0), EditorAction.ViewCamera),
+            (KeyChord.CtrlAlt(Key.Keypad0), EditorAction.CameraToView),
             (K(Key.Keypad4), EditorAction.OrbitLeft),
             (K(Key.Enter), EditorAction.KeepExtrude),
             (K(Key.KeypadEnter), EditorAction.KeepExtrude),

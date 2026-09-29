@@ -33,6 +33,16 @@ public static class ObjectPropertiesPanel
 
     public static void DrawContent(EditorSession session)
     {
+        if (session.PickedCamera is { } camera)
+        {
+            Flush(session);
+            LightPropertiesPanel.Flush(session);
+            CameraPropertiesPanel.DrawContent(session, camera);
+            return;
+        }
+
+        CameraPropertiesPanel.Flush(session);
+
         if (session.SelectedLight is { } light)
         {
             Flush(session);

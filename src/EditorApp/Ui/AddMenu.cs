@@ -7,7 +7,7 @@ using ImGuiNET;
 namespace EditorApp.Ui;
 
 /// <summary>What was picked from the Add menu: one shape, prop or light.</summary>
-public readonly record struct AddChoice(ShapeKind? Shape = null, PropKind? Prop = null, LightKind? Light = null);
+public readonly record struct AddChoice(ShapeKind? Shape = null, PropKind? Prop = null, LightKind? Light = null, bool Camera = false);
 
 /// <summary>
 /// Blender's Shift+A: a new shape, a prop or a light, from a menu at the mouse — and the same list
@@ -123,6 +123,12 @@ public static class AddMenu
         }
 
         Remember("Light");
+
+        // Blender's: a camera, where the view stands.
+        if (Entry(Icons.Camera, "Camera"))
+        {
+            Choose(new AddChoice(Camera: true), at);
+        }
     }
 
     private static bool Entry(Icons.Painter icon, string name)

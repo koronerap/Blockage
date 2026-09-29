@@ -16,6 +16,12 @@ public sealed class ViewActions
     /// <summary>The viewport as it is, without overlays or gizmos, to a PNG.</summary>
     public Action SaveViewportImage { get; init; } = () => { };
 
+    /// <summary>Numpad 0: through the camera renders are seen from, and back.</summary>
+    public Action ViewCamera { get; init; } = () => { };
+
+    /// <summary>Ctrl+Alt+Numpad 0: the camera renders are seen from, moved to the view.</summary>
+    public Action CameraToView { get; init; } = () => { };
+
     public required Action FrameFocused { get; init; }
 
     /// <summary>Points the camera at the origin without changing where it stands.</summary>

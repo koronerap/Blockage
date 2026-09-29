@@ -84,6 +84,12 @@ public sealed class EditorApplication : IDisposable
     private LightAimInteraction? _aim;
     private SelectInteraction? _select;
     private RenderWindow? _renderWindow;
+
+    /// <summary>
+    /// The camera the view was put at by looking through it, and the view as it stood before, to go
+    /// back to; null while the view is its own. Moving the view away from the camera ends it.
+    /// </summary>
+    private (int CameraId, Vector3 Position, float Yaw, float Pitch, float FieldOfView, bool Orthographic, float PivotDistance)? _through;
     private ViewportRender? _viewportRender;
 
     /// <summary>Where the next frame's viewport is to be saved, overlays and all left out; null when none is asked for.</summary>
@@ -248,6 +254,8 @@ public sealed class EditorApplication : IDisposable
         _aim = new LightAimInteraction(_session);
         _select = new SelectInteraction(_session);
         _renderWindow = new RenderWindow(_gl);
+        CameraPropertiesPanel.LookThrough = LookThrough;
+        CameraPropertiesPanel.MoveToView = camera => _session.SetCameraToView(camera.Id, ViewAsCamera());
         _viewportRender = new ViewportRender(_gl);
 
         // The editor opens on the same thing New gives you: an 8³ white cube to extrude from.
@@ -617,6 +625,13 @@ public sealed class EditorApplication : IDisposable
     {
         if (IsDragging())
         {
+            return;
+        }
+
+        if (choice.Camera)
+        {
+            _session.ExitEditMode();
+            _session.AddCamera(ViewAsCamera());
             return;
         }
 
@@ -1325,7 +1340,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case EditorAction.RenderImage: _renderWindow?.Start(_session, RenderCameraNow()); break;
+            case EditorAction.RenderImage: _renderWindow?.Start(_session, RenderImageCamera()); break;
 
             case EditorAction.ToggleGrid: View.Grid = !View.Grid; break;
             case EditorAction.ToggleMeasurements: View.Measurements = !View.Measurements; break;
@@ -1376,6 +1391,8 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case EditorAction.ToggleOrthographic: _camera.Orthographic = !_camera.Orthographic; break;
+            case EditorAction.ViewCamera: ToggleCameraView(); break;
+            case EditorAction.CameraToView: CameraToView(); break;
             case EditorAction.OrbitLeft: _camera.OrbitBy(OrbitStep, 0f); break;
             case EditorAction.OrbitRight: _camera.OrbitBy(-OrbitStep, 0f); break;
             case EditorAction.OrbitUp: _camera.OrbitBy(0f, OrbitStep); break;
@@ -1602,6 +1619,8 @@ public sealed class EditorApplication : IDisposable
         _renderer.FocusHighlight = View.Overlays && View.FocusHighlight && _session.ActiveTool != EditorTool.Paint && _session.SelectedCount > 0;
         ApplyViewStyle();
 
+        KeepCameraViewHonest();
+
         // Rendered shading: the path tracer runs under the viewport while it is the shading.
         if (View.Shading == ShadingMode.Rendered)
         {
@@ -1730,6 +1749,21 @@ public sealed class EditorApplication : IDisposable
             bool marked = light.Id == _session.SelectedLightId || light.Id == ObjectListPanel.HoveredId;
             Vector3? aimedAt = _aim!.Light?.Id == light.Id ? _aim.Target : null;
             EditorOverlays.AddLight(gizmos, light, _camera, marked, aimedAt, aimLit: _aimHover?.Id == light.Id, aimLine: LightGizmos);
+        }
+
+        // The cameras, but not the one the view is looking through.
+        if (View.Overlays)
+        {
+            SceneCamera? through = LookingThrough();
+            RenderSettings frame = _session.Scene.RenderSettings.Clamped();
+            foreach (SceneCamera sceneCamera in _session.Scene.Cameras)
+            {
+                if (sceneCamera.Id != through?.Id)
+                {
+                    bool picked = sceneCamera.Id == _session.PickedCameraId || sceneCamera.Id == ObjectListPanel.HoveredId;
+                    EditorOverlays.AddCamera(gizmos, sceneCamera, _camera, frame.Width / (float)frame.Height, picked, sceneCamera.Id == _session.Scene.ActiveCameraId);
+                }
+            }
         }
 
         // The object whose row the mouse is over in the outliner, so a name can be matched to a shape.
@@ -1926,6 +1960,7 @@ public sealed class EditorApplication : IDisposable
         ViewportOverlay.Draw(_session, _camera, _viewport, ShowMeasurements, context.DragReadout, CursorMark(), CursorSample(), View.Overlays && View.TextInfo);
         DrawSelectBox();
         DrawEmptyHint();
+        DrawCameraFrame();
 
         // Popups sit above the shell, not inside a panel.
         _project!.DrawDialogs();
@@ -1955,7 +1990,7 @@ public sealed class EditorApplication : IDisposable
             _preferences.RecentCommands);
         ParentMenu.DrawPopup(_session);
         ColourAdjustWindow.Draw(_session);
-        _renderWindow?.Draw(_session, RenderCameraNow);
+        _renderWindow?.Draw(_session, RenderImageCamera);
         RenderWindow.DrawDialogs();
         ViewportShotBrowser.Draw();
         AddMenu.DrawPopup();
@@ -1978,6 +2013,160 @@ public sealed class EditorApplication : IDisposable
     }
 
     private static readonly FileBrowserDialog ViewportShotBrowser = new();
+
+    /// <summary>What Render Image is seen from: the camera renders are seen from, or the view when there is none.</summary>
+    private RenderCamera RenderImageCamera() => _session.Scene.ActiveCamera?.ToRenderCamera() ?? RenderCameraNow();
+
+    /// <summary>The view as it stands, as a camera the level could keep.</summary>
+    private SceneCamera ViewAsCamera() => new(
+        0,
+        "Camera",
+        _camera.Position,
+        _camera.Yaw,
+        _camera.Pitch,
+        _camera.FieldOfView * (180f / MathF.PI),
+        _camera.Orthographic ? CameraKind.Orthographic : CameraKind.Perspective,
+        _camera.OrthographicHeight,
+        _camera.PivotDistance);
+
+    /// <summary>
+    /// The view put where a camera stands, seeing what it sees — widened a little past it, so the
+    /// frame of the picture fits inside the viewport with a margin round it, as Blender's camera view.
+    /// </summary>
+    private void LookThrough(SceneCamera camera)
+    {
+        _through = (_through ?? (0, _camera.Position, _camera.Yaw, _camera.Pitch, _camera.FieldOfView, _camera.Orthographic, _camera.PivotDistance)) with { CameraId = camera.Id };
+
+        RenderSettings settings = _session.Scene.RenderSettings.Clamped();
+        float pictureAspect = settings.Width / (float)settings.Height;
+        float viewAspect = _viewport.Size.Y > 0f ? _viewport.Size.X / _viewport.Size.Y : pictureAspect;
+        float widen = MathF.Max(1f, pictureAspect / MathF.Max(viewAspect, 0.01f)) * 1.08f;
+
+        _camera.Position = camera.Position;
+        _camera.Yaw = camera.Yaw;
+        _camera.Pitch = camera.Pitch;
+        _camera.Orthographic = camera.IsOrthographic;
+        if (camera.IsOrthographic)
+        {
+            _camera.FieldOfView = _preferences.FieldOfView * (MathF.PI / 180f);
+            _camera.PivotDistance = camera.OrthographicHeight * widen / (2f * MathF.Tan(_camera.FieldOfView * 0.5f));
+        }
+        else
+        {
+            float half = MathF.Atan(MathF.Tan(camera.FieldOfView * 0.5f * (MathF.PI / 180f)) * widen);
+            _camera.FieldOfView = Math.Clamp(half * 2f, 0.02f, 3.1f);
+            _camera.PivotDistance = camera.PivotDistance;
+        }
+    }
+
+    /// <summary>The camera the view is looking through, while it still stands where the camera does.</summary>
+    private SceneCamera? LookingThrough()
+    {
+        if (_through is not { } through || _session.Scene.FindCamera(through.CameraId) is not { } camera)
+        {
+            return null;
+        }
+
+        bool still = Vector3.Distance(_camera.Position, camera.Position) < 1e-3f
+            && MathF.Abs(_camera.Yaw - camera.Yaw) < 1e-4f
+            && MathF.Abs(_camera.Pitch - camera.Pitch) < 1e-4f
+            && _camera.Orthographic == camera.IsOrthographic;
+        return still ? camera : null;
+    }
+
+    /// <summary>Once the view has moved off the camera it was looking through, it sees with its own lens again.</summary>
+    private void KeepCameraViewHonest()
+    {
+        if (_through is { } through && LookingThrough() is null)
+        {
+            _through = null;
+            _camera.FieldOfView = _preferences.FieldOfView * (MathF.PI / 180f);
+            if (!through.Orthographic && _camera.Orthographic)
+            {
+                _camera.Orthographic = false;
+            }
+        }
+    }
+
+    /// <summary>Numpad 0: through the camera renders are seen from — or, from it, back to the view as it was.</summary>
+    private void ToggleCameraView()
+    {
+        if (_through is { } through && LookingThrough() is not null)
+        {
+            _through = null;
+            _camera.Position = through.Position;
+            _camera.Yaw = through.Yaw;
+            _camera.Pitch = through.Pitch;
+            _camera.FieldOfView = through.FieldOfView;
+            _camera.Orthographic = through.Orthographic;
+            _camera.PivotDistance = through.PivotDistance;
+            return;
+        }
+
+        SceneCamera? camera = _session.Scene.ActiveCamera ?? _session.PickedCamera ?? _session.Scene.Cameras.FirstOrDefault();
+        if (camera is null)
+        {
+            ReportLog.Shared.Post("There is no camera to look through. Add > Camera makes one where the view stands.", ReportKind.Warning);
+            return;
+        }
+
+        LookThrough(camera);
+    }
+
+    /// <summary>Ctrl+Alt+Numpad 0: the camera renders are seen from, moved to the view — a new one when there is none.</summary>
+    private void CameraToView()
+    {
+        SceneCamera view = ViewAsCamera();
+        if (_session.Scene.ActiveCamera is { } active)
+        {
+            _session.SetCameraToView(active.Id, view);
+        }
+        else
+        {
+            _session.AddCamera(view);
+        }
+
+        if (_session.Scene.ActiveCamera is { } moved)
+        {
+            LookThrough(moved);
+        }
+    }
+
+    /// <summary>
+    /// While the view looks through a camera: the frame of the picture a render will make, and the
+    /// rest of the viewport dimmed, as Blender's camera view shows it.
+    /// </summary>
+    private void DrawCameraFrame()
+    {
+        if (LookingThrough() is not { } camera || WelcomeScreen.IsOpen)
+        {
+            return;
+        }
+
+        RenderSettings settings = _session.Scene.RenderSettings.Clamped();
+        float pictureAspect = settings.Width / (float)settings.Height;
+        float fraction = camera.IsOrthographic
+            ? camera.OrthographicHeight / MathF.Max(_camera.OrthographicHeight, 1e-4f)
+            : MathF.Tan(camera.FieldOfView * 0.5f * (MathF.PI / 180f)) / MathF.Tan(_camera.FieldOfView * 0.5f);
+
+        Vector2 size = new Vector2(_viewport.Size.Y * fraction * pictureAspect, _viewport.Size.Y * fraction);
+        Vector2 centre = _viewport.Position + (_viewport.Size * 0.5f);
+        Vector2 min = centre - (size * 0.5f);
+        Vector2 max = centre + (size * 0.5f);
+        Vector2 viewMin = _viewport.Position;
+        Vector2 viewMax = _viewport.Position + _viewport.Size;
+
+        ImDrawListPtr draw = ImGui.GetBackgroundDrawList();
+        uint dim = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.45f));
+        draw.AddRectFilled(viewMin, new Vector2(viewMax.X, MathF.Max(min.Y, viewMin.Y)), dim);
+        draw.AddRectFilled(new Vector2(viewMin.X, MathF.Min(max.Y, viewMax.Y)), viewMax, dim);
+        draw.AddRectFilled(new Vector2(viewMin.X, MathF.Max(min.Y, viewMin.Y)), new Vector2(MathF.Max(min.X, viewMin.X), MathF.Min(max.Y, viewMax.Y)), dim);
+        draw.AddRectFilled(new Vector2(MathF.Min(max.X, viewMax.X), MathF.Max(min.Y, viewMin.Y)), new Vector2(viewMax.X, MathF.Min(max.Y, viewMax.Y)), dim);
+        draw.AddRect(min, max, ImGui.GetColorU32(Theme.Text with { W = 0.6f }), 0f, ImDrawFlags.None, 1f);
+
+        string label = _session.Scene.ActiveCameraId == camera.Id ? $"{camera.Name}  -  renders are seen from it" : camera.Name;
+        draw.AddText(min + new Vector2(6f, 4f), ImGui.GetColorU32(Theme.Text with { W = 0.8f }), label);
+    }
 
     /// <summary>Where the render looks from: the viewport's own camera, as it stands.</summary>
     private RenderCamera RenderCameraNow() => new(
@@ -2113,7 +2302,9 @@ public sealed class EditorApplication : IDisposable
     {
         FrameLevel = FrameLevel,
         FrameFocused = FrameFocused,
-        RenderImage = () => _renderWindow?.Start(_session, RenderCameraNow()),
+        RenderImage = () => _renderWindow?.Start(_session, RenderImageCamera()),
+        ViewCamera = ToggleCameraView,
+        CameraToView = CameraToView,
         SaveViewportImage = () => ViewportShotBrowser.Show(FileBrowserMode.Save, "Save the viewport as an image", ".png", null, _session.ProjectName, path => _viewportShotPath = path),
         LookAtCenter = () => _camera.LookAt(Vector3.Zero),
         ResetCamera = () =>

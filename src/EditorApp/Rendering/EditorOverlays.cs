@@ -463,6 +463,72 @@ public static class EditorOverlays
     /// <summary>A light that is switched off: still there to be picked, but grey.</summary>
     public static readonly Color32 LightOff = new(130, 130, 130);
 
+    /// <summary>A camera in the level, and the one renders are seen from.</summary>
+    public static readonly Color32 CameraColour = new(170, 170, 180);
+
+    public static readonly Color32 CameraActiveColour = new(235, 235, 245);
+
+    /// <summary>
+    /// A camera as Blender draws one: a pyramid from where it stands to a frame of the picture's shape,
+    /// and a triangle over the frame for which way is up — filled on the camera renders are seen
+    /// from. An orthographic one's frame is the picture itself, true to size.
+    /// </summary>
+    public static void AddCamera(LineGeometry lines, SceneCamera camera, FlyCamera viewer, float aspect, bool highlighted, bool active)
+    {
+        Color32 colour = highlighted ? GizmoActive : active ? CameraActiveColour : CameraColour;
+        Vector3 forward = camera.Forward;
+        Vector3 right = camera.Right;
+        Vector3 up = camera.Up;
+
+        float size = MathF.Max(Vector3.Distance(viewer.Position, camera.Position) * 0.06f, 0.6f);
+        float halfHeight;
+        float depth = size * 2f;
+        Vector3 near = camera.Position;
+
+        if (camera.IsOrthographic)
+        {
+            // The picture's own frame, true to size, where the camera stands; the rays to it short.
+            halfHeight = camera.OrthographicHeight * 0.5f;
+            depth = MathF.Min(size, halfHeight);
+            near = camera.Position - (forward * depth);
+        }
+        else
+        {
+            halfHeight = depth * MathF.Tan(camera.FieldOfView * 0.5f * (MathF.PI / 180f));
+        }
+
+        float halfWidth = halfHeight * aspect;
+        Vector3 centre = near + (forward * depth);
+        Vector3[] corners =
+        [
+            centre - (right * halfWidth) - (up * halfHeight),
+            centre + (right * halfWidth) - (up * halfHeight),
+            centre + (right * halfWidth) + (up * halfHeight),
+            centre - (right * halfWidth) + (up * halfHeight),
+        ];
+
+        for (int i = 0; i < 4; i++)
+        {
+            lines.AddThickLine(corners[i], corners[(i + 1) % 4], colour, LightWidth);
+            lines.AddThickLine(camera.IsOrthographic ? corners[i] - (forward * depth) : near, corners[i], colour, LightWidth);
+        }
+
+        // Which way is up.
+        Vector3 top = centre + (up * halfHeight);
+        float triangle = MathF.Min(halfWidth, halfHeight) * 0.6f;
+        Vector3 a = top + (up * (triangle * 0.2f)) - (right * triangle);
+        Vector3 b = top + (up * (triangle * 0.2f)) + (right * triangle);
+        Vector3 c = top + (up * (triangle * 1.1f));
+        if (active)
+        {
+            lines.AddQuad(a, b, c, c, colour);
+        }
+
+        lines.AddThickLine(a, b, colour, LightWidth);
+        lines.AddThickLine(b, c, colour, LightWidth);
+        lines.AddThickLine(c, a, colour, LightWidth);
+    }
+
     private const float LightWidth = 0.9f;
 
     /// <summary>The aim line: a thread, not a shaft, so it points without covering what it points at.</summary>

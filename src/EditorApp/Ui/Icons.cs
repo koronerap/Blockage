@@ -812,6 +812,27 @@ public static class Icons
         }
     }
 
+    /// <summary>A camera: a body with its lens, and the frustum it sees drawn from it.</summary>
+    public static void Camera(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre + new Vector2(-r * 0.9f, -r * 0.45f), centre + new Vector2(r * 0.25f, r * 0.5f), r * 0.1f, 1.1f);
+        Span<Vector2> lens =
+        [
+            centre + new Vector2(r * 0.25f, -r * 0.05f),
+            centre + new Vector2(r * 0.9f, -r * 0.4f),
+            centre + new Vector2(r * 0.9f, r * 0.45f),
+            centre + new Vector2(r * 0.25f, r * 0.1f),
+        ];
+        canvas.Polyline(lens, 1.1f);
+    }
+
+    /// <summary>The camera renders are seen from: a camera with a dot on it.</summary>
+    public static void CameraActive(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Camera(canvas, centre, r);
+        canvas.FilledCircle(centre + new Vector2(-r * 0.32f, r * 0.02f), r * 0.2f);
+    }
+
     /// <summary>A point light: a bulb and its base.</summary>
     public static void LightPoint(IIconCanvas canvas, Vector2 centre, float r)
     {
