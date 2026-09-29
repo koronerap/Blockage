@@ -41,6 +41,9 @@ Performance, platforms and the road to 1.0: the beta.
 - **File › Export** named OBJ and glTF but not FBX.
 
 - Blockage's own tests no longer write to your crash log.
+- Names given to levels, props and renders become file names that every system accepts, so a level
+  named on Linux or a phone still copies onto Windows.
+- A reference image from a level saved on Windows shows its own name on macOS and Linux.
 
 ### Changed
 - Large levels are much faster. On a 512 × 128 × 512 level of hills and caves, every part is ready
