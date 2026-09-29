@@ -11,7 +11,7 @@ export clean meshes for a game engine.
 It grew out of the level and prop pipeline for the game *Mimic Busters*, and writes that game's
 `.character` and `.weapons` files as well as OBJ and glTF.
 
-> **Status: early — 0.7, with 0.8 in development.** In daily use, but expect rough edges, and file-format
+> **Status: early — 0.8.** In daily use, but expect rough edges, and file-format
 > changes before 1.0. The downloads below are still the 0.1.0 release.
 
 ## Download
@@ -70,8 +70,23 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
 - **Blender where it helps.** F3 command search, a right-click context menu, overlays, X-Ray and
   wireframe, an Outliner with hierarchy, rebindable keys (a *Default* and a *Mimic Busters* preset), a
   welcome screen with templates.
-- **Export.** OBJ and glTF/GLB, greedy-meshed, with a generated palette texture and automatic UVs;
-  Mimicraft `.character` and `.weapons`.
+- **Export.** OBJ, glTF/GLB and FBX, greedy-meshed, with a generated palette texture and automatic
+  UVs. glTF and FBX keep the level's shape as nodes:
+  - each object is placed under its parent, and linked copies share one mesh;
+  - markers are empties, with the custom properties for the game;
+  - lightmap UVs can go as a second set;
+  - glTF can also carry the lights and collision boxes Godot takes as collision;
+  - FBX can also carry levels of detail Unity makes an LOD group of.
+  Mimicraft `.character` and `.weapons` export too.
+- **Work with other tools.**
+  - MagicaVoxel `.vox` in and out: models, scene, layers, palette and materials.
+  - Pixel-art sprites stood up with a thickness, and heightmaps raised into terrain.
+  - OBJ, glTF and GLB models made into voxels at the size you choose, in their colours and textures.
+- **Straight into Unity.** A package in `integrations/unity` imports `.vxlevel` files as prefabs
+  and imports them again whenever Blockage saves. It brings in:
+  - meshes, colliders and hierarchy;
+  - markers, properties and lights;
+  - lightmap UVs and levels of detail.
 - **Your work is kept.** Autosave with crash recovery, and the last session is kept at every exit, so
   a wrong click on "don't save" can be undone.
 
@@ -131,6 +146,8 @@ sideloadable APK; `-Run` also installs it on the connected device or emulator an
 | `src/EditorApp` | the desktop editor: Silk.NET, OpenGL, Dear ImGui |
 | `src/EditorApp.Mobile` | the Android app on the same core |
 | `tests/` | the xUnit suites for both |
+| `integrations/unity` | the Unity package that imports `.vxlevel` directly |
+| `tools/validate-exports.ps1` | opens the exports in Blender and Unity and checks what arrives |
 | [`EditorCodec.md`](EditorCodec.md) | the Mimicraft `.character` and `.weapons` formats, in Turkish |
 
 Levels are saved as `.vxlevel`: a zip holding a JSON manifest and run-length-encoded chunks of 32³
