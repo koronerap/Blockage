@@ -221,7 +221,8 @@ public sealed class WelcomeScreenTests : IDisposable
     [Fact]
     public void TheVersionIsTheProjectsOwn()
     {
-        Assert.Matches(new Regex(@"^\d+\.\d+\.\d+$"), AppVersion.Number);
+        // A milestone's number, "-dev" after it while the next is under way.
+        Assert.Matches(new Regex(@"^\d+\.\d+\.\d+(-dev)?$"), AppVersion.Number);
         Assert.Equal($"v{AppVersion.Number}", AppVersion.Label);
         Assert.NotEqual("0.0.0", AppVersion.Number);
     }
