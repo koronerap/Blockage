@@ -448,6 +448,7 @@ public static class VxLevelFile
 
     private static LevelManifest.RenderEntry WriteRender(Rendering.RenderSettings settings) => new()
     {
+        Engine = settings.Engine == Rendering.RenderEngine.Gpu ? "gpu" : null,
         Width = settings.Width,
         Height = settings.Height,
         Samples = settings.Samples,
@@ -460,6 +461,10 @@ public static class VxLevelFile
         Exposure = settings.Exposure,
         EmissionStrength = settings.EmissionStrength,
         Fog = settings.Fog,
+        Aperture = settings.Aperture,
+        FocusDistance = settings.FocusDistance,
+        Bloom = settings.Bloom,
+        SunSize = settings.SunSize,
     };
 
     private static Rendering.RenderSettings ReadRender(LevelManifest.RenderEntry entry)
@@ -470,6 +475,7 @@ public static class VxLevelFile
         var defaults = new Rendering.RenderSettings();
         return new Rendering.RenderSettings
         {
+            Engine = entry.Engine == "gpu" ? Rendering.RenderEngine.Gpu : Rendering.RenderEngine.Cpu,
             Width = entry.Width,
             Height = entry.Height,
             Samples = entry.Samples,
@@ -482,6 +488,10 @@ public static class VxLevelFile
             Exposure = entry.Exposure,
             EmissionStrength = entry.EmissionStrength,
             Fog = entry.Fog,
+            Aperture = entry.Aperture,
+            FocusDistance = entry.FocusDistance,
+            Bloom = entry.Bloom,
+            SunSize = entry.SunSize,
         }.Clamped();
     }
 

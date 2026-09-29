@@ -19,25 +19,29 @@ public sealed class ViewportRender(GL gl) : IDisposable
     /// <summary>A change that comes faster than this waits: a drag would otherwise restart it every frame.</summary>
     private const double RestartSeconds = 0.08;
 
-    private readonly object _gate = new();
-    private PathTracer? _tracer;
-    private Task? _task;
-    private CancellationTokenSource? _cancel;
-    private byte[]? _pending;
-    private int _pendingWidth;
-    private int _pendingHeight;
+    /// <summary>How long of each frame the GPU engine may render for, in milliseconds.</summary>
+    private const double GpuBudget = 6;
+
+    private RenderJob? _job;
     private (RenderCamera Camera, long Revision, int Width, int Height, RenderSettings Settings)? _key;
     private double _restartedAt = double.NegativeInfinity;
 
     /// <summary>The picture so far, on the GPU; 0 before there is one.</summary>
     public uint Texture { get; private set; }
 
-    public int SamplesDone => _tracer?.SamplesDone ?? 0;
+    public int SamplesDone => _job?.SamplesDone ?? 0;
+
+    /// <summary>Why the GPU was asked for and the CPU is rendering; null when it is not so.</summary>
+    public string? Fallback => _job?.Fallback;
 
     /// <summary>Keeps the render going for this frame: started again when what it shows has changed, and its newest picture uploaded.</summary>
     public void Update(EditorSession session, RenderCamera camera, Vector2 viewportPixels, double clock)
     {
-        UploadPending();
+        if (_job is { } job)
+        {
+            job.Pump(GpuBudget);
+            UploadPending(job);
+        }
 
         int width = Math.Max((int)viewportPixels.X / Downscale, 16);
         int height = Math.Max((int)viewportPixels.Y / Downscale, 16);
@@ -51,68 +55,33 @@ public sealed class ViewportRender(GL gl) : IDisposable
 
         _key = key;
         _restartedAt = clock;
-        Restart(session, camera, settings with { Width = width, Height = height, Samples = 4096, TransparentBackground = false });
-    }
+        _job?.Dispose();
 
-    private void Restart(EditorSession session, RenderCamera camera, RenderSettings settings)
-    {
-        Stop();
-
-        var tracer = new PathTracer(RenderScene.Capture(session.Scene), camera, settings);
-        var cancel = new CancellationTokenSource();
-        _tracer = tracer;
-        _cancel = cancel;
-
-        _task = Task.Run(() =>
-        {
-            try
-            {
-                while (!tracer.IsFinished && !cancel.IsCancellationRequested)
-                {
-                    tracer.AddSample(cancel.Token);
-                    byte[] image = tracer.ToRgba();
-                    lock (_gate)
-                    {
-                        _pending = image;
-                        _pendingWidth = tracer.Width;
-                        _pendingHeight = tracer.Height;
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        });
+        // Every sample shown as it comes: the picture here is small, and quick to develop.
+        _job = RenderJob.Start(
+            gl,
+            RenderScene.Capture(session.Scene),
+            camera,
+            settings with { Width = width, Height = height, Samples = 4096, TransparentBackground = false },
+            settings.Engine == RenderEngine.Gpu ? TimeSpan.FromMilliseconds(50) : TimeSpan.Zero);
     }
 
     /// <summary>Stops rendering — the view left Rendered shading. The last picture is kept for when it comes back.</summary>
     public void Stop()
     {
-        if (_cancel is null)
+        if (_job is null)
         {
             return;
         }
 
-        _cancel.Cancel();
-        _task?.Wait(TimeSpan.FromSeconds(2));
-        _cancel.Dispose();
-        _cancel = null;
+        _job.Dispose();
+        _job = null;
         _key = null;
     }
 
-    private unsafe void UploadPending()
+    private unsafe void UploadPending(RenderJob job)
     {
-        byte[]? image;
-        int width;
-        int height;
-        lock (_gate)
-        {
-            image = _pending;
-            width = _pendingWidth;
-            height = _pendingHeight;
-            _pending = null;
-        }
-
+        byte[]? image = job.TakePicture();
         if (image is null)
         {
             return;
@@ -131,7 +100,7 @@ public sealed class ViewportRender(GL gl) : IDisposable
         gl.BindTexture(TextureTarget.Texture2D, Texture);
         fixed (byte* data = image)
         {
-            gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)width, (uint)height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, data);
+            gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)job.Width, (uint)job.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, data);
         }
 
         gl.BindTexture(TextureTarget.Texture2D, 0);

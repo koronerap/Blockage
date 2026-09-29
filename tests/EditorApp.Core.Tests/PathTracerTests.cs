@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Export;
+using EditorApp.Core.Raycast;
 using EditorApp.Core.Rendering;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
@@ -121,6 +122,74 @@ public class PathTracerTests
 
         // Through the glass, the lamp glows.
         Assert.True(Brightness(image, 16, 8, 8) > 40f);
+    }
+
+    [Fact]
+    public void BloomSpillsLightAroundABrightSpot()
+    {
+        var scene = new VoxelScene { Ambient = 0f };
+        scene.Palette.SetMaterial(60, VoxelMaterial.Of(1f, 0f, 1f, 1f));
+        scene.Add(Box(1, 1, 1, 60), new ObjectTransform(new Vector3(-0.5f, -0.5f, -0.5f), Quaternion.Identity), "Lamp");
+        var camera = new RenderCamera(new Vector3(0f, 0f, 20f), -Vector3.UnitZ, Vector3.UnitY, 20f, false, 0f);
+        var settings = new RenderSettings { Width = 64, Height = 64, Samples = 2, SkyStrength = 0f, EmissionStrength = 40f };
+
+        byte[] plain = Render(scene, camera, settings);
+        byte[] bloomed = Render(scene, camera, settings with { Bloom = 2f });
+
+        // Beside the lamp, where no ray meets it, only the bloom puts light.
+        Assert.Equal(0f, Brightness(plain, 64, 32, 40));
+        Assert.True(Brightness(bloomed, 64, 32, 40) > 0f);
+    }
+
+    [Fact]
+    public void ALensKeepsTheFocusSharpAndMovesOnlyWhereTheRayStarts()
+    {
+        var camera = new RenderCamera(Vector3.Zero, -Vector3.UnitZ, Vector3.UnitY, 40f, false, 0f);
+        Ray pinhole = camera.Through(0.3f, -0.2f, 1.5f);
+
+        Assert.Equal(pinhole, camera.Through(0.3f, -0.2f, 1.5f, 0f, 10f, new Vector2(1f, 0f)));
+
+        // Wherever on the lens it leaves from, the ray meets the pinhole's at the focus distance.
+        Ray lens = camera.Through(0.3f, -0.2f, 1.5f, 2f, 10f, new Vector2(0.7f, -0.5f));
+        Vector3 focal = pinhole.Origin + (pinhole.Direction * (10f / Vector3.Dot(pinhole.Direction, -Vector3.UnitZ)));
+        float along = Vector3.Dot(focal - lens.Origin, lens.Direction);
+        Assert.True(Vector3.Distance(lens.Origin + (lens.Direction * along), focal) < 1e-3f);
+        Assert.NotEqual(pinhole.Origin, lens.Origin);
+    }
+
+    [Fact]
+    public void DevelopingTheSumGivesTheTracersOwnPicture()
+    {
+        (VoxelScene scene, RenderCamera camera) = CubeOnFloor();
+        var settings = new RenderSettings { Width = 24, Height = 16, Samples = 3, Bloom = 0.5f };
+
+        byte[] picture = Render(scene, camera, settings);
+
+        Assert.Equal(picture, Render(scene, camera, settings));
+        Assert.Equal(24 * 16 * 4, picture.Length);
+    }
+
+    [Fact]
+    public void RenderSettingsAreSavedWithTheLevel()
+    {
+        var scene = VoxelScene.CreateStarter();
+        scene.RenderSettings = new RenderSettings
+        {
+            Engine = RenderEngine.Gpu,
+            Width = 320,
+            Samples = 12,
+            Aperture = 0.4f,
+            FocusDistance = 33f,
+            Bloom = 0.75f,
+            SunSize = 3f,
+            Fog = 0.2f,
+        };
+
+        using var stream = new MemoryStream();
+        Project.VxLevelFile.Save(scene, stream, "render");
+        stream.Position = 0;
+
+        Assert.Equal(scene.RenderSettings, Project.VxLevelFile.LoadScene(stream).RenderSettings);
     }
 
     /// <summary>Writes a render to look at when BLOCKAGE_RENDER_OUT names a file; nothing otherwise.</summary>

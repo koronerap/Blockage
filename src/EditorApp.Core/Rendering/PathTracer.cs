@@ -37,11 +37,7 @@ public sealed class PathTracer
         Height = _settings.Height;
         _sum = new Vector4[Width * Height];
 
-        _skyTop = Linear(_settings.SkyTop);
-        _skyHorizon = Linear(_settings.SkyHorizon);
-
-        // A sky as bright as the level's ambient floor lights a face as the viewport's ambient does.
-        _skyScale = _settings.SkyStrength * MathF.Max(scene.Ambient, 0.05f) * 2.5f;
+        (_skyTop, _skyHorizon, _skyScale) = SkyOf(scene, _settings);
     }
 
     public int Width { get; }
@@ -66,7 +62,10 @@ public sealed class PathTracer
                 var random = new Random32(Hash(_settings.Seed, x, y, sample));
                 float u = (((x + random.Next()) / Width) * 2f) - 1f;
                 float v = 1f - (((y + random.Next()) / Height) * 2f);
-                (Vector3 colour, float alpha) = Trace(_camera.Through(u, v, aspect), ref random);
+                Ray ray = _settings.Aperture > 0f
+                    ? _camera.Through(u, v, aspect, _settings.Aperture, _settings.FocusDistance, Disc(ref random))
+                    : _camera.Through(u, v, aspect);
+                (Vector3 colour, float alpha) = Trace(ray, ref random);
                 _sum[(y * Width) + x] += new Vector4(colour, alpha);
             }
         });
@@ -75,20 +74,34 @@ public sealed class PathTracer
     }
 
     /// <summary>The picture so far: tone-mapped, sRGB, row by row from the top, with alpha.</summary>
-    public byte[] ToRgba()
-    {
-        var pixels = new byte[Width * Height * 4];
-        float exposure = MathF.Pow(2f, _settings.Exposure);
-        float samples = MathF.Max(SamplesDone, 1);
+    public byte[] ToRgba() => Develop(_sum, Width, Height, SamplesDone, _settings);
 
-        for (int i = 0; i < _sum.Length; i++)
+    /// <summary>
+    /// Light summed over <paramref name="samples"/> samples made into a picture: exposed, bloomed,
+    /// tone-mapped and sRGB, row by row from the top, with straight alpha. Whichever engine summed
+    /// it, the picture is developed the same way.
+    /// </summary>
+    public static byte[] Develop(Vector4[] sum, int width, int height, int samples, RenderSettings settings)
+    {
+        var pixels = new byte[width * height * 4];
+        float exposure = MathF.Pow(2f, settings.Exposure);
+        float count = MathF.Max(samples, 1);
+        Vector3[]? glow = settings.Bloom > 0f ? BloomOf(sum, width, height, count, exposure) : null;
+
+        for (int i = 0; i < width * height; i++)
         {
-            Vector4 mean = _sum[i] / samples;
+            Vector4 mean = sum[i] / count;
             float alpha = Math.Clamp(mean.W, 0f, 1f);
 
             // What was drawn over a see-through background was drawn against nothing: straight alpha.
             Vector3 colour = alpha > 0f ? new Vector3(mean.X, mean.Y, mean.Z) / alpha : Vector3.Zero;
-            colour = Aces(colour * exposure);
+            colour *= exposure;
+            if (glow is not null)
+            {
+                colour += glow[i] * settings.Bloom;
+            }
+
+            colour = Aces(colour);
 
             pixels[(i * 4) + 0] = Srgb(colour.X);
             pixels[(i * 4) + 1] = Srgb(colour.Y);
@@ -97,6 +110,73 @@ public sealed class PathTracer
         }
 
         return pixels;
+    }
+
+    /// <summary>
+    /// The sky's two colours, linear, and how bright it is: a sky as bright as the level's ambient
+    /// floor lights a face as the viewport's ambient does.
+    /// </summary>
+    public static (Vector3 Top, Vector3 Horizon, float Scale) SkyOf(RenderScene scene, RenderSettings settings) => (
+        Linear(settings.SkyTop),
+        Linear(settings.SkyHorizon),
+        settings.SkyStrength * MathF.Max(scene.Ambient, 0.05f) * 2.5f);
+
+    /// <summary>
+    /// What spills from the brightest parts: what is over the tone curve's knee, blurred wide in a
+    /// few passes of a box — a soft halo round a lamp or a sunlit edge.
+    /// </summary>
+    private static Vector3[] BloomOf(Vector4[] sum, int width, int height, float samples, float exposure)
+    {
+        var bright = new Vector3[width * height];
+        for (int i = 0; i < bright.Length; i++)
+        {
+            Vector4 mean = sum[i] / samples;
+            Vector3 colour = new Vector3(mean.X, mean.Y, mean.Z) * exposure;
+            bright[i] = Vector3.Max(colour - Vector3.One, Vector3.Zero);
+        }
+
+        int radius = Math.Max(width / 80, 2);
+        for (int pass = 0; pass < 3; pass++)
+        {
+            bright = Blur(bright, width, height, radius, horizontal: true);
+            bright = Blur(bright, width, height, radius, horizontal: false);
+        }
+
+        return bright;
+    }
+
+    private static Vector3[] Blur(Vector3[] source, int width, int height, int radius, bool horizontal)
+    {
+        var result = new Vector3[source.Length];
+        int lines = horizontal ? height : width;
+        int length = horizontal ? width : height;
+
+        Parallel.For(0, lines, line =>
+        {
+            Vector3 running = Vector3.Zero;
+            int Index(int i) => horizontal ? (line * width) + i : (i * width) + line;
+
+            for (int i = -radius; i <= radius; i++)
+            {
+                running += source[Index(Math.Clamp(i, 0, length - 1))];
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                result[Index(i)] = running / ((2 * radius) + 1);
+                running += source[Index(Math.Min(i + radius + 1, length - 1))] - source[Index(Math.Max(i - radius, 0))];
+            }
+        });
+
+        return result;
+    }
+
+    /// <summary>A point on the unit disc, evenly spread: where on the lens a ray leaves from.</summary>
+    private static Vector2 Disc(ref Random32 random)
+    {
+        float radius = MathF.Sqrt(random.Next());
+        float angle = MathF.Tau * random.Next();
+        return new Vector2(radius * MathF.Cos(angle), radius * MathF.Sin(angle));
     }
 
     // ---- One path ------------------------------------------------------------------------------
@@ -222,7 +302,15 @@ public sealed class PathTracer
 
             if (light.Kind == LightKind.Directional)
             {
+                // A sun with a size in the sky: its shadows soften with distance from what casts them.
                 towards = -light.Direction;
+                if (_settings.SunSize > 0f)
+                {
+                    float spread = MathF.Tan(_settings.SunSize * 0.5f * (MathF.PI / 180f));
+                    Vector2 onDisc = Disc(ref random) * spread;
+                    (Vector3 tangent, Vector3 bitangent) = Basis(-light.Direction);
+                    towards = Vector3.Normalize(-light.Direction + (tangent * onDisc.X) + (bitangent * onDisc.Y));
+                }
             }
             else
             {

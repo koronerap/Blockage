@@ -25,7 +25,10 @@ namespace EditorApp;
 public sealed class EditorApplication : IDisposable
 {
 
-    private readonly IWindow _window;
+    private IWindow _window;
+
+    /// <summary>Set once the window and its context exist: a failure before it is the context refused.</summary>
+    private bool _loaded;
     private readonly int _smokeFrames;
     private readonly EditorSession _session = new();
     private readonly FlyCamera _camera = new();
@@ -156,12 +159,21 @@ public sealed class EditorApplication : IDisposable
         _startLevel = startLevel;
         _smokeFrames = screenshotPath is not null && smokeFrames <= 0 ? 10 : smokeFrames;
 
+        _window = CreateWindow(new APIVersion(4, 3));
+    }
+
+    /// <summary>
+    /// The editor's window. 3.3 core covers everything the editor itself draws and runs on the widest
+    /// range of drivers — but some drivers hand out exactly the version asked for, and the GPU render
+    /// engine's compute shaders are 4.3, so 4.3 is asked for first and 3.3 only when it is refused
+    /// (macOS stops at 4.1; see <see cref="Run"/>).
+    /// </summary>
+    private IWindow CreateWindow(APIVersion version)
+    {
         WindowOptions options = WindowOptions.Default with
         {
             Size = new Vector2D<int>(1600, 900),
             Title = "Blockage - Voxel Level Editor",
-            // 3.3 core covers everything this tool needs and runs on the widest range of drivers.
-            //
             // Forward-compatible is not optional: macOS hands out a core profile above 3.1 only for
             // a forward-compatible context, and without the flag window creation there fails
             // outright. It costs nothing elsewhere — it drops functionality already removed from the
@@ -171,23 +183,39 @@ public sealed class EditorApplication : IDisposable
                 ContextAPI.OpenGL,
                 ContextProfile.Core,
                 ContextFlags.ForwardCompatible,
-                new APIVersion(3, 3)),
+                version),
             VSync = true,
             PreferredDepthBufferBits = 24,
         };
 
-        _window = Window.Create(options);
-        _window.Load += OnLoad;
-        _window.Update += OnUpdate;
-        _window.Render += OnRender;
-        _window.FramebufferResize += OnFramebufferResize;
-        _window.Closing += OnClosing;
+        IWindow window = Window.Create(options);
+        window.Load += OnLoad;
+        window.Update += OnUpdate;
+        window.Render += OnRender;
+        window.FramebufferResize += OnFramebufferResize;
+        window.Closing += OnClosing;
+        return window;
     }
 
-    public void Run() => _window.Run();
+    public void Run()
+    {
+        try
+        {
+            _window.Run();
+        }
+        catch (Exception exception) when (!_loaded)
+        {
+            // No 4.3 context to be had: the editor on 3.3, and renders on the CPU.
+            Console.Error.WriteLine($"OpenGL 4.3 was refused ({exception.Message}); starting on 3.3.");
+            _window.Dispose();
+            _window = CreateWindow(new APIVersion(3, 3));
+            _window.Run();
+        }
+    }
 
     private void OnLoad()
     {
+        _loaded = true;
         SetWindowIcon();
 
         _gl = _window.CreateOpenGL();

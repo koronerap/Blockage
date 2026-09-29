@@ -3,6 +3,7 @@ using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Export;
 using EditorApp.Core.Rendering;
+using EditorApp.Rendering;
 using ImGuiNET;
 using Silk.NET.OpenGL;
 
@@ -17,91 +18,46 @@ public sealed class RenderWindow(GL gl) : IDisposable
 {
     private static readonly FileBrowserDialog Browser = new();
 
-    private readonly object _gate = new();
+    /// <summary>How long of each frame the GPU engine may render for, in milliseconds.</summary>
+    private const double GpuBudget = 12;
+
     private readonly Stopwatch _clock = new();
 
     private bool _open;
-    private PathTracer? _tracer;
-    private Task? _task;
-    private CancellationTokenSource? _cancel;
-
-    /// <summary>The newest image the render has made, waiting to go to the GPU; null once it has.</summary>
-    private byte[]? _pending;
-
-    /// <summary>The newest image, kept to be saved.</summary>
-    private byte[]? _latest;
-    private int _width;
-    private int _height;
+    private RenderJob? _job;
     private uint _texture;
     private int _textureWidth;
     private int _textureHeight;
 
     public bool IsOpen => _open;
 
-    public bool IsRendering => _task is { IsCompleted: false };
+    public bool IsRendering => _job is { IsRunning: true };
 
     public static void DrawDialogs() => Browser.Draw();
 
     /// <summary>Renders the level as it is now, from <paramref name="camera"/>, and shows the window.</summary>
     public void Start(EditorSession session, RenderCamera camera)
     {
-        Stop();
+        _job?.Dispose();
         _open = true;
-
-        RenderSettings settings = session.Scene.RenderSettings.Clamped();
-        var tracer = new PathTracer(RenderScene.Capture(session.Scene), camera, settings);
-        var cancel = new CancellationTokenSource();
-        _tracer = tracer;
-        _cancel = cancel;
-        _width = tracer.Width;
-        _height = tracer.Height;
+        _job = RenderJob.Start(gl, RenderScene.Capture(session.Scene), camera, session.Scene.RenderSettings, TimeSpan.FromMilliseconds(250));
         _clock.Restart();
-
-        _task = Task.Run(() =>
-        {
-            var sinceShown = Stopwatch.StartNew();
-            try
-            {
-                while (!tracer.IsFinished && !cancel.IsCancellationRequested)
-                {
-                    tracer.AddSample(cancel.Token);
-                    if (sinceShown.ElapsedMilliseconds > 250 || tracer.IsFinished)
-                    {
-                        Publish(tracer.ToRgba());
-                        sinceShown.Restart();
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-
-            // What was drawn when it stopped is kept, however far it got.
-            Publish(tracer.ToRgba());
-            _clock.Stop();
-        });
     }
 
-    public void Stop()
-    {
-        _cancel?.Cancel();
-        _task?.Wait(TimeSpan.FromSeconds(5));
-        _cancel?.Dispose();
-        _cancel = null;
-    }
-
-    private void Publish(byte[] image)
-    {
-        lock (_gate)
-        {
-            _pending = image;
-            _latest = image;
-        }
-    }
+    public void Stop() => _job?.Stop();
 
     public void Draw(EditorSession session, Func<RenderCamera> camera)
     {
-        UploadPending();
+        if (_job is { } job)
+        {
+            job.Pump(GpuBudget);
+            if (!job.IsRunning && _clock.IsRunning)
+            {
+                _clock.Stop();
+            }
+
+            UploadPending(job);
+        }
 
         if (!_open)
         {
@@ -133,7 +89,7 @@ public sealed class RenderWindow(GL gl) : IDisposable
         }
 
         ImGui.SameLine();
-        ImGui.BeginDisabled(_latest is null);
+        ImGui.BeginDisabled(_job?.Latest is null);
         if (ImGui.Button("Save PNG..."))
         {
             Browser.Show(FileBrowserMode.Save, "Save the render", ".png", null, session.ProjectName, Save);
@@ -141,11 +97,17 @@ public sealed class RenderWindow(GL gl) : IDisposable
 
         ImGui.EndDisabled();
 
-        ImGui.SameLine();
-        if (_tracer is { } tracer)
+        if (_job is { } shown)
         {
+            ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.TextDisabled($"{tracer.SamplesDone} of {session.Scene.RenderSettings.Clamped().Samples} samples  ·  {_clock.Elapsed.TotalSeconds:0.0} s  ·  {_width} x {_height}");
+            string engine = shown.Engine == RenderEngine.Gpu ? "GPU" : "CPU";
+            ImGui.TextDisabled($"{shown.SamplesDone} of {shown.Settings.Samples} samples  ·  {_clock.Elapsed.TotalSeconds:0.0} s  ·  {shown.Width} x {shown.Height}  ·  {engine}");
+
+            if (shown.Fallback is { } why)
+            {
+                ImGui.TextColored(Theme.Highlight, $"Rendering on the CPU: {why}.");
+            }
         }
 
         DrawSettings(session);
@@ -166,20 +128,14 @@ public sealed class RenderWindow(GL gl) : IDisposable
 
     private void Save(string path)
     {
-        byte[]? image;
-        lock (_gate)
-        {
-            image = _latest;
-        }
-
-        if (image is null)
+        if (_job is not { Latest: { } image } job)
         {
             return;
         }
 
         try
         {
-            PngWriter.WriteRgba(path, image, _width, _height);
+            PngWriter.WriteRgba(path, image, job.Width, job.Height);
             ReportLog.Shared.Post($"Saved the render to {Path.GetFileName(path)}.");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -198,6 +154,18 @@ public sealed class RenderWindow(GL gl) : IDisposable
 
         RenderSettings settings = session.Scene.RenderSettings;
         RenderSettings changed = settings;
+
+        ReadOnlySpan<(Icons.Painter? Icon, string Name)> engines = [(null, "CPU"), (null, "GPU")];
+        int engine = Props.Choice("Engine", "render-engine", engines, (int)settings.Engine);
+        if (engine != (int)settings.Engine)
+        {
+            changed = changed with { Engine = (RenderEngine)engine };
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("CPU renders on every core and runs anywhere. GPU renders on the graphics card, far faster; it needs OpenGL 4.3.");
+        }
 
         int width = settings.Width;
         int height = settings.Height;
@@ -277,6 +245,30 @@ public sealed class RenderWindow(GL gl) : IDisposable
             changed = changed with { Fog = fog };
         }
 
+        float sun = settings.SunSize;
+        if (Props.Float("Sun size", "render-sun", ref sun, 0.02f, 0f, 20f, "%.1f°"))
+        {
+            changed = changed with { SunSize = sun };
+        }
+
+        float bloom = settings.Bloom;
+        if (Props.Slider("Bloom", "render-bloom", ref bloom, 0f, 4f, "%.2f"))
+        {
+            changed = changed with { Bloom = bloom };
+        }
+
+        float aperture = settings.Aperture;
+        if (Props.Float("Aperture", "render-aperture", ref aperture, 0.01f, 0f, 10f, "%.2f"))
+        {
+            changed = changed with { Aperture = aperture };
+        }
+
+        float focus = settings.FocusDistance;
+        if (Props.Float("Focus at", "render-focus", ref focus, 0.1f, 0.1f, 10_000f, "%.1f"))
+        {
+            changed = changed with { FocusDistance = focus };
+        }
+
         bool transparent = settings.TransparentBackground;
         if (Props.Check(string.Empty, "render-transparent", "See-through background", ref transparent))
         {
@@ -290,16 +282,10 @@ public sealed class RenderWindow(GL gl) : IDisposable
         }
     }
 
-    /// <summary>The newest image onto the GPU, made the size it is.</summary>
-    private unsafe void UploadPending()
+    /// <summary>The newest picture onto the GPU, made the size it is.</summary>
+    private unsafe void UploadPending(RenderJob job)
     {
-        byte[]? image;
-        lock (_gate)
-        {
-            image = _pending;
-            _pending = null;
-        }
-
+        byte[]? image = job.TakePicture();
         if (image is null)
         {
             return;
@@ -318,17 +304,17 @@ public sealed class RenderWindow(GL gl) : IDisposable
         gl.BindTexture(TextureTarget.Texture2D, _texture);
         fixed (byte* data = image)
         {
-            gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)_width, (uint)_height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, data);
+            gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, (uint)job.Width, (uint)job.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, data);
         }
 
         gl.BindTexture(TextureTarget.Texture2D, 0);
-        _textureWidth = _width;
-        _textureHeight = _height;
+        _textureWidth = job.Width;
+        _textureHeight = job.Height;
     }
 
     public void Dispose()
     {
-        Stop();
+        _job?.Dispose();
         if (_texture != 0)
         {
             gl.DeleteTexture(_texture);

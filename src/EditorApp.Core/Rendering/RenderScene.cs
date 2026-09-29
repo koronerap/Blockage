@@ -5,9 +5,22 @@ using EditorApp.Core.Voxels;
 
 namespace EditorApp.Core.Rendering;
 
+/// <summary>What renders: the path tracer on the processor's cores, or the same on the graphics card.</summary>
+public enum RenderEngine
+{
+    /// <summary>On every core of the processor: runs anywhere.</summary>
+    Cpu,
+
+    /// <summary>On the graphics card, in a compute shader: far faster; needs OpenGL 4.3, and falls back to the CPU without it.</summary>
+    Gpu,
+}
+
 /// <summary>What a render is of, and how it looks (Fullreleaseplan 5.2). Saved with the level.</summary>
 public sealed record RenderSettings
 {
+    /// <summary>Which engine renders, the level's choice; the CPU's where the GPU cannot.</summary>
+    public RenderEngine Engine { get; init; }
+
     public int Width { get; init; } = 1280;
 
     public int Height { get; init; } = 720;
@@ -41,6 +54,18 @@ public sealed record RenderSettings
     /// <summary>Distance fog: how thick, 0 for none, in the sky's colour.</summary>
     public float Fog { get; init; }
 
+    /// <summary>How wide the lens is, in world units: 0 sharp everywhere, more blurs what is off the focus distance.</summary>
+    public float Aperture { get; init; }
+
+    /// <summary>How far from the camera things are sharp, in world units, when the aperture blurs the rest.</summary>
+    public float FocusDistance { get; init; } = 20f;
+
+    /// <summary>How much light spills from the brightest parts, 0 for none.</summary>
+    public float Bloom { get; init; }
+
+    /// <summary>The sun's size in the sky, in degrees: larger gives softer shadows.</summary>
+    public float SunSize { get; init; } = 0.5f;
+
     public RenderSettings Clamped() => this with
     {
         Width = Math.Clamp(Width, 16, 8192),
@@ -51,6 +76,10 @@ public sealed record RenderSettings
         Exposure = Math.Clamp(Exposure, -8f, 8f),
         EmissionStrength = Math.Clamp(EmissionStrength, 0f, 64f),
         Fog = Math.Clamp(Fog, 0f, 1f),
+        Aperture = Math.Clamp(Aperture, 0f, 10f),
+        FocusDistance = Math.Clamp(FocusDistance, 0.1f, 10_000f),
+        Bloom = Math.Clamp(Bloom, 0f, 4f),
+        SunSize = Math.Clamp(SunSize, 0f, 20f),
     };
 }
 
@@ -59,6 +88,30 @@ public sealed record RenderSettings
 /// <param name="OrthographicHeight">World units the image spans top to bottom; orthographic only.</param>
 public readonly record struct RenderCamera(Vector3 Position, Vector3 Forward, Vector3 Up, float VerticalFov, bool Orthographic, float OrthographicHeight)
 {
+    /// <summary>
+    /// The same through a lens <paramref name="aperture"/> wide, from the point of it
+    /// <paramref name="lens"/> names (each of it −1 to 1), focused at <paramref name="focus"/>: what
+    /// is at that distance stays sharp, the rest blurs. Perspective only; a pinhole with no aperture.
+    /// </summary>
+    public Ray Through(float u, float v, float aspect, float aperture, float focus, Vector2 lens)
+    {
+        Ray pinhole = Through(u, v, aspect);
+        if (Orthographic || aperture <= 0f)
+        {
+            return pinhole;
+        }
+
+        Vector3 forward = Vector3.Normalize(Forward);
+        Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Up));
+        Vector3 up = Vector3.Cross(right, forward);
+
+        // Where the pinhole ray meets the plane of focus stays where it is, seen from anywhere on the lens.
+        float along = focus / MathF.Max(Vector3.Dot(pinhole.Direction, forward), 1e-3f);
+        Vector3 focal = pinhole.Origin + (pinhole.Direction * along);
+        Vector3 origin = Position + (right * (lens.X * aperture * 0.5f)) + (up * (lens.Y * aperture * 0.5f));
+        return new Ray(origin, Vector3.Normalize(focal - origin));
+    }
+
     /// <summary>The ray through a point of the image, <paramref name="u"/> and <paramref name="v"/> from −1 to 1, v up.</summary>
     public Ray Through(float u, float v, float aspect)
     {

@@ -145,6 +145,11 @@ public sealed class LevelManifest
 
     public sealed class RenderEntry
     {
+        /// <summary>"cpu" or "gpu".</summary>
+        [JsonPropertyName("engine")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Engine { get; set; }
+
         [JsonPropertyName("width")]
         public int Width { get; set; } = 1280;
 
@@ -180,6 +185,18 @@ public sealed class LevelManifest
 
         [JsonPropertyName("fog")]
         public float Fog { get; set; }
+
+        [JsonPropertyName("aperture")]
+        public float Aperture { get; set; }
+
+        [JsonPropertyName("focus")]
+        public float FocusDistance { get; set; } = 20f;
+
+        [JsonPropertyName("bloom")]
+        public float Bloom { get; set; }
+
+        [JsonPropertyName("sunSize")]
+        public float SunSize { get; set; } = 0.5f;
     }
 
     /// <summary>The palette entries that are not plain, with what they are made of; absent for none.</summary>
