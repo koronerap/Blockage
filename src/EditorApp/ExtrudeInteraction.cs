@@ -276,15 +276,28 @@ public sealed class ExtrudeInteraction(EditorSession session)
             // drag, and a gesture that needs a keystroke to stick is one you have to remember to
             // finish. Ctrl+Z is the way back, as it is for every other edit.
             //
-            // A grab released without moving is a no-op: there is no preview to commit.
-            session.ConfirmExtrude();
+            // A grab released without moving is a no-op: there is no preview to commit, and the
+            // surface stays held to be pulled after all.
+            //
+            // A pull that did something is the job done: the surface is let go of with its highlight
+            // and arrow, so the next press on what was just pulled out — or anywhere — starts a
+            // selection afresh rather than pulling the old one again.
+            if (session.ConfirmExtrude())
+            {
+                session.ClearSelection();
+            }
+
             IsDraggingArrow = false;
         }
     }
 
     public void Confirm()
     {
-        session.ConfirmExtrude();
+        if (session.ConfirmExtrude())
+        {
+            session.ClearSelection();
+        }
+
         IsDraggingArrow = false;
     }
 

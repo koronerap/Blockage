@@ -124,12 +124,12 @@ public class ExtrudeInteractionTests
         Assert.Equal(before, session.World.SolidCount);
         Assert.False(session.History.CanUndo);
 
-        // The selection had advanced onto the new faces, and they are gone: no arrow left in the air.
+        // Nothing is held after the pull, and nothing comes back with the undo: no arrow in the air.
         Assert.False(session.HasSelection);
         Assert.Null(extrude.Arrow());
     }
 
-    /// <summary>A push in leaves the selection buried; undone, it is back on the surface it came from.</summary>
+    /// <summary>A push in lets go of the surface as a pull does; undone, nothing is left selected underground.</summary>
     [Fact]
     public void UndoingAPushInLeavesNoBuriedSelection()
     {
@@ -139,7 +139,7 @@ public class ExtrudeInteractionTests
         extrude.OnPress(null, ScreenOf(camera, start), Viewport, camera, shift: false, alt: false);
         extrude.OnDrag(null, ScreenOf(camera, start - (Vector3.UnitY * 2f)), Viewport, camera);
         extrude.OnRelease();
-        Assert.Equal(1, session.Selection!.Plane);
+        Assert.False(session.HasSelection);
 
         session.Undo();
 
@@ -183,10 +183,10 @@ public class ExtrudeInteractionTests
     }
 
     [Fact]
-    public void TheSelectionAdvancesSoTheNextDragCarriesOn()
+    public void LettingGoEndsTheJobSoTheNewSurfaceCanBeSelectedAfresh()
     {
-        // Releasing commits but does not end the job — the surface that was just pulled out is the
-        // one still selected, so the arrow is right there to drag again.
+        // Releasing commits and lets go: no highlight and no arrow are left on what was pulled out,
+        // and a press on it starts a new selection rather than pulling the old one again.
         (EditorSession session, ExtrudeInteraction extrude, FlyCamera camera) = WithTopFaceSelected();
 
         (Vector3 start, _) = extrude.Arrow()!.Value;
@@ -194,14 +194,15 @@ public class ExtrudeInteractionTests
         extrude.OnDrag(null, ScreenOf(camera, start + (Vector3.UnitY * 2f)), Viewport, camera);
         extrude.OnRelease();
 
-        Assert.True(session.HasSelection);
-
-        // The arrow sits two voxels higher either way — an uncommitted preview moves it just as far.
-        // It is only the selection that has advanced if the steps have gone back to zero with it.
+        Assert.False(session.HasSelection);
+        Assert.Null(extrude.Arrow());
         Assert.Equal(0, session.ExtrudeSteps);
         Assert.False(session.IsExtruding);
 
-        (Vector3 movedStart, _) = extrude.Arrow()!.Value;
-        Assert.Equal(start.Y + 2f, movedStart.Y, 3);
+        // The new top is at y = 5; pressing on it is a selection, not a pull.
+        var pick = new ScenePick(session.Scene.Focus!, new RaycastHit(new Int3(1, 5, 1), Face.PosY, 10f), 10f);
+        Assert.False(extrude.WouldPull(pick, ScreenOf(camera, start), Viewport, camera, shift: false, alt: false));
+        extrude.OnPress(pick, ScreenOf(camera, start + (Vector3.UnitY * 2f) + new Vector3(0f, 0f, 30f)), Viewport, camera, shift: false, alt: false);
+        Assert.False(extrude.IsDraggingArrow);
     }
 }
