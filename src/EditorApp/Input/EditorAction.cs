@@ -86,6 +86,7 @@ public enum EditorAction
     ToggleSection,
     ToggleQuadView,
     WalkMode,
+    UndoHistory,
     ToggleWireframe,
 
     // Render
@@ -188,6 +189,7 @@ public static class EditorActions
         new(EditorAction.ToggleSection, "view.section", "Section box", View),
         new(EditorAction.ToggleQuadView, "view.quad", "Quad view", View),
         new(EditorAction.WalkMode, "view.walk", "Walk through the level", View),
+        new(EditorAction.UndoHistory, "edit.history", "Undo history", Edit),
         new(EditorAction.ToggleWireframe, "view.wireframe", "Wireframe, and back", View),
 
         new(EditorAction.RenderImage, "view.render", "Render an image of the level", View),

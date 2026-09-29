@@ -194,6 +194,11 @@ public static class MainMenu
                 session.Redo();
             }
 
+            if (ImGui.MenuItem("Undo History...", Shortcut.Of(EditorAction.UndoHistory), HistoryWindow.IsOpen))
+            {
+                HistoryWindow.Toggle();
+            }
+
             ImGui.Separator();
 
             // Blender's Menu Search: every command, found by typing part of its name.

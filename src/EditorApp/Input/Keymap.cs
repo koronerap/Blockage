@@ -223,6 +223,9 @@ public sealed class Keymap
             // Blender's walk navigation.
             [EditorAction.WalkMode] = [KeyChord.ShiftOf(Key.GraveAccent)],
 
+            // Blender's undo history.
+            [EditorAction.UndoHistory] = [KeyChord.CtrlAlt(Key.Z)],
+
             // Blender's Alt+D: a copy that shares its voxels with the original.
             [EditorAction.DuplicateLinked] = [KeyChord.AltOf(Key.D)],
 

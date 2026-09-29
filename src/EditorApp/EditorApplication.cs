@@ -306,6 +306,7 @@ public sealed class EditorApplication : IDisposable
         }
 
 
+
         // Not in a smoke or screenshot run: those must neither write the user's recovery folder nor
         // stop at a question about what is already in it.
         if (_smokeFrames <= 0)
@@ -1427,6 +1428,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToggleSection: ToggleSection(); break;
             case EditorAction.ToggleQuadView: View.Quad = !View.Quad; break;
             case EditorAction.WalkMode: BeginWalk(); break;
+            case EditorAction.UndoHistory: HistoryWindow.Toggle(); break;
             case EditorAction.ToggleOverlays: View.Overlays = !View.Overlays; break;
             case EditorAction.ToggleGizmos: View.Gizmos = !View.Gizmos; break;
 
@@ -2129,6 +2131,7 @@ public sealed class EditorApplication : IDisposable
         RenderOutputsWindow.DrawDialogs();
         _library?.Draw(_session);
         ScatterWindow.Draw(_session);
+        HistoryWindow.Draw(_session);
         AppendDialog.Draw(_session);
         PlaceLibraryProps();
         ViewportShotBrowser.Draw();

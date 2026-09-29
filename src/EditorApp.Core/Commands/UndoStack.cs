@@ -32,6 +32,12 @@ public sealed class UndoStack
 
     public string? NextRedoName => _redo.Count > 0 ? _redo[^1].Name : null;
 
+    /// <summary>What has been done, oldest first — what Undo takes back from the end of.</summary>
+    public IEnumerable<string> DoneNames => _undo.Select(command => command.Name);
+
+    /// <summary>What was undone and can be done again, the next one to redo first.</summary>
+    public IEnumerable<string> UndoneNames => Enumerable.Reverse(_redo).Select(command => command.Name);
+
     /// <summary>
     /// Records a command that has already been applied to the world. Doing a new action discards
     /// the redo branch.
