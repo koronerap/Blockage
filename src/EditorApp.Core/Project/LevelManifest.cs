@@ -92,6 +92,11 @@ public sealed class LevelManifest
         [JsonPropertyName("voxelSize")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public float? VoxelSize { get; set; }
+
+        /// <summary>Written only when true; absent everywhere before objects could be locked.</summary>
+        [JsonPropertyName("locked")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Locked { get; set; }
     }
 
     /// <summary>
@@ -142,6 +147,10 @@ public sealed class LevelManifest
 
         [JsonPropertyName("visible")]
         public bool Visible { get; set; } = true;
+
+        [JsonPropertyName("locked")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Locked { get; set; }
     }
 
     [JsonPropertyName("savedUtc")]

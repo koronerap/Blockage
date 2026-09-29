@@ -161,7 +161,7 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
                 foreach (VoxelObject o in _session.Scene.Objects)
                 {
                     objects.Add(new ObjectState(
-                        o.Id, o.Name, o.Visible, o.Id == _session.Scene.FocusId, o.Grid.SolidCount));
+                        o.Id, o.Name, o.Visible, o.Id == _session.Scene.FocusId, o.Grid.SolidCount, o.Locked));
                 }
 
                 Vector3? extent = null;
@@ -204,6 +204,20 @@ public sealed class EditorSurfaceView : GLSurfaceView, GLSurfaceView.IRenderer
     /// itself — saved with the level, focus moving off a hidden object — is the session's, shared
     /// with the desktop.
     /// </summary>
+    /// <summary>Locks or unlocks an object; a locked one is passed over by every touch on the model.</summary>
+    public void ToggleObjectLocked(int id)
+    {
+        lock (_sceneGate)
+        {
+            if (_session.Scene.Find(id) is { } target)
+            {
+                _session.SetObjectLocked(id, !target.Locked);
+            }
+        }
+
+        Changed();
+    }
+
     public void ToggleObjectVisible(int id)
     {
         lock (_sceneGate)

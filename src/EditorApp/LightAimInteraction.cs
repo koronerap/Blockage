@@ -57,6 +57,7 @@ public sealed class LightAimInteraction(EditorSession session)
         foreach (SceneLight light in session.Scene.Lights)
         {
             if (!shown(light)
+                || light.Locked
                 || EditorOverlays.AimHandle(light, camera) is not { } handle
                 || !camera.TryProjectToScreen(Vector3.Lerp(light.Position, handle, DeadStart), viewport, out Vector2 from)
                 || !camera.TryProjectToScreen(handle, viewport, out Vector2 to))
@@ -116,7 +117,8 @@ public sealed class LightAimInteraction(EditorSession session)
     /// </summary>
     private Vector3 PointUnder(Ray ray, SceneLight light, FlyCamera camera)
     {
-        if (session.Scene.TryPick(ray, out ScenePick pick))
+        // Locked objects too: a locked floor is exactly what a light gets aimed at.
+        if (session.Scene.TryPick(ray, out ScenePick pick, includeLocked: true))
         {
             return ray.Origin + (ray.Direction * pick.Distance);
         }

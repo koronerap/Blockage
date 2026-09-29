@@ -142,6 +142,7 @@ public static class VxLevelFile
                 Chunks = [.. coordinates.Select(c => new[] { c.X, c.Y, c.Z })],
                 Visible = o.Visible,
                 VoxelSize = o.VoxelSize,
+                Locked = o.Locked,
             });
 
             foreach (ChunkCoord coord in coordinates)
@@ -308,6 +309,7 @@ public static class VxLevelFile
                     entry.Name);
 
                 added.Visible = entry.Visible;
+                added.Locked = entry.Locked;
             }
         }
         else
@@ -360,6 +362,7 @@ public static class VxLevelFile
             SpotAngle = light.SpotAngle,
             SpotBlend = light.SpotBlend,
             Visible = light.Visible,
+            Locked = light.Locked,
         };
     }
 
@@ -392,6 +395,8 @@ public static class VxLevelFile
             SpotBlend = entry.SpotBlend,
             Visible = entry.Visible,
         });
+
+        light.Locked = entry.Locked;
     }
 
     private static Vector3 ParseLightColour(LevelManifest.LightEntry entry)

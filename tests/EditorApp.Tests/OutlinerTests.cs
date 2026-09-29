@@ -86,20 +86,60 @@ public sealed class OutlinerTests : IDisposable
         Assert.Equal(0, ObjectListPanel.HoveredId);
     }
 
+    private static Vector2 Centre((Vector2 Min, Vector2 Max)? rect)
+    {
+        Assert.True(rect.HasValue, "the switch was not drawn");
+        return (rect.Value.Min + rect.Value.Max) * 0.5f;
+    }
+
     [Fact]
     public void TheEyeHidesAndShows()
     {
         VoxelObject wall = Named("Wall");
-        Vector2 row = RowOf(wall);
-
-        // The eye is the row's first thing, at its left edge.
-        Vector2 eye = new(38f, row.Y);
+        Vector2 eye = Centre(ObjectListPanel.ToggleRect(wall.Id, "eye"));
 
         _ui.Click(eye, Draw);
         Assert.False(wall.Visible);
 
         _ui.Click(eye, Draw);
         Assert.True(wall.Visible);
+    }
+
+    /// <summary>
+    /// Blender's arrangement: the switches stacked at the right end of the row, the eye last, the
+    /// lock before it — and the name, with its kind before it, taking the rest.
+    /// </summary>
+    [Fact]
+    public void TheSwitchesSitAtTheRightEndWithTheEyeLast()
+    {
+        VoxelObject wall = Named("Wall");
+        (Vector2 Min, Vector2 Max) eye = ObjectListPanel.ToggleRect(wall.Id, "eye")!.Value;
+        (Vector2 Min, Vector2 Max) padlock = ObjectListPanel.ToggleRect(wall.Id, "lock")!.Value;
+
+        Assert.True(padlock.Max.X <= eye.Min.X, "the lock comes before the eye");
+        Assert.True(eye.Max.X > 500f, "the eye is at the far end of a 560 wide list");
+        Assert.Equal(padlock.Min.Y, eye.Min.Y);
+    }
+
+    [Fact]
+    public void ThePadlockLocksAndALockedRowIsNotChosen()
+    {
+        VoxelObject wall = Named("Wall");
+        VoxelObject tower = Named("Tower");
+        Assert.True(_session.ChooseObject(tower.Id));
+
+        _ui.Click(Centre(ObjectListPanel.ToggleRect(wall.Id, "lock")), Draw);
+        Assert.True(wall.Locked);
+
+        // A click on the locked row's name changes nothing: focus stays where it was.
+        _ui.Click(RowOf(wall), Draw);
+        Assert.Equal(tower.Id, _session.Scene.FocusId);
+
+        _ui.Click(Centre(ObjectListPanel.ToggleRect(wall.Id, "lock")), Draw);
+        Assert.False(wall.Locked);
+
+        _ui.Click(RowOf(wall), Draw);
+        Assert.Equal(wall.Id, _session.Scene.FocusId);
     }
 
     [Fact]

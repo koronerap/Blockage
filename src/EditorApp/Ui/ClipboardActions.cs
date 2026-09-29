@@ -30,6 +30,12 @@ public static class ClipboardActions
 
     public static void Cut(EditorSession session, ReportLog reports)
     {
+        if (session.Scene.Focus is { Locked: true } locked)
+        {
+            reports.Post($"{locked.Name} is locked - unlock it in the Outliner to cut from it.", ReportKind.Warning);
+            return;
+        }
+
         bool region = session.CopiesSelection;
         bool last = session.Scene.Objects.Count <= 1;
         string? name = session.Scene.Focus?.Name;

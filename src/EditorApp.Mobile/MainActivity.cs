@@ -146,6 +146,7 @@ public sealed class MainActivity : Activity
         _scene.FrameRequested += () => { _surface.FrameLevel(); ShowOnly(null); };
         _scene.ObjectChosen += id => { _surface.Configure(s => s.TryFocus(id)); ShowScene(); };
         _scene.ObjectVisibilityToggled += id => { _surface.ToggleObjectVisible(id); ShowScene(); };
+        _scene.ObjectLockToggled += id => { _surface.ToggleObjectLocked(id); ShowScene(); };
         _scene.ObjectDeleteRequested += id => { _surface.Configure(s => s.DeleteObject(id)); ShowScene(); };
         _scene.ObjectRenameRequested += o => AskForName("Rename object", o.Name, name =>
         {

@@ -4,7 +4,7 @@ using EditorApp.Rendering;
 namespace EditorApp.Mobile.Tools;
 
 /// <param name="Voxels">How many solid voxels this object holds, for the list.</param>
-public readonly record struct ObjectState(int Id, string Name, bool Visible, bool Focused, int Voxels);
+public readonly record struct ObjectState(int Id, string Name, bool Visible, bool Focused, int Voxels, bool Locked = false);
 
 /// <summary>
 /// Everything the level page shows, read out of the session in one go while the scene lock is held.

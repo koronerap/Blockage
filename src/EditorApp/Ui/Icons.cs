@@ -539,6 +539,36 @@ public static class Icons
         }
     }
 
+    /// <summary>Locked: a shut padlock.</summary>
+    public static void Lock(IIconCanvas canvas, Vector2 centre, float r) =>
+        Padlock(canvas, centre, r, open: false);
+
+    /// <summary>Unlocked: the same padlock with its shackle lifted out on one side.</summary>
+    public static void Unlocked(IIconCanvas canvas, Vector2 centre, float r) =>
+        Padlock(canvas, centre, r, open: true);
+
+    private static void Padlock(IIconCanvas canvas, Vector2 centre, float r, bool open)
+    {
+        float legs = r * 0.4f;
+        float bodyTop = centre.Y - (r * 0.04f);
+
+        canvas.FilledRect(
+            new Vector2(centre.X - (r * 0.66f), bodyTop),
+            new Vector2(centre.X + (r * 0.66f), centre.Y + (r * 0.8f)),
+            r * 0.16f);
+
+        // The shackle: a half circle over two legs. Open, it rides higher and its left leg stops
+        // short of the body — the one detail that says "open" at twelve pixels.
+        float lift = open ? r * 0.26f : 0f;
+        var arcCentre = new Vector2(centre.X, centre.Y - (r * 0.4f) - lift);
+        Arc(canvas, arcCentre, legs, Vector2.One, MathF.PI, MathF.Tau, 12);
+
+        canvas.Line(arcCentre + new Vector2(legs, 0f), new Vector2(centre.X + legs, bodyTop));
+        canvas.Line(
+            arcCentre - new Vector2(legs, 0f),
+            new Vector2(centre.X - legs, open ? arcCentre.Y + (r * 0.16f) : bodyTop));
+    }
+
     // A lid is an arc of a circle through both corners of the eye, 0.9 either side of the centre,
     // bulging 0.55 away from it: that circle sits 0.4614 the other way with radius 1.0114.
     private const float LidOffset = 0.4614f;

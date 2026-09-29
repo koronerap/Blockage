@@ -83,6 +83,8 @@ public sealed class SceneSheet : FrameLayout, IPage
 
     public event Action<int>? ObjectVisibilityToggled;
 
+    public event Action<int>? ObjectLockToggled;
+
     public event Action<int>? ObjectDeleteRequested;
 
     /// <summary>
@@ -208,6 +210,15 @@ public sealed class SceneSheet : FrameLayout, IPage
         var layout = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
         layout.SetMargins(Style.Dp(context, 6f), 0, Style.Dp(context, 6f), 0);
         row.AddView(name, layout);
+
+        // Locked, the model is passed over by every touch — the floor that must not move while what
+        // stands on it is built.
+        var padlock = new IconButtonView(context, o.Locked ? Resource.Drawable.ic_lock : Resource.Drawable.ic_lock_open, o.Locked ? "Unlock" : "Lock")
+        {
+            Chosen = o.Locked,
+        };
+        padlock.Click += (_, _) => ObjectLockToggled?.Invoke(o.Id);
+        row.AddView(padlock);
 
         var rename = new IconButtonView(context, Resource.Drawable.ic_rename, "Rename this object");
         rename.Click += (_, _) => ObjectRenameRequested?.Invoke(o);

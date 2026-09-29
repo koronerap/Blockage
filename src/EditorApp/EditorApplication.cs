@@ -808,6 +808,10 @@ public sealed class EditorApplication : IDisposable
                 {
                     _session.DeleteLight(removed.Id);
                 }
+                else if (_session.Scene.Focus is { Locked: true } locked)
+                {
+                    ReportLog.Shared.Post($"{locked.Name} is locked - unlock it in the Outliner to delete it.", ReportKind.Warning);
+                }
                 else
                 {
                     _session.DeleteObject(_session.Scene.FocusId);
@@ -929,7 +933,8 @@ public sealed class EditorApplication : IDisposable
 
         foreach (SceneLight light in _session.Scene.Lights)
         {
-            if (!_camera.TryProjectToScreen(light.Position, viewport, out Vector2 screen)
+            if (light.Locked
+                || !_camera.TryProjectToScreen(light.Position, viewport, out Vector2 screen)
                 || Vector2.Distance(screen, mouse) > Reach)
             {
                 continue;

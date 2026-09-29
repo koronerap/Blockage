@@ -23,6 +23,13 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
 
     public bool Visible { get; set; } = true;
 
+    /// <summary>
+    /// Locked objects are drawn and exported like any other, but the viewport passes over them: they
+    /// cannot be picked, take focus or be edited — a floor that stays put while what stands on it is
+    /// built. Saved with the level; outside undo, like hiding.
+    /// </summary>
+    public bool Locked { get; set; }
+
     /// <summary>World units one of this object's voxels measures — its transform's scale.</summary>
     public float VoxelSize => Transform.VoxelSize;
 

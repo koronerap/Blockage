@@ -234,7 +234,7 @@ public sealed class VoxelScene
         {
             VoxelWorld grid = o.Grid.Copy();
             grid.ReplacePalette(copy.Palette);
-            copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name) { Visible = o.Visible });
+            copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name) { Visible = o.Visible, Locked = o.Locked });
         }
 
         foreach (SceneLight light in _lights)
@@ -333,8 +333,12 @@ public sealed class VoxelScene
     /// <summary>
     /// Picks across every visible object by moving the ray into each one's own space. The nearest
     /// hit wins, which is what makes focus follow whatever the cursor is actually over.
+    ///
+    /// Locked objects are passed through, so what stands in front of or on top of them can be
+    /// reached. Something that only needs a point in the world — where to aim a light — asks for them
+    /// with <paramref name="includeLocked"/>, since a floor is exactly what a light is aimed at.
     /// </summary>
-    public bool TryPick(Ray worldRay, out ScenePick pick, float maxDistance = VoxelRaycaster.DefaultMaxDistance)
+    public bool TryPick(Ray worldRay, out ScenePick pick, float maxDistance = VoxelRaycaster.DefaultMaxDistance, bool includeLocked = false)
     {
         pick = default;
         bool found = false;
@@ -342,7 +346,7 @@ public sealed class VoxelScene
 
         foreach (VoxelObject o in _objects)
         {
-            if (!o.Visible || o.IsEmpty)
+            if (!o.Visible || o.IsEmpty || (o.Locked && !includeLocked))
             {
                 continue;
             }

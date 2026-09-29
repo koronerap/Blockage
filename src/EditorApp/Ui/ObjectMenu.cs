@@ -155,6 +155,17 @@ public static class ObjectMenu
             session.ShowAllObjects();
         }
 
+        // Locking the focused object moves focus on; the Outliner's padlock is the way back.
+        if (ImGui.MenuItem("Lock", null, false, scene.Focus is { Locked: false }) && scene.Focus is { } locked)
+        {
+            session.SetObjectLocked(locked.Id, true);
+        }
+
+        if (ImGui.MenuItem("Unlock All", null, false, scene.Objects.Any(o => o.Locked) || scene.Lights.Any(l => l.Locked)))
+        {
+            session.UnlockAll();
+        }
+
         if (ImGui.MenuItem("Delete", "Del", false, scene.Objects.Count > 1))
         {
             session.DeleteObject(scene.FocusId);

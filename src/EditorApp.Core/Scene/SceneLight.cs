@@ -94,6 +94,9 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
     /// <summary>Off lights stay in the level but light nothing.</summary>
     public bool Visible { get; set; } = true;
 
+    /// <summary>A locked light still shines, but its icon cannot be picked, moved or aimed.</summary>
+    public bool Locked { get; set; }
+
     public Vector3 Position => Transform.Position;
 
     /// <summary>Which way the light shines — the direction its rays travel.</summary>
@@ -117,7 +120,7 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
         Visible = state.Visible;
     }
 
-    public SceneLight Copy(int id) => new(id, Kind, Name) { Transform = Transform, Colour = Colour, Intensity = Intensity, Range = Range, SpotAngle = SpotAngle, SpotBlend = SpotBlend, Visible = Visible };
+    public SceneLight Copy(int id) => new(id, Kind, Name) { Transform = Transform, Colour = Colour, Intensity = Intensity, Range = Range, SpotAngle = SpotAngle, SpotBlend = SpotBlend, Visible = Visible, Locked = Locked };
 
     /// <summary>The turn that makes a light shine along <paramref name="direction"/>.</summary>
     public static Quaternion Aiming(Vector3 direction)

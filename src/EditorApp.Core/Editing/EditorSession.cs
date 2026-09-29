@@ -55,6 +55,12 @@ public sealed class EditorSession
             return true;
         }
 
+        // A locked object is passed over: that is what locking it is for.
+        if (Scene.Find(objectId) is { Locked: true })
+        {
+            return false;
+        }
+
         if (!Scene.SetFocus(objectId))
         {
             return false;
@@ -473,6 +479,12 @@ public sealed class EditorSession
     /// </summary>
     public bool ChooseObject(int objectId)
     {
+        // Refused before anything is let go: a click on a locked row should change nothing at all.
+        if (Scene.Find(objectId) is { Locked: true })
+        {
+            return false;
+        }
+
         if (objectId != Scene.FocusId && !IsStrokeActive && !IsExtruding)
         {
             ClearSelection();
@@ -530,7 +542,8 @@ public sealed class EditorSession
     /// </summary>
     public int Cut()
     {
-        if (Scene.Focus is not { } focus)
+        // A locked object is not to be changed; copying it is fine, taking it away is not.
+        if (Scene.Focus is not { Locked: false } focus)
         {
             return 0;
         }
@@ -648,11 +661,16 @@ public sealed class EditorSession
     public SceneLight? SelectedLight => SelectedLightId == 0 ? null : Scene.FindLight(SelectedLightId);
 
     /// <summary>What the Transform tool works on: the picked light if there is one, else the focused object.</summary>
-    public IPlaceable? TransformTarget => (IPlaceable?)SelectedLight ?? Scene.Focus;
+    /// <summary>
+    /// What the Transform tool's gizmo is on: the picked light, else the focused object — unless that
+    /// is locked, which can happen when every object is, and then nothing.
+    /// </summary>
+    public IPlaceable? TransformTarget => (IPlaceable?)SelectedLight ?? (Scene.Focus is { Locked: false } focus ? focus : null);
 
     public bool SelectLight(int lightId)
     {
-        if (Scene.FindLight(lightId) is null)
+        // A locked light is passed over, as a locked object is.
+        if (Scene.FindLight(lightId) is not { Locked: false })
         {
             return false;
         }
@@ -772,6 +790,27 @@ public sealed class EditorSession
         return true;
     }
 
+    /// <summary>
+    /// Locks or unlocks a light. A locked light still shines; its icon is only no longer something to
+    /// pick, move or aim. Picked when it is locked, it is let go.
+    /// </summary>
+    public bool SetLightLocked(int lightId, bool locked)
+    {
+        if (Scene.FindLight(lightId) is not { } light || light.Locked == locked)
+        {
+            return false;
+        }
+
+        light.Locked = locked;
+        if (locked && SelectedLightId == lightId)
+        {
+            SelectedLightId = 0;
+        }
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
     public bool RenameLight(int lightId, string name)
     {
         string trimmed = name.Trim();
@@ -859,6 +898,62 @@ public sealed class EditorSession
         return true;
     }
 
+    /// <summary>
+    /// Locks or unlocks an object: a locked one is drawn and exported, but cannot be picked, focused
+    /// or edited from the viewport. Saved with the level and outside undo, like hiding.
+    ///
+    /// Locking the focused object moves focus on, as hiding it does: the tools act on whatever holds
+    /// focus, and holding it is exactly what a locked object must not do.
+    /// </summary>
+    public bool SetObjectLocked(int objectId, bool locked)
+    {
+        if (Scene.Find(objectId) is not { } target || target.Locked == locked)
+        {
+            return false;
+        }
+
+        target.Locked = locked;
+
+        if (locked && target.Id == Scene.FocusId)
+        {
+            EndStroke();
+            CancelExtrude();
+            Selection = null;
+
+            if (NearestVisible(Scene.IndexOf(target.Id)) is { } next)
+            {
+                Scene.SetFocus(next.Id);
+            }
+        }
+
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>Unlocks every locked object and light. Returns how many there were.</summary>
+    public int UnlockAll()
+    {
+        int unlocked = 0;
+        foreach (VoxelObject o in Scene.Objects.Where(o => o.Locked))
+        {
+            o.Locked = false;
+            unlocked++;
+        }
+
+        foreach (SceneLight light in Scene.Lights.Where(l => l.Locked))
+        {
+            light.Locked = false;
+            unlocked++;
+        }
+
+        if (unlocked > 0)
+        {
+            HasUnsavedChanges = true;
+        }
+
+        return unlocked;
+    }
+
     /// <summary>Shows every hidden object. Returns how many there were.</summary>
     public int ShowAllObjects()
     {
@@ -880,19 +975,21 @@ public sealed class EditorSession
         return shown;
     }
 
-    /// <summary>The visible object nearest a place in the list, looking down it first.</summary>
+    /// <summary>The visible, unlocked object nearest a place in the list, looking down it first.</summary>
     private VoxelObject? NearestVisible(int index)
     {
         IReadOnlyList<VoxelObject> objects = Scene.Objects;
 
+        static bool CanHoldFocus(VoxelObject o) => o.Visible && !o.Locked;
+
         for (int step = 1; step < objects.Count; step++)
         {
-            if (index + step < objects.Count && objects[index + step].Visible)
+            if (index + step < objects.Count && CanHoldFocus(objects[index + step]))
             {
                 return objects[index + step];
             }
 
-            if (index - step >= 0 && objects[index - step].Visible)
+            if (index - step >= 0 && CanHoldFocus(objects[index - step]))
             {
                 return objects[index - step];
             }
@@ -1152,7 +1249,7 @@ public sealed class EditorSession
     /// </summary>
     public bool FlipFocus(Axis axis)
     {
-        if (Scene.Focus is not { IsEmpty: false } focus)
+        if (Scene.Focus is not { IsEmpty: false, Locked: false } focus)
         {
             return false;
         }
@@ -1178,6 +1275,11 @@ public sealed class EditorSession
         if (target is not { IsEmpty: false })
         {
             return "There are no voxels to subdivide.";
+        }
+
+        if (target.Locked)
+        {
+            return "It is locked. Unlock it in the Outliner first.";
         }
 
         long after = (long)target.Grid.SolidCount * Subdivide.Factor * Subdivide.Factor * Subdivide.Factor;
@@ -1230,7 +1332,7 @@ public sealed class EditorSession
     /// </summary>
     public bool RotateFocus(RotateDirection direction)
     {
-        if (Scene.Focus is not { IsEmpty: false } focus)
+        if (Scene.Focus is not { IsEmpty: false, Locked: false } focus)
         {
             return false;
         }
@@ -1384,6 +1486,13 @@ public sealed class EditorSession
         if (Scene.Objects.Count == 0)
         {
             EnsureFocus();
+        }
+
+        // A level saved with its first object locked would otherwise open with focus on the one
+        // object the tools may not touch.
+        if (Scene.Focus is { Locked: true } && Scene.Objects.FirstOrDefault(o => o.Visible && !o.Locked) is { } open)
+        {
+            Scene.SetFocus(open.Id);
         }
 
         Scene.MarkAllDirty();
