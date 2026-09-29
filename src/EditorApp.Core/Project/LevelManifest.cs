@@ -138,6 +138,50 @@ public sealed class LevelManifest
         public bool Enabled { get; set; } = true;
     }
 
+    /// <summary>How the level is rendered; absent in files from before there was a renderer.</summary>
+    [JsonPropertyName("render")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RenderEntry? Render { get; set; }
+
+    public sealed class RenderEntry
+    {
+        [JsonPropertyName("width")]
+        public int Width { get; set; } = 1280;
+
+        [JsonPropertyName("height")]
+        public int Height { get; set; } = 720;
+
+        [JsonPropertyName("samples")]
+        public int Samples { get; set; } = 64;
+
+        [JsonPropertyName("bounces")]
+        public int Bounces { get; set; } = 4;
+
+        [JsonPropertyName("seed")]
+        public int Seed { get; set; } = 1;
+
+        [JsonPropertyName("skyStrength")]
+        public float SkyStrength { get; set; } = 1f;
+
+        [JsonPropertyName("skyTop")]
+        public float[] SkyTop { get; set; } = [0.55f, 0.68f, 0.9f];
+
+        [JsonPropertyName("skyHorizon")]
+        public float[] SkyHorizon { get; set; } = [0.86f, 0.88f, 0.9f];
+
+        [JsonPropertyName("transparent")]
+        public bool TransparentBackground { get; set; }
+
+        [JsonPropertyName("exposure")]
+        public float Exposure { get; set; }
+
+        [JsonPropertyName("emission")]
+        public float EmissionStrength { get; set; } = 3f;
+
+        [JsonPropertyName("fog")]
+        public float Fog { get; set; }
+    }
+
     /// <summary>The palette entries that are not plain, with what they are made of; absent for none.</summary>
     [JsonPropertyName("materials")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

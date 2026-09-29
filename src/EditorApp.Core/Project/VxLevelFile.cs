@@ -119,6 +119,7 @@ public static class VxLevelFile
             Lights = [.. scene.Lights.Select(light => WriteLight(scene, light))],
             Ambient = scene.Ambient,
             Active = scene.Focus?.Id,
+            Render = WriteRender(scene.RenderSettings),
             Materials = scene.Palette.Materials().Any()
                 ? [.. scene.Palette.Materials().Select(m => new LevelManifest.MaterialEntry
                 {
@@ -403,6 +404,10 @@ public static class VxLevelFile
         }
 
         scene.Ambient = manifest.Ambient ?? VoxelScene.DefaultAmbient;
+        if (manifest.Render is { } render)
+        {
+            scene.RenderSettings = ReadRender(render);
+        }
 
         if (manifest.Active is { } active && byFileId.TryGetValue(active, out VoxelObject? focused))
         {
@@ -439,6 +444,45 @@ public static class VxLevelFile
             Parent = scene.ParentOf(light)?.Id,
             Selected = scene.IsSelected(light.Id),
         };
+    }
+
+    private static LevelManifest.RenderEntry WriteRender(Rendering.RenderSettings settings) => new()
+    {
+        Width = settings.Width,
+        Height = settings.Height,
+        Samples = settings.Samples,
+        Bounces = settings.Bounces,
+        Seed = settings.Seed,
+        SkyStrength = settings.SkyStrength,
+        SkyTop = [settings.SkyTop.X, settings.SkyTop.Y, settings.SkyTop.Z],
+        SkyHorizon = [settings.SkyHorizon.X, settings.SkyHorizon.Y, settings.SkyHorizon.Z],
+        TransparentBackground = settings.TransparentBackground,
+        Exposure = settings.Exposure,
+        EmissionStrength = settings.EmissionStrength,
+        Fog = settings.Fog,
+    };
+
+    private static Rendering.RenderSettings ReadRender(LevelManifest.RenderEntry entry)
+    {
+        static Vector3 Colour(float[] rgb, Vector3 fallback) =>
+            rgb.Length == 3 ? new Vector3(rgb[0], rgb[1], rgb[2]) : fallback;
+
+        var defaults = new Rendering.RenderSettings();
+        return new Rendering.RenderSettings
+        {
+            Width = entry.Width,
+            Height = entry.Height,
+            Samples = entry.Samples,
+            Bounces = entry.Bounces,
+            Seed = entry.Seed,
+            SkyStrength = entry.SkyStrength,
+            SkyTop = Colour(entry.SkyTop, defaults.SkyTop),
+            SkyHorizon = Colour(entry.SkyHorizon, defaults.SkyHorizon),
+            TransparentBackground = entry.TransparentBackground,
+            Exposure = entry.Exposure,
+            EmissionStrength = entry.EmissionStrength,
+            Fog = entry.Fog,
+        }.Clamped();
     }
 
     private static VoxelModifier ReadModifier(LevelManifest.ModifierEntry entry)

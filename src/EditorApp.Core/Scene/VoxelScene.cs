@@ -39,6 +39,9 @@ public sealed class VoxelScene
 
     public Palette Palette { get; private set; }
 
+    /// <summary>How the level is rendered: size, samples, sky, exposure. Saved with it.</summary>
+    public Rendering.RenderSettings RenderSettings { get; set; } = new();
+
     /// <summary>
     /// The voxel size every visible object shares, or null when they differ (or there are none). A
     /// single number is only worth showing when it describes the whole level.
@@ -487,6 +490,7 @@ public sealed class VoxelScene
             _ambient = _ambient,
             FocusId = FocusId,
             Palette = Palette.Clone(),
+            RenderSettings = RenderSettings,
         };
 
         copy._selected.UnionWith(_selected);
