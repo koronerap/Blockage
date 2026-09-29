@@ -97,7 +97,7 @@ public static class Generators
     }
 
     /// <summary>What each kind of thing is painted in: the nearest the palette has.</summary>
-    private sealed class Colours(Palette palette)
+    internal sealed class Colours(Palette palette)
     {
         public byte Grass { get; } = palette.Nearest(new Color32(92, 158, 58, 255));
         public byte DarkGrass { get; } = palette.Nearest(new Color32(70, 128, 46, 255));
@@ -144,27 +144,34 @@ public static class Generators
         {
             // Value noise gathers round the middle: spread it back over the whole height.
             float n = Math.Clamp((Noise.Fractal2(x * frequency, z * frequency, seed, 5, persistence) - 0.2f) / 0.6f, 0f, 1f);
-            int top = 1 + (int)MathF.Round(n * height);
+            Ground(cells, c, x, z, 1 + (int)MathF.Round(n * height), height, water, seed);
+        }
+    }
 
-            for (int y = 0; y < top; y++)
+    /// <summary>
+    /// One column of ground, <paramref name="top"/> voxels high: grass on it — sand by the water, snow
+    /// high up — earth under that and stone below, and water over it up to <paramref name="water"/>.
+    /// </summary>
+    internal static void Ground(Dictionary<Int3, byte> cells, Colours c, int x, int z, int top, int height, int water, int seed)
+    {
+        for (int y = 0; y < top; y++)
+        {
+            int below = top - 1 - y;
+            byte colour = below switch
             {
-                int below = top - 1 - y;
-                byte colour = below switch
-                {
-                    0 when top <= water + 1 && water > 0 => c.Sand,
-                    0 when height >= 12 && top > height * 0.85f => c.Snow,
-                    0 => Noise.Hash(x, 0, z, seed + 7) < 0.25f ? c.DarkGrass : c.Grass,
-                    < 3 => c.Earth,
-                    _ => c.Stone,
-                };
+                0 when top <= water + 1 && water > 0 => c.Sand,
+                0 when height >= 12 && top > height * 0.85f => c.Snow,
+                0 => Noise.Hash(x, 0, z, seed + 7) < 0.25f ? c.DarkGrass : c.Grass,
+                < 3 => c.Earth,
+                _ => c.Stone,
+            };
 
-                cells[new Int3(x, y, z)] = colour;
-            }
+            cells[new Int3(x, y, z)] = colour;
+        }
 
-            for (int y = top; y < water; y++)
-            {
-                cells[new Int3(x, y, z)] = c.Water;
-            }
+        for (int y = top; y < water; y++)
+        {
+            cells[new Int3(x, y, z)] = c.Water;
         }
     }
 

@@ -1333,6 +1333,8 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.Export: _export?.Show(); break;
             case EditorAction.ImportVox: _project?.ImportVox(); break;
             case EditorAction.ExportVox: _project?.ExportVox(); break;
+            case EditorAction.ImportSprite: ImageImportDialog.Show(ImageImport.Sprite); break;
+            case EditorAction.ImportHeightmap: ImageImportDialog.Show(ImageImport.Heightmap); break;
 
             case EditorAction.ToolSelect: SwitchTool(EditorTool.Select); break;
             case EditorAction.ToolTransform: SwitchTool(EditorTool.Transform); break;
@@ -2228,6 +2230,8 @@ public sealed class EditorApplication : IDisposable
         _library?.Draw(_session);
         ScatterWindow.Draw(_session);
         HistoryWindow.Draw(_session);
+        ImageImportDialog.Draw();
+        PlaceImportedImage();
         if (_afterUi is { } afterUi)
         {
             _afterUi = null;
@@ -2293,6 +2297,26 @@ public sealed class EditorApplication : IDisposable
         {
             (Vector3 point, _) = SurfaceUnder(dropped.At);
             _session.PlaceProp(droppedProp, dropped.Entry.Name, point);
+        }
+    }
+
+    /// <summary>An image made into voxels goes where the view looks, into a move as anything added does.</summary>
+    private void PlaceImportedImage()
+    {
+        if (IsDragging() || ImageImportDialog.TakeMade() is not { } made)
+        {
+            return;
+        }
+
+        (Vector3 point, _) = SurfaceUnder(null);
+        IReadOnlyList<VoxelObject> placed = _session.PlaceProp(made.Scene, made.Name, point);
+        if (placed.Count > 0)
+        {
+            ReportLog.Shared.Post($"Added {made.Name} - {placed.Sum(o => o.Grid.SolidCount):N0} voxels.", ReportKind.Info);
+            if (SwitchTool(EditorTool.Transform))
+            {
+                _session.TransformMode = TransformMode.Move;
+            }
         }
     }
 

@@ -172,6 +172,29 @@ public static class MainMenu
                     project.ImportVox();
                 }
 
+                ImGui.Separator();
+
+                // Into the level in front, where the view looks.
+                if (ImGui.MenuItem("Image as a Sprite (.png)...", Shortcut.Of(EditorAction.ImportSprite)))
+                {
+                    ImageImportDialog.Show(ImageImport.Sprite);
+                }
+
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Pixel art stood up in voxels, each pixel as deep as you like.");
+                }
+
+                if (ImGui.MenuItem("Heightmap as Terrain (.png)...", Shortcut.Of(EditorAction.ImportHeightmap)))
+                {
+                    ImageImportDialog.Show(ImageImport.Heightmap);
+                }
+
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Ground as high as the image is bright, dressed in grass, earth and stone.");
+                }
+
                 ImGui.EndMenu();
             }
 
