@@ -45,9 +45,16 @@ Get the latest build from [**Releases**](https://github.com/koronerap/Blockage/r
 - **A palette with materials.** 256 colours, each with its own glow, metal, roughness and glass, shown
   in the viewport and exported to glTF; palettes in and out as .gpl, .hex and .png (Lospec's too),
   ramps, and a library of palettes.
+- **Render.** A path tracer for presentation pictures: soft shadows, light bounced off walls, glowing
+  colours, metal and glass, sky light, fog, bloom and depth of field. It runs on every CPU core, or
+  on the graphics card where OpenGL 4.3 is available, and both give the same picture. F12 renders an
+  image to save as a PNG, see-through if you like. A fourth, *Rendered* shading clears in the
+  viewport while the view is still. Cameras (perspective, orthographic or isometric) are kept with
+  the level; look through one with Numpad 0. Turntables can be saved as GIF, PNGs or MP4 (with
+  ffmpeg), and sprite sheets from any number of angles.
 - **Add with Shift+A.** Cubes, spheres, cylinders, cones, stairs, arches, voxel lettering and more;
   ready-made props — crates, barrels, tables, trees — and lights, set down on the surface under the
-  cursor and sized afterwards in an *Adjust* panel.
+  cursor and sized afterwards in an *Adjust* panel; cameras, where the view stands.
 - **Blender where it helps.** F3 command search, a right-click context menu, overlays, X-Ray and
   wireframe, an Outliner with hierarchy, rebindable keys (a *Default* and a *Mimic Busters* preset), a
   welcome screen with templates.
@@ -75,6 +82,7 @@ changes them.
 | Tools | G move · R rotate · E extrude · B paint · S sculpt · Ctrl+R loop cut · V view |
 | Edit Mode | Tab into the active object and out; P separates the chosen voxels |
 | Add | Shift+A |
+| Render | F12 renders an image · Numpad 0 looks through the render camera · Ctrl+Alt+Numpad 0 moves it to the view |
 | Search for any command | F3 |
 | Context menu | right click |
 | Snap | hold Shift while dragging; Shift+Tab keeps it on |
