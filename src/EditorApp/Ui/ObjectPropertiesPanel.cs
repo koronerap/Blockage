@@ -60,6 +60,11 @@ public static class ObjectPropertiesPanel
             DrawVoxels(session, focus);
         }
 
+        if (Props.Section("Volume", openByDefault: false))
+        {
+            DrawVolume(session);
+        }
+
         if (Props.Section("Relations", openByDefault: false))
         {
             DrawRelations(session, focus);
@@ -213,6 +218,55 @@ public static class ObjectPropertiesPanel
         {
             ImGui.SetTooltip(problem ?? ObjectMenu.SubdivideTip);
         }
+    }
+
+    /// <summary>The volume filters and resampling, with their amounts, for the selected objects.</summary>
+    private static void DrawVolume(EditorSession session)
+    {
+        int thickness = session.HollowThickness;
+        if (Props.Int("Wall", "hollow-thickness", ref thickness, 0.1f, 1, 64, "%d voxels"))
+        {
+            session.HollowThickness = thickness;
+        }
+
+        if (Props.Buttons(string.Empty, "hollow", "Hollow") == 0)
+        {
+            session.HollowSelected();
+        }
+
+        Tooltip("Empties the inside, keeping walls this thick from every open face.");
+
+        switch (Props.Buttons(string.Empty, "grow-shrink", "Thicken", "Thin", "Smooth"))
+        {
+            case 0: session.ThickenSelected(); break;
+            case 1: session.ThinSelected(); break;
+            case 2: session.SmoothSelected(); break;
+        }
+
+        int minimum = session.LooseMinimum;
+        if (Props.Int("Loose under", "loose-minimum", ref minimum, 0.2f, 1, 100_000, "%d voxels"))
+        {
+            session.LooseMinimum = minimum;
+        }
+
+        if (Props.Buttons(string.Empty, "loose", "Remove Loose Pieces") == 0)
+        {
+            session.RemoveLooseSelected();
+        }
+
+        float factor = session.ScaleFactor;
+        if (Props.Float("Scale", "scale-factor", ref factor, 0.01f, 0.1f, 8f, "x%.2f"))
+        {
+            session.ScaleFactor = factor;
+        }
+
+        switch (Props.Buttons(string.Empty, "resample", "Scale", "Halve Resolution"))
+        {
+            case 0: session.ScaleSelected(); break;
+            case 1: session.HalveSelected(); break;
+        }
+
+        Tooltip("On every selected object; each one undo step.");
     }
 
     private static Vector3 EulerFor(IPlaceable target)

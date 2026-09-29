@@ -142,6 +142,116 @@ public static class ObjectMenu
         log.Post(joined > 0 ? $"Joined {joined} into {target.Name}.{skipped}" : $"Nothing joined into {target.Name}.{skipped}", refused > 0 ? ReportKind.Warning : ReportKind.Info);
     }
 
+    /// <summary>A boolean of the other selected objects into the active one, saying what came of it.</summary>
+    public static void Boolean(EditorSession session, BooleanOperation operation, ReportLog log)
+    {
+        string target = session.Scene.Focus?.Name ?? string.Empty;
+        int used = session.BooleanSelected(operation, out string? problem);
+        if (used == 0)
+        {
+            log.Post(problem ?? "Nothing to do.", ReportKind.Warning);
+            return;
+        }
+
+        string verb = operation switch
+        {
+            BooleanOperation.Union => "Added",
+            BooleanOperation.Difference => "Cut",
+            _ => "Intersected",
+        };
+        string what = used == 1 ? "one object" : $"{used} objects";
+        log.Post(operation == BooleanOperation.Intersect ? $"{verb} {target} with {what}." : $"{verb} {what} {(operation == BooleanOperation.Union ? "into" : "from")} {target}.");
+    }
+
+    /// <summary>
+    /// Booleans with the other selected objects, and the filters and resampling of whole volumes —
+    /// the menu's Volume part, shared by the menu bar, the right click and the Outliner.
+    /// </summary>
+    public static void DrawVolumeMenus(EditorSession session)
+    {
+        bool several = session.SelectedObjects.Skip(1).Any() && session.SelectedLightId == 0;
+        if (ImGui.BeginMenu("Boolean", several && !session.InEditMode))
+        {
+            if (ImGui.MenuItem("Union"))
+            {
+                Boolean(session, BooleanOperation.Union, ReportLog.Shared);
+            }
+
+            if (ImGui.MenuItem("Difference"))
+            {
+                Boolean(session, BooleanOperation.Difference, ReportLog.Shared);
+            }
+
+            if (ImGui.MenuItem("Intersect"))
+            {
+                Boolean(session, BooleanOperation.Intersect, ReportLog.Shared);
+            }
+
+            ImGui.Separator();
+            bool keep = session.BooleanKeepsOthers;
+            if (ImGui.MenuItem("Keep the Others", null, ref keep))
+            {
+                session.BooleanKeepsOthers = keep;
+            }
+
+            ImGui.TextDisabled("Into the active object, from the rest selected.");
+            ImGui.EndMenu();
+        }
+
+        if (!several && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            ImGui.SetTooltip("Select the objects to use, then the one to change last.");
+        }
+
+        bool any = session.InEditMode || session.SelectedObjects.Any(o => !o.IsEmpty);
+        if (ImGui.BeginMenu("Volume", any))
+        {
+            if (ImGui.MenuItem($"Hollow  (walls {session.HollowThickness} thick)"))
+            {
+                session.HollowSelected();
+            }
+
+            if (ImGui.MenuItem("Thicken"))
+            {
+                session.ThickenSelected();
+            }
+
+            if (ImGui.MenuItem("Thin"))
+            {
+                session.ThinSelected();
+            }
+
+            if (ImGui.MenuItem("Smooth"))
+            {
+                session.SmoothSelected();
+            }
+
+            if (ImGui.MenuItem($"Remove Loose Pieces  (under {session.LooseMinimum})"))
+            {
+                session.RemoveLooseSelected();
+            }
+
+            ImGui.Separator();
+            if (ImGui.MenuItem("Halve Resolution"))
+            {
+                session.HalveSelected();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Subdivide's reverse: every 2 x 2 x 2 voxels become one of twice the size,\nin the colour most of them had. The object keeps its size and place.");
+            }
+
+            if (ImGui.MenuItem($"Scale x{session.ScaleFactor:0.##}"))
+            {
+                session.ScaleSelected();
+            }
+
+            ImGui.TextDisabled("The amounts are in Properties, under Volume.");
+            ImGui.EndMenu();
+        }
+    }
+
     /// <summary>The selected objects and lights, objects first.</summary>
     private static IEnumerable<IPlaceable> Selected(EditorSession session) =>
         session.SelectedObjects.Cast<IPlaceable>().Concat(session.SelectedLights);
@@ -404,6 +514,7 @@ public static class ObjectMenu
         }
 
         ImGui.Separator();
+        DrawVolumeMenus(session);
 
         string? subdivideProblem = objects.Count == 0
             ? "Nothing is selected."

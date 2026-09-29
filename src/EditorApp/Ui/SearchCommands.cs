@@ -173,6 +173,39 @@ public static class SearchCommands
         Toggle(commands, "view.gizmo.tools", "Tool gizmos", "Gizmos", () => viewport.ToolGizmos = !viewport.ToolGizmos, "arrow transform extrude");
         Toggle(commands, "view.gizmo.lights", "Light aim lines", "Gizmos", () => viewport.LightGizmos = !viewport.LightGizmos);
 
+        // ---- Object: booleans and volumes
+        foreach ((BooleanOperation operation, string name, string keywords) in new[]
+        {
+            (BooleanOperation.Union, "Boolean union", "add merge combine"),
+            (BooleanOperation.Difference, "Boolean difference", "subtract cut carve minus"),
+            (BooleanOperation.Intersect, "Boolean intersect", "and common overlap"),
+        })
+        {
+            commands.Add(new($"object.boolean.{operation}".ToLowerInvariant(), name, "Object", () => ObjectMenu.Boolean(session, operation, ReportLog.Shared))
+            {
+                Keywords = keywords,
+                Problem = () => session.SelectedObjects.Skip(1).Any() && !session.InEditMode ? null : "Select the objects to use, then the one to change last.",
+            });
+        }
+
+        foreach ((string id, string name, Func<int> filter, string keywords) in new (string, string, Func<int>, string)[]
+        {
+            ("object.volume.hollow", "Hollow", session.HollowSelected, "shell empty inside"),
+            ("object.volume.thicken", "Thicken", session.ThickenSelected, "dilate grow fatten"),
+            ("object.volume.thin", "Thin", session.ThinSelected, "erode shrink"),
+            ("object.volume.smooth", "Smooth volume", session.SmoothSelected, "blur spikes holes"),
+            ("object.volume.loose", "Remove loose pieces", session.RemoveLooseSelected, "clean crumbs islands"),
+            ("object.volume.halve", "Halve resolution", session.HalveSelected, "downsample decimate unsubdivide"),
+            ("object.volume.scale", "Scale in voxels", session.ScaleSelected, "resize resample"),
+        })
+        {
+            commands.Add(new(id, name, "Object", () => filter())
+            {
+                Keywords = keywords,
+                Problem = () => NoVoxels(session) is null || session.InEditMode ? null : NoVoxels(session),
+            });
+        }
+
         // ---- Object
         foreach ((string name, RotateDirection direction) in Turns)
         {
