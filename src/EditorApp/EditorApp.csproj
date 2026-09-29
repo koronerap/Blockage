@@ -20,7 +20,7 @@
     <!-- The one place the desktop's version is written; the welcome screen reads it back from the
          assembly. It goes up with each milestone of the plan, "-dev" while the next is under way.
          The phone's ApplicationDisplayVersion stays at what the phone has until it catches up. -->
-    <Version>0.8.0</Version>
+    <Version>0.9.0-dev</Version>
 
     <!-- Generated, not drawn by hand: the write-icon switch renders it from AppIcon.
          Committed so a build needs no extra step. -->
