@@ -203,6 +203,13 @@ public sealed class Keymap
             [EditorAction.DeselectAll] = [KeyChord.AltOf(Key.A)],
             [EditorAction.InvertSelection] = [KeyChord.Ctrl(Key.I)],
             [EditorAction.Join] = [KeyChord.Ctrl(Key.J)],
+
+            // Blender's: Tab into the object and out, P to separate, Ctrl and the numpad's plus and
+            // minus to grow and shrink — with the number row's for a laptop.
+            [EditorAction.ToggleEditMode] = [new(Key.Tab)],
+            [EditorAction.Separate] = [new(Key.P)],
+            [EditorAction.GrowSelection] = [KeyChord.Ctrl(Key.KeypadAdd), KeyChord.Ctrl(Key.Equal)],
+            [EditorAction.ShrinkSelection] = [KeyChord.Ctrl(Key.KeypadSubtract), KeyChord.Ctrl(Key.Minus)],
             [EditorAction.ClearParent] = [KeyChord.AltOf(Key.P)],
             [EditorAction.Search] = [new(Key.F3)],
             [EditorAction.AddMenu] = [KeyChord.ShiftOf(Key.A)],
@@ -260,7 +267,7 @@ public sealed class Keymap
         shared[EditorAction.ToolPaint] = [new(Key.B)];
         shared[EditorAction.ToolLoopCut] = [KeyChord.Ctrl(Key.R)];
         shared[EditorAction.ToolView] = [new(Key.V)];
-        shared[EditorAction.ToolOtherMode] = [new(Key.Tab)];
+        shared[EditorAction.ToolOtherMode] = [new(Key.Q)];
         shared[EditorAction.ToolCycleMode] = [new(Key.X)];
         shared[EditorAction.Redo] = [KeyChord.CtrlShift(Key.Z), KeyChord.Ctrl(Key.Y)];
         shared[EditorAction.Duplicate] = [KeyChord.Ctrl(Key.D), KeyChord.ShiftOf(Key.D)];

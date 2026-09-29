@@ -122,9 +122,11 @@ public static class ViewportOverlay
 
         string focus = session.SelectedLight is { } light
             ? $"{light.Name}  ·  {light.Kind} light"
-            : session.Scene.Focus is { } o
-                ? $"{o.Name}{(o.Locked ? "  (locked)" : string.Empty)}"
-                : string.Empty;
+            : session.EditObject is { } edited
+                ? $"{edited.Name}  ·  Edit Mode{(session.VoxelSelection.IsEmpty ? string.Empty : $"  ·  {session.VoxelSelection.Count:N0} voxels chosen")}"
+                : session.Scene.Focus is { } o
+                    ? $"{o.Name}{(o.Locked ? "  (locked)" : string.Empty)}"
+                    : string.Empty;
 
         Vector2 at = viewport.Position + new Vector2(58f, 10f);
         Text(drawList, at, view, Theme.Text with { W = 0.9f });

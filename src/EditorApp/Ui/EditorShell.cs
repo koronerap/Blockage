@@ -1,5 +1,6 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
+using EditorApp.Input;
 using EditorApp.Core.Raycast;
 using EditorApp.Rendering;
 using ImGuiNET;
@@ -116,6 +117,22 @@ public sealed class EditorShell(LayoutSettings layout)
         BeginPanel("##tool-options", position, size, ImGuiWindowFlags.NoScrollbar);
 
         EditorSession session = context.Session;
+
+        // Blender's mode menu, at the head of the strip.
+        string[] modes = ["Object Mode", "Edit Mode"];
+        int mode = session.InEditMode ? 1 : 0;
+        ImGui.SetNextItemWidth(ImGui.CalcTextSize("Object Mode").X + (ImGui.GetFrameHeight() * 1.6f));
+        if (ImGui.Combo("##mode", ref mode, modes, modes.Length) && (mode == 1) != session.InEditMode)
+        {
+            ObjectMenu.ToggleEditMode(session, ReportLog.Shared);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip($"Object Mode chooses and moves objects; Edit Mode works inside the active one, on its voxels.{Shortcut.Hint(EditorAction.ToggleEditMode)}");
+        }
+
+        ImGui.SameLine(0f, 10f);
         ImGui.AlignTextToFramePadding();
         ImGui.TextUnformatted(ToolColumn.Describe(session.ActiveTool).Name);
         ImGui.SameLine(0f, 14f);

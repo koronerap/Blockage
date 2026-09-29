@@ -22,6 +22,10 @@ public static class ToolOptions
     {
         switch (session.ActiveTool)
         {
+            case EditorTool.Select when session.InEditMode:
+                DrawVoxelSelect(session);
+                break;
+
             case EditorTool.Transform:
                 DrawTransform(session);
                 break;
@@ -34,6 +38,30 @@ public static class ToolOptions
                 DrawPaint(session);
                 break;
         }
+    }
+
+    /// <summary>Inside an object: what a click of the Select tool takes.</summary>
+    private static void DrawVoxelSelect(EditorSession session)
+    {
+        float size = ImGui.GetFrameHeight();
+        (VoxelSelectMode Mode, Icons.Painter Icon, string Tip)[] modes =
+        [
+            (VoxelSelectMode.Box, Icons.BoxSelect, "Box - a click takes one voxel, a drag the voxels in a box"),
+            (VoxelSelectMode.Wand, Icons.Pattern, "Wand - a click takes the joined voxels of its colour"),
+            (VoxelSelectMode.Colour, Icons.Bucket, "Colour - a click takes every voxel of its colour"),
+        ];
+
+        foreach ((VoxelSelectMode mode, Icons.Painter icon, string tip) in modes)
+        {
+            if (IconButton.Draw($"voxel-select-{mode}", icon, session.VoxelSelectMode == mode, $"{tip}{Shortcut.Hint(EditorAction.ToolOtherMode)}", size))
+            {
+                session.VoxelSelectMode = mode;
+            }
+
+            ImGui.SameLine(0f, 4f);
+        }
+
+        ImGui.NewLine();
     }
 
     private static void DrawTransform(EditorSession session)

@@ -580,6 +580,7 @@ public sealed class EditorApplication : IDisposable
 
         (Vector3 point, Vector3 normal) = SurfaceUnder(at);
         float voxelSize = _session.Scene.Focus?.VoxelSize ?? 1f;
+        _session.ExitEditMode();
 
         if (choice.Light is { } kind)
         {
@@ -663,10 +664,22 @@ public sealed class EditorApplication : IDisposable
     private ScenePick? PickAt(Vector2 local, bool selectedOnly)
     {
         Ray ray = _camera.ScreenPointToRay(local, _viewport.Size);
-        return _session.Scene.TryPick(ray, out ScenePick pick, skip: selectedOnly ? o => !_session.IsSelected(o.Id) : null)
-            ? pick
-            : null;
+
+        // Inside an object, only it is there to reach.
+        Func<VoxelObject, bool>? skip = _session.EditObject is { } edited
+            ? o => o.Id != edited.Id
+            : selectedOnly ? o => !_session.IsSelected(o.Id) : null;
+
+        return _session.Scene.TryPick(ray, out ScenePick pick, skip: skip) ? pick : null;
     }
+
+    /// <summary>The voxel of the object in Edit Mode under a point of the viewport, or null.</summary>
+    private Int3? VoxelUnder(Vector2 local) => PickAt(local, selectedOnly: false) is { } pick ? pick.Hit.Voxel : null;
+
+    private IEnumerable<Int3> VoxelsInBox(Vector2 min, Vector2 max) =>
+        _session.EditObject is { } edited
+            ? SelectInteraction.VoxelsInBox(edited, _camera, _viewport.Size, min, max, throughWalls: View.XRay)
+            : [];
 
     /// <summary>What a selecting click at a point lands on: a light's icon first, then an object; 0 for nothing.</summary>
     private int ThingUnder(Vector2 local)
@@ -847,7 +860,14 @@ public sealed class EditorApplication : IDisposable
         }
         else if (released)
         {
-            _select!.OnRelease(ThingUnder, ThingsInBox);
+            if (_session.InEditMode)
+            {
+                _select!.OnReleaseVoxels(VoxelUnder, VoxelsInBox);
+            }
+            else
+            {
+                _select!.OnRelease(ThingUnder, ThingsInBox);
+            }
         }
     }
 
@@ -1048,10 +1068,20 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToolSelect: SwitchTool(EditorTool.Select); break;
             case EditorAction.ToolTransform: SwitchTool(EditorTool.Transform); break;
 
+            // Inside an object, the selection keys choose its voxels.
+            case EditorAction.SelectAll when !IsDragging() && _session.InEditMode: _session.SelectAllVoxels(); break;
+            case EditorAction.DeselectAll when !IsDragging() && _session.InEditMode: _session.DeselectAllVoxels(); break;
+            case EditorAction.InvertSelection when !IsDragging() && _session.InEditMode: _session.InvertVoxelSelection(); break;
             case EditorAction.SelectAll when !IsDragging(): _session.SelectAll(); break;
             case EditorAction.DeselectAll when !IsDragging(): _session.DeselectAll(); break;
             case EditorAction.InvertSelection when !IsDragging(): _session.InvertSelection(); break;
-            case EditorAction.Join when !IsDragging(): ObjectMenu.JoinSelected(_session, ReportLog.Shared); break;
+            case EditorAction.Join when !IsDragging() && !_session.InEditMode: ObjectMenu.JoinSelected(_session, ReportLog.Shared); break;
+
+            case EditorAction.ToggleEditMode when !IsDragging(): ObjectMenu.ToggleEditMode(_session, ReportLog.Shared); break;
+            case EditorAction.GrowSelection when !IsDragging(): _session.GrowVoxelSelection(); break;
+            case EditorAction.ShrinkSelection when !IsDragging(): _session.ShrinkVoxelSelection(); break;
+            case EditorAction.Separate when !IsDragging(): ObjectMenu.Separate(_session, ReportLog.Shared); break;
+            case EditorAction.FillSelection when !IsDragging(): ObjectMenu.Fill(_session, ReportLog.Shared); break;
             case EditorAction.ToolExtrude: SwitchTool(EditorTool.Extrude); break;
             case EditorAction.ToolPaint: SwitchTool(EditorTool.Paint); break;
             case EditorAction.ToolLoopCut: SwitchTool(EditorTool.LoopCut); break;
@@ -1086,7 +1116,8 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.Cut when !IsDragging(): ClipboardActions.Cut(_session, ReportLog.Shared); break;
             case EditorAction.Paste when !IsDragging(): ClipboardActions.Paste(_session, _camera, ReportLog.Shared); break;
 
-            // The object keys act on everything selected, lights included.
+            // The object keys act on everything selected, lights included — or, inside an object, on
+            // its chosen voxels.
             case EditorAction.Duplicate when !IsDragging(): ObjectMenu.Duplicate(_session, _camera); break;
 
             case EditorAction.ShowAll:
@@ -1098,8 +1129,8 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case EditorAction.Hide when !IsDragging(): _session.HideSelected(); break;
-            case EditorAction.Lock when !IsDragging(): ObjectMenu.LockSelected(_session, ReportLog.Shared); break;
+            case EditorAction.Hide when !IsDragging() && !_session.InEditMode: _session.HideSelected(); break;
+            case EditorAction.Lock when !IsDragging() && !_session.InEditMode: ObjectMenu.LockSelected(_session, ReportLog.Shared); break;
 
             case EditorAction.UnlockAll:
                 if (_session.UnlockAll() is > 0 and var unlocked)
@@ -1109,6 +1140,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
+            case EditorAction.Delete when !IsDragging() && _session.InEditMode: _session.DeleteSelectedVoxels(); break;
             case EditorAction.Delete when !IsDragging(): _session.DeleteSelected(); break;
 
             case EditorAction.Rename:
@@ -1123,11 +1155,11 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
-            case EditorAction.Subdivide when !IsDragging(): ObjectMenu.SubdivideSelected(_session, ReportLog.Shared); break;
+            case EditorAction.Subdivide when !IsDragging() && !_session.InEditMode: ObjectMenu.SubdivideSelected(_session, ReportLog.Shared); break;
 
             // Blender's Ctrl+P: with several selected, the rest go under the active one; with one, a
             // list of what it could go under.
-            case EditorAction.SetParent when !IsDragging():
+            case EditorAction.SetParent when !IsDragging() && !_session.InEditMode:
                 if (_session.SelectedCount > 1)
                 {
                     ObjectMenu.ParentSelected(_session, ReportLog.Shared);
@@ -1146,7 +1178,7 @@ public sealed class EditorApplication : IDisposable
                 AddMenu.Open(input.Mice[0].Position);
                 break;
 
-            case EditorAction.ClearParent when !IsDragging():
+            case EditorAction.ClearParent when !IsDragging() && !_session.InEditMode:
                 if (_session.ClearParentOfSelected() is > 0 and var freed)
                 {
                     ReportLog.Shared.Post(freed == 1 ? "Cleared the parent." : $"Cleared the parents of {freed}.");
@@ -1345,6 +1377,11 @@ public sealed class EditorApplication : IDisposable
     {
         switch (_session.ActiveTool)
         {
+            // Inside an object: box, wand, colour, and round again.
+            case EditorTool.Select when _session.InEditMode:
+                _session.VoxelSelectMode = (VoxelSelectMode)(((int)_session.VoxelSelectMode + 1) % 3);
+                break;
+
             case EditorTool.Transform:
                 _session.TransformMode = _session.TransformMode == TransformMode.Move
                     ? TransformMode.Rotate
@@ -1531,7 +1568,7 @@ public sealed class EditorApplication : IDisposable
 
         // What is selected, boxed in Blender's orange — the active one lighter — and, faintly, what
         // the pointer is over, which a click would select.
-        if (View.Overlays)
+        if (View.Overlays && !_session.InEditMode)
         {
             foreach (VoxelObject chosen in _session.SelectedObjects)
             {
@@ -1569,6 +1606,12 @@ public sealed class EditorApplication : IDisposable
         // something the paint tool is about to do.
         EditorOverlays.AddExtrudeSelection(lines, _session, _extrude!);
 
+        // Inside an object: the voxels chosen, over every tool, since they are what most of them act on.
+        if (_session.EditObject is { } edited)
+        {
+            EditorOverlays.AddVoxelSelection(lines, edited.Grid, _session.VoxelSelection);
+        }
+
         // Over the model, not into it: a plane through the middle of the model is mostly inside it.
         if (ShowMirrorPlanes)
         {
@@ -1579,6 +1622,10 @@ public sealed class EditorApplication : IDisposable
         {
             switch (_session.ActiveTool)
             {
+                // Choosing objects is shown by their outlines, not by the voxel under the pointer.
+                case EditorTool.Select or EditorTool.Transform when !_session.InEditMode:
+                    break;
+
                 case EditorTool.Extrude:
                     EditorOverlays.AddExtrudeHover(lines, _session, _extrude!, hit, HeldSelectionOperation());
                     break;
@@ -1862,6 +1909,20 @@ public sealed class EditorApplication : IDisposable
     {
         bool any = false;
         Vector3 min = Vector3.Zero, max = Vector3.Zero;
+
+        // Inside an object, what is chosen of it.
+        if (_session.EditObject is { } edited && _session.VoxelSelection.TryGetBounds(out Int3 low, out Int3 high))
+        {
+            foreach (Vector3 corner in Snapping.Corners((low.ToVector3(), high.ToVector3() + Vector3.One), edited.Transform))
+            {
+                min = any ? Vector3.Min(min, corner) : corner;
+                max = any ? Vector3.Max(max, corner) : corner;
+                any = true;
+            }
+
+            _camera.FrameBox(min, max);
+            return;
+        }
 
         IEnumerable<VoxelObject> framed = _session.SelectedCount > 0
             ? _session.SelectedObjects

@@ -11,7 +11,7 @@ namespace EditorApp.Core.Editing;
 /// sub-modes. Deliberately free of any windowing or GL dependency so tool behaviour can be tested
 /// without a context.
 /// </summary>
-public sealed class EditorSession
+public sealed partial class EditorSession
 {
     private VoxelEditCommand? _stroke;
     private VoxelEditCommand? _extrudePreview;
@@ -56,6 +56,12 @@ public sealed class EditorSession
         if (objectId == Scene.FocusId)
         {
             return true;
+        }
+
+        // In Edit Mode the tools stay inside the object being edited.
+        if (InEditMode)
+        {
+            return false;
         }
 
         // A locked object is passed over: that is what locking it is for.
@@ -355,6 +361,7 @@ public sealed class EditorSession
         // Selected alongside the one it came out of, so the tools can go on with either.
         Scene.Select(command.Created!.Id);
         SelectedLightId = 0;
+        KeepEditModeHonest();
 
         Selection = null;
         HasUnsavedChanges = true;
@@ -444,6 +451,12 @@ public sealed class EditorSession
     /// </summary>
     public void ApplyTransform(IPlaceable target, ObjectTransform transform)
     {
+        if (target is VoxelSelectionHandle handle)
+        {
+            DragSelectionHandle(handle, transform);
+            return;
+        }
+
         target.Transform = transform;
         HasUnsavedChanges = true;
     }
@@ -451,6 +464,11 @@ public sealed class EditorSession
     /// <summary>Records a finished gizmo drag as one undo step.</summary>
     public bool PushTransformEdit(IPlaceable target, ObjectTransform before, string name)
     {
+        if (target is VoxelSelectionHandle)
+        {
+            return EndSelectionDrag();
+        }
+
         if (before == target.Transform)
         {
             return false;
@@ -488,6 +506,7 @@ public sealed class EditorSession
         var command = new DeleteObjectCommand(Scene, target);
         command.Redo();
         History.Push(command);
+        KeepEditModeHonest();
 
         HasUnsavedChanges = true;
         return true;
@@ -549,6 +568,13 @@ public sealed class EditorSession
         if (IsStrokeActive || IsExtruding || !Scene.CanSelect(id))
         {
             return false;
+        }
+
+        // Choosing another object is leaving the one being edited, as clicking one in Blender's
+        // outliner is.
+        if (InEditMode && id != _editObjectId)
+        {
+            ExitEditMode();
         }
 
         if (!extend)
@@ -707,6 +733,8 @@ public sealed class EditorSession
     /// <summary>What was just made becomes the selection, and the first of it the active one.</summary>
     private void SelectOnly(IEnumerable<int> ids)
     {
+        // Something new made is chosen in Object Mode, as Blender leaves you after adding.
+        ExitEditMode();
         DeselectAll();
         int first = 0;
         foreach (int id in ids)
@@ -731,6 +759,12 @@ public sealed class EditorSession
     {
         get
         {
+            // Inside an object, the gizmo is on its chosen voxels.
+            if (InEditMode)
+            {
+                return SelectionHandle is { } handle ? [handle] : [];
+            }
+
             var targets = new List<IPlaceable>();
             targets.AddRange(Scene.SelectedObjects.Where(o => !o.Locked && !o.IsEmpty));
             targets.AddRange(Scene.SelectedLights.Where(l => !l.Locked));
@@ -779,6 +813,11 @@ public sealed class EditorSession
     /// <summary>Records a finished drag of several things as one undo step.</summary>
     public bool PushTransformEdits(IReadOnlyList<(IPlaceable Target, ObjectTransform Before)> moved, string name)
     {
+        if (moved.Any(m => m.Target is VoxelSelectionHandle))
+        {
+            return EndSelectionDrag();
+        }
+
         List<ICommand> steps = [.. moved
             .Where(m => m.Before != m.Target.Transform)
             .Select(m => (ICommand)new TransformCommand(m.Target, m.Before, m.Target.Transform, name))];
@@ -831,6 +870,7 @@ public sealed class EditorSession
         }
 
         History.Push(CompositeCommand.Of(Several("Delete", doomed), steps));
+        KeepEditModeHonest();
         HasUnsavedChanges = true;
         return doomed.Count;
     }
@@ -1174,6 +1214,15 @@ public sealed class EditorSession
     /// </summary>
     public int Copy()
     {
+        // In Edit Mode, the chosen voxels.
+        if (!CopiesSelection && EditObject is { } edited && !VoxelSelection.IsEmpty)
+        {
+            VoxelWorld chosen = ClipboardOperations.Extract(edited.Grid, VoxelSelection.Cells);
+            _clipboard = [new VoxelClipboard(chosen, edited.Transform, edited.Name)];
+            _pasteCount = 0;
+            return chosen.SolidCount;
+        }
+
         // Behind the Extrude selection: the voxels of the one object it is on.
         if (CopiesSelection && Scene.Focus is { } focus)
         {
@@ -1214,6 +1263,13 @@ public sealed class EditorSession
     {
         EndStroke();
         CancelExtrude();
+
+        if (!CopiesSelection && InEditMode && !VoxelSelection.IsEmpty)
+        {
+            int taken = Copy();
+            DeleteSelectedVoxels();
+            return taken;
+        }
 
         bool region = CopiesSelection;
         if (!region)
@@ -1345,6 +1401,7 @@ public sealed class EditorSession
         var command = new JoinCommand(Scene, source, target, map);
         command.Redo();
         History.Push(command);
+        KeepEditModeHonest();
         HasUnsavedChanges = true;
         return true;
     }
@@ -1697,6 +1754,7 @@ public sealed class EditorSession
         if (!visible)
         {
             Scene.Deselect(target.Id);
+            KeepEditModeHonest();
         }
 
         if (!visible && target.Id == Scene.FocusId)
@@ -1733,6 +1791,7 @@ public sealed class EditorSession
         if (locked)
         {
             Scene.Deselect(target.Id);
+            KeepEditModeHonest();
         }
 
         if (locked && target.Id == Scene.FocusId)
@@ -1932,6 +1991,7 @@ public sealed class EditorSession
         var command = new LoopCutCommand(Scene, target, low, high);
         command.Redo();
         History.Push(command);
+        KeepEditModeHonest();
 
         HasUnsavedChanges = true;
         PreviewCutPlane = null;
@@ -1944,6 +2004,7 @@ public sealed class EditorSession
     {
         CancelExtrude();
         EndStroke();
+        CancelVoxelTransform();
 
         if (!History.Undo())
         {
@@ -1952,6 +2013,7 @@ public sealed class EditorSession
 
         RetainSelection();
         ForgetGoneLight();
+        KeepEditModeHonest();
         HasUnsavedChanges = true;
         return true;
     }
@@ -1985,6 +2047,7 @@ public sealed class EditorSession
     {
         CancelExtrude();
         EndStroke();
+        CancelVoxelTransform();
 
         if (!History.Redo())
         {
@@ -1993,6 +2056,7 @@ public sealed class EditorSession
 
         RetainSelection();
         ForgetGoneLight();
+        KeepEditModeHonest();
         HasUnsavedChanges = true;
         return true;
     }
@@ -2309,6 +2373,7 @@ public sealed class EditorSession
     /// <summary>Replaces the whole level.</summary>
     public void ReplaceScene(VoxelScene scene, string? projectPath)
     {
+        ExitEditMode();
         _stroke = null;
         _extrudePreview = null;
         ExtrudeSteps = 0;

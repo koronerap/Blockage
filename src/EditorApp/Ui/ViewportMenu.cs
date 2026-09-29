@@ -69,7 +69,11 @@ public static class ViewportMenu
         Rects.Clear();
         VoxelScene scene = actions.Session.Scene;
 
-        if (scene.FindLight(_lightId) is { } light)
+        if (actions.Session.InEditMode)
+        {
+            DrawEditMode(actions);
+        }
+        else if (scene.FindLight(_lightId) is { } light)
         {
             DrawLight(actions, light);
         }
@@ -88,6 +92,41 @@ public static class ViewportMenu
         }
 
         ImGui.EndPopup();
+    }
+
+    /// <summary>Inside an object: its chosen voxels, whatever the click was on.</summary>
+    private static void DrawEditMode(ViewportMenuActions actions)
+    {
+        EditorSession session = actions.Session;
+        bool any = !session.VoxelSelection.IsEmpty;
+
+        ImGui.TextDisabled(any ? $"{session.VoxelSelection.Count:N0} voxels chosen" : "No voxels chosen");
+        ImGui.Separator();
+
+        Entry(actions, "Select All", EditorAction.SelectAll);
+        Entry(actions, "Select None", EditorAction.DeselectAll, any);
+        Entry(actions, "Invert", EditorAction.InvertSelection);
+        Entry(actions, "Grow", EditorAction.GrowSelection, any);
+        Entry(actions, "Shrink", EditorAction.ShrinkSelection, any);
+
+        ImGui.Separator();
+        Entry(actions, "Duplicate", EditorAction.Duplicate, any);
+        Entry(actions, "Copy", EditorAction.Copy, any);
+        Entry(actions, "Fill with Colour", EditorAction.FillSelection, any);
+        Entry(actions, "Separate", EditorAction.Separate, any);
+
+        if (ImGui.BeginMenu("Turn and Mirror", any))
+        {
+            ObjectMenu.DrawTurns(session);
+            ImGui.EndMenu();
+        }
+
+        ImGui.Separator();
+        Entry(actions, "Frame", EditorAction.FrameFocused, any);
+        Entry(actions, "Back to Object Mode", EditorAction.ToggleEditMode);
+
+        ImGui.Separator();
+        Entry(actions, "Delete", EditorAction.Delete, any);
     }
 
     private static void DrawObject(ViewportMenuActions actions, VoxelObject target)

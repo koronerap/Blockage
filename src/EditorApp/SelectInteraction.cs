@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Scene;
+using EditorApp.Core.Voxels;
 using EditorApp.Rendering;
 
 namespace EditorApp;
@@ -93,7 +94,74 @@ public sealed class SelectInteraction(EditorSession session)
         }
     }
 
+    /// <summary>The same, inside an object in Edit Mode: a click picks voxels as the mode says, a box the voxels in it.</summary>
+    /// <param name="under">The voxel a click at a point lands on, or null.</param>
+    /// <param name="inBox">The voxels inside a box on screen.</param>
+    public void OnReleaseVoxels(Func<Vector2, Int3?> under, Func<Vector2, Vector2, IEnumerable<Int3>> inBox)
+    {
+        if (!IsPressed)
+        {
+            return;
+        }
+
+        (Vector2 Min, Vector2 Max)? box = Box;
+        IsPressed = false;
+
+        if (box is { } drawn)
+        {
+            session.SelectVoxels(inBox(drawn.Min, drawn.Max), Operation);
+            return;
+        }
+
+        if (under(_press) is { } cell)
+        {
+            session.ClickVoxel(cell, _shift, _control);
+        }
+        else if (!_shift && !_control)
+        {
+            session.DeselectAllVoxels();
+        }
+    }
+
     public void Cancel() => IsPressed = false;
+
+    /// <summary>
+    /// The voxels of an object whose middles fall inside a box on screen. Seen ones only — the first
+    /// voxel along the line of sight — unless <paramref name="throughWalls"/>, X-Ray's way.
+    /// </summary>
+    public static List<Int3> VoxelsInBox(VoxelObject o, FlyCamera camera, Vector2 viewport, Vector2 min, Vector2 max, bool throughWalls)
+    {
+        var found = new List<Int3>();
+
+        foreach (Int3 cell in ClipboardOperations.Everything(o.Grid))
+        {
+            // Inside the model nothing is ever seen: only a voxel with an open face can be.
+            if (!throughWalls && !VoxelSelecting.IsExposed(o.Grid, cell))
+            {
+                continue;
+            }
+
+            Vector3 centre = o.Transform.TransformPoint(cell.ToVector3() + new Vector3(0.5f));
+            if (!camera.TryProjectToScreen(centre, viewport, out Vector2 at)
+                || at.X < min.X || at.X > max.X || at.Y < min.Y || at.Y > max.Y)
+            {
+                continue;
+            }
+
+            if (!throughWalls)
+            {
+                Core.Raycast.Ray local = o.Transform.InverseTransformRay(camera.ScreenPointToRay(at, viewport));
+                if (!Core.Raycast.VoxelRaycaster.TryCast(o.Grid, local, out Core.Raycast.RaycastHit hit) || hit.Voxel != cell)
+                {
+                    continue;
+                }
+            }
+
+            found.Add(cell);
+        }
+
+        return found;
+    }
 
     /// <summary>
     /// What a box on screen holds: every object that can be selected whose own box, seen from the

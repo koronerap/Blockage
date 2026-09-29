@@ -19,6 +19,7 @@ public enum EditorAction
     ToolOtherMode,
     ToolCycleMode,
     ToggleSnap,
+    ToggleEditMode,
 
     // Edit
     Undo,
@@ -37,6 +38,10 @@ public enum EditorAction
     SelectAll,
     DeselectAll,
     InvertSelection,
+    GrowSelection,
+    ShrinkSelection,
+    Separate,
+    FillSelection,
     Join,
     SetParent,
     ClearParent,
@@ -108,6 +113,7 @@ public static class EditorActions
         new(EditorAction.ToolOtherMode, "tool.othermode", "The tool's other mode", Tools),
         new(EditorAction.ToolCycleMode, "tool.cyclemode", "Cycle paint mode, axes, new object", Tools),
         new(EditorAction.ToggleSnap, "tool.snap", "Snapping on or off", Tools),
+        new(EditorAction.ToggleEditMode, "tool.editmode", "Edit Mode: into the object and out", Tools),
 
         new(EditorAction.Undo, "edit.undo", "Undo", Edit),
         new(EditorAction.Redo, "edit.redo", "Redo", Edit),
@@ -125,6 +131,10 @@ public static class EditorActions
         new(EditorAction.SelectAll, "edit.selectall", "Select all", Edit),
         new(EditorAction.DeselectAll, "edit.deselectall", "Select none", Edit),
         new(EditorAction.InvertSelection, "edit.invertselection", "Invert the selection", Edit),
+        new(EditorAction.GrowSelection, "edit.growselection", "Grow the voxel selection (Edit Mode)", Edit),
+        new(EditorAction.ShrinkSelection, "edit.shrinkselection", "Shrink the voxel selection (Edit Mode)", Edit),
+        new(EditorAction.Separate, "edit.separate", "Separate the chosen voxels into an object (Edit Mode)", Edit),
+        new(EditorAction.FillSelection, "edit.fillselection", "Fill the chosen voxels with the colour (Edit Mode)", Edit),
         new(EditorAction.Join, "edit.join", "Join the selected into the active", Edit),
         new(EditorAction.SetParent, "edit.setparent", "Parent to... / to the active", Edit),
         new(EditorAction.ClearParent, "edit.clearparent", "Clear parent", Edit),

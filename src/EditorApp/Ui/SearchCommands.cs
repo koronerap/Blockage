@@ -314,6 +314,13 @@ public static class SearchCommands
             : "Nothing selected has a parent.",
         EditorAction.Delete or EditorAction.Duplicate or EditorAction.Hide or EditorAction.Lock or EditorAction.DeselectAll or EditorAction.InvertSelection =>
             () => NothingSelected(session),
+        EditorAction.Separate or EditorAction.FillSelection or EditorAction.GrowSelection or EditorAction.ShrinkSelection => () =>
+            !session.InEditMode ? "Only in Edit Mode - Tab into an object."
+            : session.VoxelSelection.IsEmpty ? "No voxels are chosen."
+            : null,
+        EditorAction.ToggleEditMode => () => session.InEditMode || session.Scene.Focus is { Locked: false, Visible: true }
+            ? null
+            : "There is no object to edit.",
         EditorAction.Join => () => session.SelectedObjects.Count() > 1 && session.SelectedLightId == 0
             ? null
             : "Select two objects or more, the one to join into last.",

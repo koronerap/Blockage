@@ -31,6 +31,11 @@ public static class ToolPanel
 
         switch (session.ActiveTool)
         {
+            case EditorTool.Select when session.InEditMode:
+                Wrapped("Inside the object: click a voxel to choose it, drag for a box - seen voxels only, or through the model with X-Ray on. The wand takes the joined voxels of a colour, Colour every voxel of it. Shift adds, Ctrl takes away. Then move and turn them with the Transform tool, P separates them, Delete empties them. Tab goes back to the objects.");
+                Props.Value("Chosen", $"{session.VoxelSelection.Count:N0} voxels");
+                break;
+
             case EditorTool.Select:
                 Wrapped("Click an object or a light to select it; drag for a box around several. Shift adds, and Shift-clicking the active one lets it go; Ctrl takes away. A click on nothing selects nothing. The other tools work only on what is selected.");
                 Props.Value("Selected", ObjectMenu.SelectionSummary(session));

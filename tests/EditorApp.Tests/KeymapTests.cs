@@ -88,7 +88,10 @@ public class KeymapTests
         Assert.Equal(EditorAction.DeselectAll, keymap.ActionFor(KeyChord.AltOf(Key.A)));
         Assert.Equal(EditorAction.InvertSelection, keymap.ActionFor(KeyChord.Ctrl(Key.I)));
         Assert.Equal(EditorAction.Join, keymap.ActionFor(KeyChord.Ctrl(Key.J)));
-        Assert.Null(keymap.ActionFor(K(Key.Q)));
+        // Tab is Blender's Edit Mode, so the tool's other mode moved to Q.
+        Assert.Equal(EditorAction.ToggleEditMode, keymap.ActionFor(K(Key.Tab)));
+        Assert.Equal(EditorAction.ToolOtherMode, keymap.ActionFor(K(Key.Q)));
+        Assert.Equal(EditorAction.Separate, keymap.ActionFor(K(Key.P)));
     }
 
     /// <summary>Every action the menus offer can be reached from the keyboard in each preset, or has a menu of its own.</summary>

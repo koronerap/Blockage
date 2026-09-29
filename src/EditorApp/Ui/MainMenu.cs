@@ -10,6 +10,66 @@ namespace EditorApp.Ui;
 /// <summary>The menu bar and the status line under it.</summary>
 public static class MainMenu
 {
+    private static void DrawObjectSelect(EditorSession session)
+    {
+        bool anything = session.Scene.Objects.Count > 0 || session.Scene.Lights.Count > 0;
+        if (ImGui.MenuItem("All", Shortcut.Of(EditorAction.SelectAll), false, anything))
+        {
+            session.SelectAll();
+        }
+
+        if (ImGui.MenuItem("None", Shortcut.Of(EditorAction.DeselectAll), false, session.SelectedCount > 0))
+        {
+            session.DeselectAll();
+        }
+
+        if (ImGui.MenuItem("Invert", Shortcut.Of(EditorAction.InvertSelection), false, anything))
+        {
+            session.InvertSelection();
+        }
+    }
+
+    /// <summary>The Select menu inside an object: its voxels.</summary>
+    private static void DrawVoxelSelect(EditorSession session)
+    {
+        bool any = !session.VoxelSelection.IsEmpty;
+        if (ImGui.MenuItem("All", Shortcut.Of(EditorAction.SelectAll)))
+        {
+            session.SelectAllVoxels();
+        }
+
+        if (ImGui.MenuItem("None", Shortcut.Of(EditorAction.DeselectAll), false, any))
+        {
+            session.DeselectAllVoxels();
+        }
+
+        if (ImGui.MenuItem("Invert", Shortcut.Of(EditorAction.InvertSelection)))
+        {
+            session.InvertVoxelSelection();
+        }
+
+        ImGui.Separator();
+        if (ImGui.MenuItem("More", Shortcut.Of(EditorAction.GrowSelection), false, any))
+        {
+            session.GrowVoxelSelection();
+        }
+
+        if (ImGui.MenuItem("Less", Shortcut.Of(EditorAction.ShrinkSelection), false, any))
+        {
+            session.ShrinkVoxelSelection();
+        }
+
+        ImGui.Separator();
+        foreach ((VoxelSelectMode mode, string name) in new[] { (VoxelSelectMode.Box, "Box"), (VoxelSelectMode.Wand, "Wand"), (VoxelSelectMode.Colour, "By Colour") })
+        {
+            if (ImGui.MenuItem(name, null, session.VoxelSelectMode == mode))
+            {
+                session.VoxelSelectMode = mode;
+                session.ActiveTool = EditorTool.Select;
+            }
+        }
+    }
+
     /// <summary>Draws the menu bar and returns its height, so the shell can lay out beneath it.</summary>
     public static float Draw(
         EditorSession session,
@@ -162,23 +222,16 @@ public static class MainMenu
             ImGui.EndMenu();
         }
 
-        // Blender's Select menu: everything, nothing, the rest.
+        // Blender's Select menu: everything, nothing, the rest — of the objects, or inside one, of its voxels.
         if (ImGui.BeginMenu("Select"))
         {
-            bool anything = session.Scene.Objects.Count > 0 || session.Scene.Lights.Count > 0;
-            if (ImGui.MenuItem("All", Shortcut.Of(EditorAction.SelectAll), false, anything))
+            if (session.InEditMode)
             {
-                session.SelectAll();
+                DrawVoxelSelect(session);
             }
-
-            if (ImGui.MenuItem("None", Shortcut.Of(EditorAction.DeselectAll), false, session.SelectedCount > 0))
+            else
             {
-                session.DeselectAll();
-            }
-
-            if (ImGui.MenuItem("Invert", Shortcut.Of(EditorAction.InvertSelection), false, anything))
-            {
-                session.InvertSelection();
+                DrawObjectSelect(session);
             }
 
             ImGui.Separator();

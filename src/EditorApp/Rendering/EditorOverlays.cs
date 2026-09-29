@@ -219,6 +219,34 @@ public static class EditorOverlays
         }
     }
 
+    /// <summary>
+    /// Edit Mode's chosen voxels, as the faces of them open to the air — a patch per direction, so
+    /// the choice reads as a shape on the model's surface rather than as a cloud of boxes.
+    /// </summary>
+    public static void AddVoxelSelection(LineGeometry lines, VoxelWorld grid, VoxelSelection selection)
+    {
+        if (selection.IsEmpty)
+        {
+            return;
+        }
+
+        for (int f = 0; f < FaceInfo.Count; f++)
+        {
+            var face = (Face)f;
+            Int3 step = FaceInfo.Offset(face);
+            var open = new HashSet<Int3>();
+            foreach (Int3 cell in selection.Cells)
+            {
+                if (!grid.IsSolid(cell + step))
+                {
+                    open.Add(cell);
+                }
+            }
+
+            AddFacePatch(lines, open, open.Contains, face, Selection, SelectionWidth);
+        }
+    }
+
     public static void AddSelectionOutline(LineGeometry lines, FaceSelection? selection, Color32 color)
     {
         if (selection is not { IsEmpty: false })

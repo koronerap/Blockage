@@ -45,11 +45,62 @@ public static class ObjectMenu
     /// </summary>
     public static void Duplicate(EditorSession session, FlyCamera camera)
     {
-        if (session.DuplicateSelected(camera.Right).Count > 0)
+        bool made = session.InEditMode
+            ? session.DuplicateSelectedVoxels(camera.Right)
+            : session.DuplicateSelected(camera.Right).Count > 0;
+
+        if (made)
         {
             session.ActiveTool = EditorTool.Transform;
             session.TransformMode = TransformMode.Move;
         }
+    }
+
+    /// <summary>Tab: into the active object, or out of it, saying why when it cannot.</summary>
+    public static void ToggleEditMode(EditorSession session, ReportLog log)
+    {
+        if (session.ToggleEditMode())
+        {
+            return;
+        }
+
+        log.Post(
+            session.SelectedLightId != 0 ? "A light has no voxels to edit - choose an object."
+            : session.Scene.Focus is { Locked: true } locked ? $"{locked.Name} is locked - unlock it to edit it."
+            : "Select an object to edit first.",
+            ReportKind.Warning);
+    }
+
+    /// <summary>P: the chosen voxels into an object of their own.</summary>
+    public static void Separate(EditorSession session, ReportLog log)
+    {
+        if (!session.InEditMode)
+        {
+            log.Post("P separates chosen voxels - Tab into the object first.", ReportKind.Warning);
+            return;
+        }
+
+        int count = session.VoxelSelection.Count;
+        if (session.SeparateSelectedVoxels() is { } piece)
+        {
+            log.Post($"Separated {count:N0} voxels into {piece.Name}.");
+        }
+        else
+        {
+            log.Post("Choose some voxels to separate first.", ReportKind.Warning);
+        }
+    }
+
+    /// <summary>The chosen voxels in the colour in hand.</summary>
+    public static void Fill(EditorSession session, ReportLog log)
+    {
+        if (!session.InEditMode || session.VoxelSelection.IsEmpty)
+        {
+            log.Post("Fill colours chosen voxels - Tab into an object and choose some.", ReportKind.Warning);
+            return;
+        }
+
+        session.FillSelectedVoxels();
     }
 
     /// <summary>Locks everything selected, saying where to undo it.</summary>
@@ -208,9 +259,81 @@ public static class ObjectMenu
         int count => $"{count} selected",
     };
 
+    /// <summary>Inside an object: what can be done to the voxels chosen in it.</summary>
+    public static void DrawVoxelItems(EditorSession session, FlyCamera camera)
+    {
+        VoxelSelection chosen = session.VoxelSelection;
+        bool any = !chosen.IsEmpty;
+
+        ImGui.TextDisabled(any ? $"{session.EditObject?.Name}  ·  {chosen.Count:N0} voxels" : $"{session.EditObject?.Name}  ·  no voxels chosen");
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Select All", Shortcut.Of(EditorAction.SelectAll)))
+        {
+            session.SelectAllVoxels();
+        }
+
+        if (ImGui.MenuItem("Select None", Shortcut.Of(EditorAction.DeselectAll), false, any))
+        {
+            session.DeselectAllVoxels();
+        }
+
+        if (ImGui.MenuItem("Invert", Shortcut.Of(EditorAction.InvertSelection)))
+        {
+            session.InvertVoxelSelection();
+        }
+
+        if (ImGui.MenuItem("Grow", Shortcut.Of(EditorAction.GrowSelection), false, any))
+        {
+            session.GrowVoxelSelection();
+        }
+
+        if (ImGui.MenuItem("Shrink", Shortcut.Of(EditorAction.ShrinkSelection), false, any))
+        {
+            session.ShrinkVoxelSelection();
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, any))
+        {
+            Duplicate(session, camera);
+        }
+
+        if (ImGui.MenuItem("Fill with Colour", Shortcut.Of(EditorAction.FillSelection), false, any))
+        {
+            Fill(session, ReportLog.Shared);
+        }
+
+        if (ImGui.MenuItem("Separate", Shortcut.Of(EditorAction.Separate), false, any))
+        {
+            Separate(session, ReportLog.Shared);
+        }
+
+        if (ImGui.MenuItem("Delete", Shortcut.Of(EditorAction.Delete), false, any))
+        {
+            session.DeleteSelectedVoxels();
+        }
+
+        ImGui.Separator();
+        DrawTurns(session);
+
+        ImGui.Separator();
+        if (ImGui.MenuItem("Back to Object Mode", Shortcut.Of(EditorAction.ToggleEditMode)))
+        {
+            session.ExitEditMode();
+        }
+    }
+
     /// <summary>The items themselves, for whichever menu or popup is open around them.</summary>
     public static void DrawItems(EditorSession session, FlyCamera camera)
     {
+        if (session.InEditMode)
+        {
+            DrawVoxelItems(session, camera);
+            return;
+        }
+
         VoxelScene scene = session.Scene;
         bool any = session.SelectedCount > 0;
         List<VoxelObject> objects = [.. session.SelectedObjects];
@@ -300,16 +423,32 @@ public static class ObjectMenu
         DrawTurns(session);
     }
 
-    /// <summary>The quarter turns and the mirrors of the selected objects' voxels.</summary>
+    /// <summary>The quarter turns and the mirrors of the selected objects' voxels — or of the chosen voxels, in Edit Mode.</summary>
     public static void DrawTurns(EditorSession session)
     {
-        bool hasVoxels = session.SelectedObjects.Any(o => !o.IsEmpty);
+        bool voxels = session.InEditMode;
+        bool hasVoxels = voxels ? !session.VoxelSelection.IsEmpty : session.SelectedObjects.Any(o => !o.IsEmpty);
 
         foreach ((string label, RotateDirection direction) in Turns)
         {
             if (ImGui.MenuItem(label, null, false, hasVoxels))
             {
-                session.RotateSelected(direction);
+                if (voxels)
+                {
+                    // Right is a quarter about the object's up, Up a quarter about its X, as the object turns do.
+                    (Axis axis, int turns) = direction switch
+                    {
+                        RotateDirection.Right => (Axis.Y, 1),
+                        RotateDirection.Left => (Axis.Y, -1),
+                        RotateDirection.Up => (Axis.X, 1),
+                        _ => (Axis.X, -1),
+                    };
+                    session.RotateSelectedVoxels(axis, turns);
+                }
+                else
+                {
+                    session.RotateSelected(direction);
+                }
             }
         }
 
@@ -319,7 +458,14 @@ public static class ObjectMenu
         {
             if (ImGui.MenuItem(label, null, false, hasVoxels))
             {
-                session.FlipSelected(axis);
+                if (voxels)
+                {
+                    session.MirrorSelectedVoxels(axis);
+                }
+                else
+                {
+                    session.FlipSelected(axis);
+                }
             }
         }
 

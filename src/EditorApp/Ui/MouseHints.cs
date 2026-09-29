@@ -54,6 +54,15 @@ public static class MouseHints
     private static string? LeftButton(EditorSession session, bool shift, bool control, bool alt) =>
         session.ActiveTool switch
         {
+            EditorTool.Select when session.InEditMode && control => "Take voxels away",
+            EditorTool.Select when session.InEditMode && shift => "Add voxels",
+            EditorTool.Select when session.InEditMode => session.VoxelSelectMode switch
+            {
+                VoxelSelectMode.Wand => "Select joined voxels of a colour",
+                VoxelSelectMode.Colour => "Select every voxel of a colour",
+                _ => "Select a voxel, drag for a box",
+            },
+
             EditorTool.Select when shift => "Add to the selection",
             EditorTool.Select when control => "Take from the selection",
             EditorTool.Select => "Select, drag for a box",

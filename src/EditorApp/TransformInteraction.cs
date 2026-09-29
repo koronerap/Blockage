@@ -637,7 +637,9 @@ public sealed class TransformInteraction(EditorSession session)
         && (Moves(o, target) || _others.Any(other => Moves(o, other.Thing)));
 
     private bool Moves(VoxelObject o, IPlaceable moved) =>
-        ReferenceEquals(o, moved) || session.Scene.IsDescendantOf(o.Id, moved.Id);
+        ReferenceEquals(o, moved)
+        || (moved is VoxelSelectionHandle handle && ReferenceEquals(o, handle.Owner))
+        || session.Scene.IsDescendantOf(o.Id, moved.Id);
 
     /// <summary>Where the cursor's ray meets the plane the free ring moves in: through the gizmo, facing the camera as it was at the press.</summary>
     private Vector3? PlaneHit(Vector2 mouse, Vector2 viewport, FlyCamera camera)
