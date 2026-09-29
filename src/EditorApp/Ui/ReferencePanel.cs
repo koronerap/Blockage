@@ -1,6 +1,7 @@
 using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Import;
+using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
 using EditorApp.Rendering;
 using ImGuiNET;
@@ -21,8 +22,24 @@ public sealed class ReferencePanel
     /// <summary>The file browser is a popup, so it is drawn at the top level, not inside a panel.</summary>
     public void DrawDialogs() => _browser.Draw();
 
+    private readonly FileBrowserDialog _imageBrowser = new();
+
+    /// <summary>Tells whether a picture could be read, and how tall it is for its width: the renderer's.</summary>
+    public static ReferenceImageRenderer? Images { get; set; }
+
     public void DrawContent(EditorSession session, ReferenceModelRenderer reference)
     {
+        _imageBrowser.Draw();
+        if (Props.Section("Images"))
+        {
+            DrawImages(session);
+        }
+
+        if (!Props.Section("Model"))
+        {
+            return;
+        }
+
         int pressed = Props.Buttons("Model", "reference-file", "Import...", "Remove");
         if (pressed == 0)
         {
@@ -139,6 +156,126 @@ public sealed class ReferencePanel
             reference.SetMesh(null);
             _status = exception.Message;
             _statusIsError = true;
+        }
+    }
+
+    /// <summary>
+    /// Pictures to model over (Fullreleaseplan 7.3): each on a plane, see-through as far as wanted,
+    /// behind the model or among it, and — as a background image — shown only in the view that
+    /// looks straight at it. Saved with the level as where the picture is on disk.
+    /// </summary>
+    private void DrawImages(EditorSession session)
+    {
+        VoxelScene scene = session.Scene;
+        if (Props.Buttons(string.Empty, "reference-image-add", "Add Image...") == 0)
+        {
+            _imageBrowser.Show(FileBrowserMode.Open, "Add a picture to model over (.png)", ".png", _imageBrowser.CurrentDirectory, suggestedName: null, path =>
+            {
+                // Standing in the middle of what there is, as wide as it: on the ground plane for a top view.
+                (Vector3 min, Vector3 max) = SectionViewport.Bounds(scene);
+                Vector3 centre = (min + max) * 0.5f;
+                scene.AddReferenceImage(new ReferenceImage(path)
+                {
+                    Centre = centre with { Y = MathF.Max(centre.Y, (max.Y - min.Y) * 0.5f) },
+                    Width = MathF.Max(max.X - min.X, 8f),
+                });
+                session.HasUnsavedChanges = true;
+            });
+        }
+
+        if (scene.ReferenceImages.Count == 0)
+        {
+            ImGui.TextDisabled("A drawing or photo to model over, as a PNG.");
+            return;
+        }
+
+        ReferenceImage? removed = null;
+        for (int i = 0; i < scene.ReferenceImages.Count; i++)
+        {
+            ReferenceImage image = scene.ReferenceImages[i];
+            ImGui.PushID(i);
+
+            bool visible = image.Visible;
+            if (ImGui.Checkbox($"##shown", ref visible))
+            {
+                image.Visible = visible;
+                session.HasUnsavedChanges = true;
+            }
+
+            ImGui.SameLine();
+            ImGui.TextUnformatted(image.Name);
+            if (Images?.CannotRead(image.Path) == true)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(Theme.Danger, "(cannot be read)");
+            }
+
+            ImGui.SameLine(ImGui.GetContentRegionMax().X - ImGui.GetFrameHeight());
+            if (ImGui.Button("x", new Vector2(ImGui.GetFrameHeight())))
+            {
+                removed = image;
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip($"Take {image.Name} away. The picture itself stays where it is.");
+            }
+
+            int plane = Props.Choice("Plane", "image-plane", [(null, "Front"), (null, "Side"), (null, "Top")], (int)image.Plane);
+            if (plane != (int)image.Plane)
+            {
+                image.Plane = (ImagePlane)plane;
+                session.HasUnsavedChanges = true;
+            }
+
+            Vector3 centre = image.Centre;
+            if (Props.Vector("Centre", "image-centre", ref centre, 0.1f))
+            {
+                image.Centre = centre;
+                session.HasUnsavedChanges = true;
+            }
+
+            float width = image.Width;
+            if (Props.Float("Width", "image-width", ref width, 0.1f, ReferenceImage.MinWidth, ReferenceImage.MaxWidth, "%.1f"))
+            {
+                image.Width = width;
+                session.HasUnsavedChanges = true;
+            }
+
+            float opacity = image.Opacity;
+            if (Props.Slider("Opacity", "image-opacity", ref opacity, 0f, 1f, "%.2f"))
+            {
+                image.Opacity = opacity;
+                session.HasUnsavedChanges = true;
+            }
+
+            bool behind = image.Behind;
+            if (Props.Check(string.Empty, "image-behind", "Behind the model", ref behind))
+            {
+                image.Behind = behind;
+                session.HasUnsavedChanges = true;
+            }
+
+            bool aligned = image.OnlyAligned;
+            if (Props.Check(string.Empty, "image-aligned", "Only in its own view", ref aligned))
+            {
+                image.OnlyAligned = aligned;
+                session.HasUnsavedChanges = true;
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Shown only while the view looks straight at its plane: Numpad 1 for the front, 3 for the side, 7 for the top.");
+            }
+
+            ImGui.Separator();
+            ImGui.PopID();
+        }
+
+        if (removed is not null)
+        {
+            scene.RemoveReferenceImage(removed);
+            session.HasUnsavedChanges = true;
         }
     }
 }

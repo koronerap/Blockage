@@ -90,6 +90,9 @@ public sealed class GlRenderer : IDisposable
     /// <summary>The imported guide model, drawn between the voxels and the overlay lines.</summary>
     public ReferenceModelRenderer Reference { get; }
 
+    /// <summary>The level's reference images: behind the model, or among it.</summary>
+    public ReferenceImageRenderer Images { get; }
+
     /// <summary>Chunks meshed in the most recent sync. Shown in the stats overlay.</summary>
     public int LastRemeshedChunks { get; private set; }
 
@@ -136,6 +139,7 @@ public sealed class GlRenderer : IDisposable
         _shadowShader = new ShaderProgram(gl, Shaders.ShadowVertex, Shaders.ShadowFragment);
         _maskShader = new ShaderProgram(gl, Shaders.MaskVertex, Shaders.MaskFragment);
         _outlineShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.OutlineFragment);
+        Images = new ReferenceImageRenderer(gl);
         _lineShader = new ShaderProgram(gl, Shaders.LineVertex, Shaders.LineFragment);
         _backgroundShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.BackgroundFragment);
         _imageShader = new ShaderProgram(gl, Shaders.BackgroundVertex, Shaders.ImageFragment);
@@ -400,6 +404,9 @@ public sealed class GlRenderer : IDisposable
         DrawBackgroundGradient();
 
         Matrix4x4 viewProjection = camera.ViewProjection(viewportSize.X / MathF.Max(viewportSize.Y, 1f));
+
+        // Reference images kept behind the model: over the background, under everything else.
+        Images.Draw(scene, camera, viewProjection, behind: true);
         Frustum frustum = Frustum.FromViewProjection(viewProjection);
 
         bool wireframe = Lighting.Mode == ShadingMode.Wireframe;
@@ -507,6 +514,9 @@ public sealed class GlRenderer : IDisposable
 
         _gl.Enable(EnableCap.CullFace);
         _gl.DepthFunc(DepthFunction.Less);
+
+        // Reference images among the model, where they stand in the level.
+        Images.Draw(scene, camera, viewProjection, behind: false);
 
         DrawOutlines(scene, viewProjection, frustum, (int)viewportPosition.X, glY, width, height);
 
@@ -962,6 +972,7 @@ public sealed class GlRenderer : IDisposable
         _voxelShader.Dispose();
         _imageShader.Dispose();
         _shadowShader.Dispose();
+        Images.Dispose();
         _maskShader.Dispose();
         _outlineShader.Dispose();
         if (_maskFramebuffer != 0)

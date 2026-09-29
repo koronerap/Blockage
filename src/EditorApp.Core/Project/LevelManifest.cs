@@ -268,6 +268,40 @@ public sealed class LevelManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LightEntry[]? Lights { get; set; }
 
+    /// <summary>The pictures to model over; absent for none.</summary>
+    [JsonPropertyName("referenceImages")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReferenceImageEntry[]? ReferenceImages { get; set; }
+
+    /// <summary>One picture to model over: where it is on disk, and where it stands in the level.</summary>
+    public sealed class ReferenceImageEntry
+    {
+        [JsonPropertyName("path")]
+        public string Path { get; set; } = string.Empty;
+
+        /// <summary>"front", "side" or "top".</summary>
+        [JsonPropertyName("plane")]
+        public string Plane { get; set; } = "front";
+
+        [JsonPropertyName("centre")]
+        public float[] Centre { get; set; } = [0f, 0f, 0f];
+
+        [JsonPropertyName("width")]
+        public float Width { get; set; } = 32f;
+
+        [JsonPropertyName("opacity")]
+        public float Opacity { get; set; } = 0.5f;
+
+        [JsonPropertyName("onlyAligned")]
+        public bool OnlyAligned { get; set; }
+
+        [JsonPropertyName("behind")]
+        public bool Behind { get; set; } = true;
+
+        [JsonPropertyName("visible")]
+        public bool Visible { get; set; } = true;
+    }
+
     /// <summary>One custom property: "text", "number" or "toggle", its value as text.</summary>
     public sealed class PropertyEntry
     {

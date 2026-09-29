@@ -462,6 +462,46 @@ public static class Shaders
         }
         """;
 
+    /// <summary>A reference image on its plane in the world, see-through as far as its opacity says.</summary>
+    public const string ImagePlaneVertex = """
+        #version 330 core
+        layout(location = 0) in vec3 aPosition;
+        layout(location = 1) in vec2 aUv;
+
+        uniform mat4 uViewProjection;
+        uniform mat4 uModel;
+
+        out vec2 vUv;
+
+        void main()
+        {
+            vUv = aUv;
+            gl_Position = uViewProjection * (uModel * vec4(aPosition, 1.0));
+        }
+        """;
+
+    public const string ImagePlaneFragment = """
+        #version 330 core
+        in vec2 vUv;
+
+        uniform sampler2D uImage;
+        uniform float uOpacity;
+
+        out vec4 fragColor;
+
+        void main()
+        {
+            vec4 picture = texture(uImage, vUv);
+            float alpha = picture.a * uOpacity;
+            if (alpha < 0.01)
+            {
+                discard;
+            }
+
+            fragColor = vec4(picture.rgb, alpha);
+        }
+        """;
+
     /// <summary>The depth of everything as the sun sees it, for the shadows it casts: positions only.</summary>
     public const string ShadowVertex = """
         #version 330 core

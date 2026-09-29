@@ -262,6 +262,7 @@ public sealed class EditorApplication : IDisposable
         AddMenu.OpenPropLibrary = _library.Open;
         CameraPropertiesPanel.LookThrough = LookThrough;
         SectionViewport.SceneOf = () => _session.Scene;
+        ReferencePanel.Images = _renderer.Images;
         CameraPropertiesPanel.MoveToView = camera => _session.SetCameraToView(camera.Id, ViewAsCamera());
         _viewportRender = new ViewportRender(_gl);
 

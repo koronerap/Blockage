@@ -29,6 +29,7 @@ public sealed class VoxelScene
     private readonly List<SceneLight> _lights = [];
     private readonly List<SceneCamera> _cameras = [];
     private readonly List<SceneCollection> _collections = [];
+    private readonly List<ReferenceImage> _images = [];
     private readonly HashSet<int> _selected = [];
 
     // One counter for objects and lights alike, so an id names one thing in the level and nothing else.
@@ -76,6 +77,13 @@ public sealed class VoxelScene
 
     /// <summary>The level's lights, in the order the outliner lists them. Never exported.</summary>
     public IReadOnlyList<SceneLight> Lights => _lights;
+
+    /// <summary>Pictures to model over (Fullreleaseplan 7.3), in the order they were added. Saved with the level, never exported.</summary>
+    public IReadOnlyList<ReferenceImage> ReferenceImages => _images;
+
+    public void AddReferenceImage(ReferenceImage image) => _images.Add(image);
+
+    public bool RemoveReferenceImage(ReferenceImage image) => _images.Remove(image);
 
     /// <summary>The level's collections, in the order the outliner lists them, each after the one it is inside.</summary>
     public IReadOnlyList<SceneCollection> Collections => _collections;
@@ -741,6 +749,7 @@ public sealed class VoxelScene
         };
 
         copy._cameras.AddRange(_cameras);
+        copy._images.AddRange(_images.Select(image => image.Copy()));
         copy._collections.AddRange(_collections.Select(c => c.State.Create()));
 
         copy._selected.UnionWith(_selected);
@@ -858,6 +867,7 @@ public sealed class VoxelScene
         _lights.Clear();
         _cameras.Clear();
         _collections.Clear();
+        _images.Clear();
         _activeCollectionId = 0;
         _selected.Clear();
         FocusId = 0;

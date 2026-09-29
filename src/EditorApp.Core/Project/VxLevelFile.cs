@@ -131,6 +131,17 @@ public static class VxLevelFile
                 Export = c.Export,
             })] : null,
             ActiveCamera = scene.ActiveCamera?.Id,
+            ReferenceImages = scene.ReferenceImages.Count == 0 ? null : [.. scene.ReferenceImages.Select(image => new LevelManifest.ReferenceImageEntry
+            {
+                Path = image.Path,
+                Plane = image.Plane.ToString().ToLowerInvariant(),
+                Centre = [image.Centre.X, image.Centre.Y, image.Centre.Z],
+                Width = image.Width,
+                Opacity = image.Opacity,
+                OnlyAligned = image.OnlyAligned,
+                Behind = image.Behind,
+                Visible = image.Visible,
+            })],
             Materials = scene.Palette.Materials().Any()
                 ? [.. scene.Palette.Materials().Select(m => new LevelManifest.MaterialEntry
                 {
@@ -501,6 +512,25 @@ public static class VxLevelFile
         if (manifest.Render is { } render)
         {
             scene.RenderSettings = ReadRender(render);
+        }
+
+        foreach (LevelManifest.ReferenceImageEntry entry in manifest.ReferenceImages ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entry.Path))
+            {
+                continue;
+            }
+
+            scene.AddReferenceImage(new ReferenceImage(entry.Path)
+            {
+                Plane = entry.Plane switch { "side" => ImagePlane.Side, "top" => ImagePlane.Top, _ => ImagePlane.Front },
+                Centre = entry.Centre is { Length: 3 } c ? new Vector3(c[0], c[1], c[2]) : Vector3.Zero,
+                Width = Math.Clamp(entry.Width, ReferenceImage.MinWidth, ReferenceImage.MaxWidth),
+                Opacity = Math.Clamp(entry.Opacity, 0f, 1f),
+                OnlyAligned = entry.OnlyAligned,
+                Behind = entry.Behind,
+                Visible = entry.Visible,
+            });
         }
 
         // Cameras keep the ids the file gave them only as far as telling which is active: each gets a fresh one.
