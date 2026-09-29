@@ -54,6 +54,37 @@ public sealed class PropertiesTabTests : IDisposable
         Assert.Equal(before, Cube.Transform.Position);
     }
 
+    /// <summary>Blender's Alt: a field changed with Alt held is set on everything selected, as one step.</summary>
+    [Fact]
+    public void WithAltHeldAFieldIsSetOnEverythingSelected()
+    {
+        VoxelObject other = _session.AddObject(EditorSession.CreateStarterWorld(), "Other", new Vector3(10f, 0f, 20f), Vector3.UnitY, 1f);
+        _session.ClickSelect(Cube.Id, extend: true);
+        float otherX = other.Transform.Position.X;
+        float otherZ = other.Transform.Position.Z;
+
+        void Draw() => ObjectPropertiesPanel.DrawContent(_session);
+        Settle(Draw);
+        int history = _session.History.UndoCount;
+
+        Vector2 field = Centre("location-x");
+        ImGui.GetIO().AddKeyEvent(ImGuiKey.ModAlt, true);
+        _ui.Drag(field, field + new Vector2(60f, 0f), Draw);
+        ImGui.GetIO().AddKeyEvent(ImGuiKey.ModAlt, false);
+        _ui.Frame(Draw);
+        _ui.Frame(Draw);
+
+        // X copied across, the other axes left as they were.
+        Assert.True(Cube.Transform.Position.X > 0f);
+        Assert.Equal(Cube.Transform.Position.X, other.Transform.Position.X, 4);
+        Assert.Equal(otherZ, other.Transform.Position.Z, 4);
+        Assert.Equal(history + 1, _session.History.UndoCount);
+
+        _session.Undo();
+        Assert.Equal(0f, Cube.Transform.Position.X, 4);
+        Assert.Equal(otherX, other.Transform.Position.X, 4);
+    }
+
     /// <summary>The button under the counts cuts the voxels, keeps the object's size, and says how many there are now.</summary>
     [Fact]
     public void TheSubdivideButtonCutsTheVoxelsAndSaysSo()

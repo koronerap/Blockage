@@ -129,15 +129,40 @@ public static class ObjectPropertiesPanel
         float speed = MathF.Max(transform.VoxelSize * 0.05f, 0.005f);
         if (Props.Vector("Location", "location", ref position, speed))
         {
-            Change(session, target, transform with { Position = position }, $"Move {target.Name}");
+            Vector3 was = transform.Position;
+            Vector3 now = position;
+            Change(session, target, transform with { Position = position }, $"Move {target.Name}",
+                other => other with { Position = Copied(was, now, other.Position) });
         }
 
+        AltTip(session);
+
         Vector3 euler = EulerFor(target);
+        Vector3 before = euler;
         if (Props.Vector("Rotation", "rotation", ref euler, 0.5f, "%.4g°"))
         {
             Quaternion rotation = Rotations.FromEulerDegrees(euler);
-            Change(session, target, target.Transform with { Rotation = rotation }, $"Rotate {target.Name}");
+            Vector3 turned = euler;
+            Change(session, target, target.Transform with { Rotation = rotation }, $"Rotate {target.Name}",
+                other => other with { Rotation = Rotations.FromEulerDegrees(Copied(before, turned, Rotations.ToEulerDegrees(other.Rotation))) });
             _euler = (target.Id, rotation, euler);
+        }
+
+        AltTip(session);
+    }
+
+    /// <summary>The axes that were changed, from <paramref name="now"/>; the rest as <paramref name="other"/> had them.</summary>
+    private static Vector3 Copied(Vector3 was, Vector3 now, Vector3 other) => new(
+        now.X != was.X ? now.X : other.X,
+        now.Y != was.Y ? now.Y : other.Y,
+        now.Z != was.Z ? now.Z : other.Z);
+
+    /// <summary>With several selected, a field says how to set it on all of them: Blender's Alt.</summary>
+    private static void AltTip(EditorSession session)
+    {
+        if (session.SelectedCount > 1 && ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Hold Alt while changing it to set it on everything selected.");
         }
     }
 
@@ -147,7 +172,8 @@ public static class ObjectPropertiesPanel
         if (Props.Float("Voxel size", "voxel-size", ref size, 0.005f, ObjectTransform.MinVoxelSize, ObjectTransform.MaxVoxelSize, "%.4g")
             && ObjectTransform.ValidVoxelSize(size) is { } valid)
         {
-            Change(session, focus, focus.Transform with { VoxelSize = valid }, $"Voxel size of {focus.Name}");
+            Change(session, focus, focus.Transform with { VoxelSize = valid }, $"Voxel size of {focus.Name}",
+                other => other with { VoxelSize = valid }, objectsOnly: true);
         }
 
         Tooltip(
@@ -202,7 +228,20 @@ public static class ObjectPropertiesPanel
         return euler;
     }
 
-    private static void Change(EditorSession session, IPlaceable target, ObjectTransform changed, string name)
+    /// <summary>The rest of the selection an Alt edit is changing too, each with where it stood before.</summary>
+    private static readonly List<(IPlaceable Thing, ObjectTransform Before)> _alsoEditing = [];
+
+    /// <param name="forOthers">
+    /// What the edit does to everything else selected, while Alt is held — Blender's way of setting
+    /// one field on several at once. Only the axes that were changed are copied.
+    /// </param>
+    private static void Change(
+        EditorSession session,
+        IPlaceable target,
+        ObjectTransform changed,
+        string name,
+        Func<ObjectTransform, ObjectTransform>? forOthers = null,
+        bool objectsOnly = false)
     {
         if (_editing != target)
         {
@@ -213,6 +252,30 @@ public static class ObjectPropertiesPanel
         }
 
         session.ApplyTransform(target, changed);
+
+        if (forOthers is null || !ImGui.GetIO().KeyAlt)
+        {
+            return;
+        }
+
+        IEnumerable<IPlaceable> others = objectsOnly
+            ? session.SelectedObjects
+            : session.SelectedObjects.Cast<IPlaceable>().Concat(session.SelectedLights);
+
+        foreach (IPlaceable other in others)
+        {
+            if (other.Id == target.Id || other is VoxelObject { Locked: true } || other is SceneLight { Locked: true })
+            {
+                continue;
+            }
+
+            if (!_alsoEditing.Exists(e => e.Thing.Id == other.Id))
+            {
+                _alsoEditing.Add((other, other.Transform));
+            }
+
+            session.ApplyTransform(other, forOthers(other.Transform));
+        }
     }
 
     /// <summary>The gesture is over once nothing is held: a drag let go, a typed value entered.</summary>
@@ -229,10 +292,18 @@ public static class ObjectPropertiesPanel
     {
         if (_editing is { } target)
         {
-            session.PushTransformEdit(target, _before, _editName);
+            if (_alsoEditing.Count == 0)
+            {
+                session.PushTransformEdit(target, _before, _editName);
+            }
+            else
+            {
+                session.PushTransformEdits([(target, _before), .. _alsoEditing], $"{_editName} and {_alsoEditing.Count} more");
+            }
         }
 
         _editing = null;
+        _alsoEditing.Clear();
     }
 
     private static void Tooltip(string text)

@@ -46,6 +46,13 @@ public sealed class MimicraftController(EditorSession session)
 
     public void Show()
     {
+        // As the mesh export: an empty level is said to be one, rather than opening onto nothing.
+        if (!session.Scene.Objects.Any(o => o.Visible && !o.IsEmpty))
+        {
+            Ui.ReportLog.Shared.Post("Nothing to save for Mimicraft - the level has no voxels that are shown.", Ui.ReportKind.Warning);
+            return;
+        }
+
         _isOpen = true;
         _shouldOpenPopup = true;
         _status = string.Empty;

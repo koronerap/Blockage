@@ -188,6 +188,35 @@ public class SelectToolTests
         Assert.Equal(0f, right.Transform.Position.Y, 3);
     }
 
+    /// <summary>Several moved together snap by the box round all of them, not by the active one's own.</summary>
+    [Fact]
+    public void SeveralSnapByTheBoxRoundThemAll()
+    {
+        var scene = new VoxelScene();
+        VoxelObject left = scene.Add(Block(2), ObjectTransform.Identity, "Left");
+        VoxelObject right = scene.Add(Block(2), new ObjectTransform(new Vector3(3f, 0f, 0f), Quaternion.Identity), "Right");
+        scene.Add(Block(2), new ObjectTransform(new Vector3(10f, 0f, 0f), Quaternion.Identity), "Target");
+
+        var session = new EditorSession { ActiveTool = EditorTool.Transform };
+        session.ReplaceScene(scene, projectPath: null);
+        session.SelectMany([left.Id, right.Id], SelectionOperation.Replace);
+        session.Snap.Targets = SnapTarget.Corner;
+
+        var camera = new FlyCamera { Position = new Vector3(6f, 1f, 25f) };
+        camera.LookAt(new Vector3(6f, 1f, 1f));
+        var transform = new TransformInteraction(session);
+
+        GizmoHandle arrow = transform.Handles(camera).First(h => h.Kind == GizmoKind.MoveAxis && h.Axis == 0);
+        (Vector3 start, Vector3 end) = transform.Segment(arrow, camera);
+        Assert.True(transform.OnPress(ScreenOf(camera, (start + end) * 0.5f), Viewport, camera));
+        transform.OnDrag(ScreenOf(camera, new Vector3(10f, 0f, 2f)), Viewport, camera, snap: true);
+        transform.OnRelease();
+
+        // The right-hand block's far side lands on the target's near corner; the pair moved as one.
+        Assert.Equal(5f, left.Transform.Position.X, 3);
+        Assert.Equal(8f, right.Transform.Position.X, 3);
+    }
+
     [Fact]
     public void CancellingADragOfSeveralPutsThemAllBack()
     {

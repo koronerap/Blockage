@@ -168,6 +168,12 @@ public static class ViewportMenu
         Entry(actions, "Paste", EditorAction.Paste, session.Clipboard is not null);
 
         ImGui.Separator();
+        bool anything = scene.Objects.Count > 0 || scene.Lights.Count > 0;
+        Entry(actions, "Select All", EditorAction.SelectAll, anything);
+        Entry(actions, "Select None", EditorAction.DeselectAll, session.SelectedCount > 0);
+        Entry(actions, "Invert Selection", EditorAction.InvertSelection, anything);
+
+        ImGui.Separator();
         Entry(actions, "Frame All", EditorAction.FrameLevel);
         Entry(actions, "Show All", EditorAction.ShowAll, scene.Objects.Any(o => !o.Visible) || scene.Lights.Any(l => !l.Visible));
         Entry(actions, "Unlock All", EditorAction.UnlockAll, scene.Objects.Any(o => o.Locked) || scene.Lights.Any(l => l.Locked));

@@ -115,9 +115,12 @@ public static class Snapping
             : (Vector3.Zero, Vector3.Zero);
 
     /// <summary>The eight corners of a thing's box, in the world, placed by <paramref name="at"/>.</summary>
-    public static Vector3[] Corners(IPlaceable thing, ObjectTransform at)
+    public static Vector3[] Corners(IPlaceable thing, ObjectTransform at) => Corners(LocalBox(thing), at);
+
+    /// <summary>The eight corners of a box in some thing's own space, in the world, placed by <paramref name="at"/>.</summary>
+    public static Vector3[] Corners((Vector3 Min, Vector3 Max) box, ObjectTransform at)
     {
-        (Vector3 min, Vector3 max) = LocalBox(thing);
+        (Vector3 min, Vector3 max) = box;
         var corners = new Vector3[8];
 
         for (int i = 0; i < 8; i++)
@@ -152,19 +155,21 @@ public static class Snapping
     }
 
     /// <summary>The middle of a thing's box, in the world.</summary>
-    public static Vector3 Centre(IPlaceable thing, ObjectTransform at)
-    {
-        (Vector3 min, Vector3 max) = LocalBox(thing);
-        return at.TransformPoint((min + max) * 0.5f);
-    }
+    public static Vector3 Centre(IPlaceable thing, ObjectTransform at) => Centre(LocalBox(thing), at);
+
+    public static Vector3 Centre((Vector3 Min, Vector3 Max) box, ObjectTransform at) =>
+        at.TransformPoint((box.Min + box.Max) * 0.5f);
 
     /// <summary>
     /// The middle of the side of a thing's box that faces into a surface — the side it would stand
     /// on, set down on a surface whose outward normal is <paramref name="normal"/>.
     /// </summary>
-    public static Vector3 ContactPoint(IPlaceable thing, ObjectTransform at, Vector3 normal)
+    public static Vector3 ContactPoint(IPlaceable thing, ObjectTransform at, Vector3 normal) =>
+        ContactPoint(LocalBox(thing), at, normal);
+
+    public static Vector3 ContactPoint((Vector3 Min, Vector3 Max) box, ObjectTransform at, Vector3 normal)
     {
-        (Vector3 min, Vector3 max) = LocalBox(thing);
+        (Vector3 min, Vector3 max) = box;
         Vector3 centre = (min + max) * 0.5f;
         Vector3 half = (max - min) * 0.5f;
 
@@ -180,20 +185,51 @@ public static class Snapping
     }
 
     /// <summary>The point of the moved thing that is brought to a target point.</summary>
-    public static Vector3 BasePoint(IPlaceable thing, ObjectTransform at, SnapBase snapBase, Vector3 target) => snapBase switch
+    public static Vector3 BasePoint(IPlaceable thing, ObjectTransform at, SnapBase snapBase, Vector3 target) =>
+        BasePoint(LocalBox(thing), at, snapBase, target);
+
+    /// <summary>
+    /// The same for a box in the moved thing's own space — the box round the whole of a selection,
+    /// when several things move as one.
+    /// </summary>
+    public static Vector3 BasePoint((Vector3 Min, Vector3 Max) box, ObjectTransform at, SnapBase snapBase, Vector3 target) => snapBase switch
     {
-        SnapBase.Center => Centre(thing, at),
+        SnapBase.Center => Centre(box, at),
         SnapBase.Origin => at.Position,
-        _ => Corners(thing, at).MinBy(c => Vector3.DistanceSquared(c, target)),
+        _ => Corners(box, at).MinBy(c => Vector3.DistanceSquared(c, target)),
     };
 
     /// <summary>The point of the moved thing that is set down on a surface.</summary>
-    public static Vector3 SurfaceBase(IPlaceable thing, ObjectTransform at, SnapBase snapBase, Vector3 normal) => snapBase switch
+    public static Vector3 SurfaceBase(IPlaceable thing, ObjectTransform at, SnapBase snapBase, Vector3 normal) =>
+        SurfaceBase(LocalBox(thing), at, snapBase, normal);
+
+    public static Vector3 SurfaceBase((Vector3 Min, Vector3 Max) box, ObjectTransform at, SnapBase snapBase, Vector3 normal) => snapBase switch
     {
-        SnapBase.Center => Centre(thing, at),
+        SnapBase.Center => Centre(box, at),
         SnapBase.Origin => at.Position,
-        _ => ContactPoint(thing, at, normal),
+        _ => ContactPoint(box, at, normal),
     };
+
+    /// <summary>
+    /// The box round several things, in the first one's own space as it stands at
+    /// <paramref name="frame"/>: what they snap by when they are moved together.
+    /// </summary>
+    public static (Vector3 Min, Vector3 Max) GroupBox(IPlaceable first, ObjectTransform frame, IEnumerable<(IPlaceable Thing, ObjectTransform At)> others)
+    {
+        (Vector3 min, Vector3 max) = LocalBox(first);
+
+        foreach ((IPlaceable thing, ObjectTransform at) in others)
+        {
+            foreach (Vector3 corner in Corners(thing, at))
+            {
+                Vector3 local = frame.InverseTransformPoint(corner);
+                min = Vector3.Min(min, local);
+                max = Vector3.Max(max, local);
+            }
+        }
+
+        return (min, max);
+    }
 
     /// <summary>A position rounded to the world lattice of <paramref name="step"/>.</summary>
     public static Vector3 ToGrid(Vector3 position, float step) => ObjectTransform.SnapPosition(position, step);

@@ -1757,12 +1757,13 @@ public sealed class EditorApplication : IDisposable
         string key = Shortcut.Of(EditorAction.AddMenu) is { Length: > 0 } add ? add : "the Add menu";
         string[] lines = ["The level is empty.", $"{key} adds a shape, a prop or a light."];
 
+        // Low in the view, clear of the origin, where the sun and whatever is added first will be.
         ImDrawListPtr draw = ImGui.GetBackgroundDrawList();
-        float y = _viewport.Position.Y + (_viewport.Size.Y * 0.5f) - ImGui.GetTextLineHeightWithSpacing();
+        float y = _viewport.Position.Y + (_viewport.Size.Y * 0.72f);
         foreach (string line in lines)
         {
             Vector2 size = ImGui.CalcTextSize(line);
-            draw.AddText(new Vector2(_viewport.Position.X + ((_viewport.Size.X - size.X) * 0.5f), y), ImGui.GetColorU32(Theme.TextDim), line);
+            draw.AddText(new Vector2(_viewport.Position.X + ((_viewport.Size.X - size.X) * 0.5f), y), ImGui.GetColorU32(Theme.Text with { W = 0.75f }), line);
             y += ImGui.GetTextLineHeightWithSpacing();
         }
     }

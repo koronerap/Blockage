@@ -63,6 +63,9 @@ public sealed class TransformInteraction(EditorSession session)
     /// <summary>The rest of what is being moved, with where each stood and its centre when the drag began.</summary>
     private readonly List<(IPlaceable Thing, ObjectTransform Start, Vector3 Centre)> _others = [];
     private Vector3 _startCentre;
+
+    /// <summary>The box round everything being moved, in the first one's own space: what a snap sets down.</summary>
+    private (Vector3 Min, Vector3 Max) _groupBox;
     private GizmoHandle _grabbed;
     private Vector2 _pressPosition;
     private float _pressAngle;
@@ -389,6 +392,8 @@ public sealed class TransformInteraction(EditorSession session)
         {
             _others.Add((other, other.Transform, other.WorldCentre()));
         }
+
+        _groupBox = Snapping.GroupBox(focus, _startTransform, _others.Select(o => (o.Thing, o.Start)));
         _grabbed = handle;
         _pressPosition = mouse;
         _pressAngle = ScreenAngle(handle, mouse, viewport, camera);
@@ -587,8 +592,8 @@ public sealed class TransformInteraction(EditorSession session)
 
     private Vector3 BaseFor(ObjectTransform at, (Vector3 Point, SnapTarget Kind, Vector3 Normal) target) =>
         target.Kind == SnapTarget.Surface
-            ? Snapping.SurfaceBase(_target!, at, session.Snap.Base, target.Normal)
-            : Snapping.BasePoint(_target!, at, session.Snap.Base, target.Point);
+            ? Snapping.SurfaceBase(_groupBox, at, session.Snap.Base, target.Normal)
+            : Snapping.BasePoint(_groupBox, at, session.Snap.Base, target.Point);
 
     /// <summary>
     /// What the cursor is on to snap to: the nearest corner or edge middle within reach on screen, and
