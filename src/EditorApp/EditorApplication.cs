@@ -786,6 +786,10 @@ public sealed class EditorApplication : IDisposable
                 UpdateExtrude(local, viewport, leftDown, pressed, released, pointing);
                 break;
 
+            case EditorTool.Paint when _session.PaintMode == PaintMode.Stencil:
+                UpdateStencil(local, leftDown, pressed, released);
+                break;
+
             case EditorTool.Paint:
                 UpdatePaint(leftDown, pressed, released);
                 break;
@@ -905,6 +909,37 @@ public sealed class EditorApplication : IDisposable
 
     /// <summary>Where a gradient drag began, until it is let go.</summary>
     private RaycastHit? _gradientStart;
+
+    /// <summary>The stencil's box being dragged, in viewport pixels: where it began, and where the pointer is.</summary>
+    private (Vector2 From, Vector2 To)? _stencil;
+
+    /// <summary>
+    /// The stencil: the loaded image stretched over a box dragged on the view, and painted onto the
+    /// focused object's faces seen through it — each the pixel it is seen through.
+    /// </summary>
+    private void UpdateStencil(Vector2 mouse, bool leftDown, bool pressed, bool released)
+    {
+        if (pressed)
+        {
+            _stencil = (mouse, mouse);
+        }
+        else if (leftDown && _stencil is { } dragging)
+        {
+            _stencil = (dragging.From, mouse);
+        }
+        else if (released && _stencil is { } box)
+        {
+            _stencil = null;
+            Vector2 min = Vector2.Min(box.From, box.To);
+            Vector2 max = Vector2.Max(box.From, box.To);
+            if (max.X - min.X < 4f || max.Y - min.Y < 4f || _session.Scene.Focus is not { } target || _session.Pattern is null)
+            {
+                return;
+            }
+
+            _session.ProjectPattern(StencilProjection.FacesSeenIn(target, _camera, _viewport.Size, min, max));
+        }
+    }
 
     private void UpdatePaint(bool leftDown, bool pressed, bool released)
     {
@@ -1894,9 +1929,20 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
-    /// <summary>The box a selecting drag is drawing, in the colour of what it will do.</summary>
+    /// <summary>The box a selecting drag is drawing, in the colour of what it will do — or the stencil's.</summary>
     private void DrawSelectBox()
     {
+        if (_stencil is { } stencil)
+        {
+            ImDrawListPtr stencilDraw = ImGui.GetForegroundDrawList();
+            Vector2 from = _viewport.Position + Vector2.Min(stencil.From, stencil.To);
+            Vector2 to = _viewport.Position + Vector2.Max(stencil.From, stencil.To);
+            stencilDraw.AddRectFilled(from, to, ImGui.GetColorU32(new Vector4(1f, 1f, 1f, 0.06f)));
+            stencilDraw.AddRect(from, to, ImGui.GetColorU32(EditorOverlays.BrushOutline.ToVector4()), 0f, ImDrawFlags.None, 1.5f);
+            stencilDraw.AddText(from + new Vector2(6f, 4f), ImGui.GetColorU32(Theme.Text), _session.Pattern?.Name ?? "No image loaded");
+            return;
+        }
+
         if (_select?.Box is not { } box)
         {
             return;

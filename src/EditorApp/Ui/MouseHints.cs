@@ -91,6 +91,7 @@ public static class MouseHints
                 PaintMode.Gradient => "Drag a gradient",
                 PaintMode.Noise => "Fill with noise",
                 PaintMode.Dither => "Fill with a dither",
+                PaintMode.Stencil => "Drag the image over the view",
                 _ => "Paint",
             },
 

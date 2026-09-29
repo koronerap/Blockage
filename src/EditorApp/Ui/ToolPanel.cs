@@ -159,7 +159,7 @@ public static class ToolPanel
             int mode = Props.Choice(
                 "Mode",
                 "paint-mode",
-                [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket"), (Icons.Pattern, "Pattern"), (Icons.Gradient, "Gradient"), (Icons.Noise, "Noise"), (Icons.Dither, "Dither")],
+                [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket"), (Icons.Pattern, "Pattern"), (Icons.Gradient, "Gradient"), (Icons.Noise, "Noise"), (Icons.Dither, "Dither"), (Icons.Stencil, "Stencil")],
                 (int)session.PaintMode);
             session.PaintMode = (PaintMode)mode;
             Tooltip("X cycles");
@@ -185,6 +185,11 @@ public static class ToolPanel
                 case PaintMode.Pattern:
                     DrawBucket(session);
                     DrawPattern(session);
+                    break;
+
+                case PaintMode.Stencil:
+                    DrawPattern(session);
+                    Wrapped("Drag a box over the view: the loaded image is stretched over it and painted onto the faces of the object seen through it, each pixel onto the face under it. See-through pixels paint nothing.");
                     break;
 
                 default:

@@ -100,4 +100,7 @@ public enum PaintMode
 
     /// <summary>The surface in an even pattern of the two colours, in the mix's proportion.</summary>
     Dither,
+
+    /// <summary>The loaded image laid over the view in a dragged box, and painted onto the faces seen through it.</summary>
+    Stencil,
 }

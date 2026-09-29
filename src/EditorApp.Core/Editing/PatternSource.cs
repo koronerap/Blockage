@@ -47,6 +47,19 @@ public sealed class PatternSource
     }
 
     /// <summary>
+    /// The palette entry for a point of the image, <paramref name="u"/> across from the left and
+    /// <paramref name="v"/> down from the top, both 0 to 1 — or null where the image is see-through,
+    /// so a stencil of a sign paints the sign and not the space round it.
+    /// </summary>
+    public byte? SampleAt(Palette palette, float u, float v)
+    {
+        int x = Math.Clamp((int)MathF.Floor(u * Width), 0, Width - 1);
+        int y = Math.Clamp((int)MathF.Floor(v * Height), 0, Height - 1);
+        Color32 colour = _image[x, y];
+        return colour.A < 128 ? null : NearestIndex(palette, colour);
+    }
+
+    /// <summary>
     /// Drops the axis the surface faces along and keeps the other two, so the image lies flat on
     /// the surface being painted.
     /// </summary>

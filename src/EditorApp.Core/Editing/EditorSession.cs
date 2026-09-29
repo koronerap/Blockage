@@ -124,6 +124,34 @@ public sealed partial class EditorSession
     /// <summary>The colour in hand and the second colour trade places.</summary>
     public void SwapColours() => (ActiveColorIndex, SecondaryColorIndex) = (SecondaryColorIndex, ActiveColorIndex);
 
+    /// <summary>
+    /// The loaded image painted onto faces of the focused object, each at the point of the image it
+    /// was seen through — the stencil — as one undo step. The host works out which faces are seen
+    /// and where; see-through pixels paint nothing.
+    /// </summary>
+    public bool ProjectPattern(IEnumerable<(Int3 Cell, Face Face, float U, float V)> faces)
+    {
+        if (Pattern is not { } pattern)
+        {
+            return false;
+        }
+
+        List<(Int3 Cell, Face Face, float U, float V)> seen = [.. faces];
+        return RunStep("Stencil", c =>
+        {
+            int changed = 0;
+            foreach ((Int3 cell, Face face, float u, float v) in seen)
+            {
+                if (pattern.SampleAt(Scene.Palette, u, v) is { } index && c.ApplyFace(cell, face, index))
+                {
+                    changed++;
+                }
+            }
+
+            return changed;
+        });
+    }
+
     /// <summary>A gradient dragged from one face to a cell, over the surface it starts on, as one undo step.</summary>
     public bool PaintGradient(RaycastHit start, Int3 end) =>
         RunStep("Gradient", c => PaintOperations.Gradient(start.Voxel, start.Face, end, ActiveColorIndex, SecondaryColorIndex, BucketThreshold, c));

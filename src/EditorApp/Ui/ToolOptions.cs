@@ -219,6 +219,7 @@ public static class ToolOptions
                 (Icons.Gradient, "Gradient - drag from the colour in hand to the second colour"),
                 (Icons.Noise, "Noise - the two colours scattered"),
                 (Icons.Dither, "Dither - the two colours in an even pattern"),
+                (Icons.Stencil, "Stencil - drag a box over the view: the image in it is painted onto what is seen"),
             ],
             (int)session.PaintMode,
             Shortcut.Of(EditorAction.ToolCycleMode),
@@ -294,7 +295,7 @@ public static class ToolOptions
             ImGui.EndDisabled();
             Tooltip("How close a colour has to be to be filled over");
 
-            if (session.PaintMode == PaintMode.Pattern)
+            if (session.PaintMode is PaintMode.Pattern or PaintMode.Stencil)
             {
                 ImGui.SameLine(0f, 4f);
                 if (ImGui.Button("Pattern..."))

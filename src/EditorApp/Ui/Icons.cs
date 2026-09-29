@@ -280,6 +280,14 @@ public static class Icons
         }
     }
 
+    /// <summary>Stencil: a frame with a picture in it — a hill and a sun — laid over something.</summary>
+    public static void Stencil(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r), centre + new Vector2(r));
+        canvas.FilledTriangle(centre + new Vector2(-r * 0.8f, r * 0.8f), centre + new Vector2(-r * 0.1f, -r * 0.2f), centre + new Vector2(r * 0.6f, r * 0.8f));
+        canvas.FilledCircle(centre + new Vector2(r * 0.45f, -r * 0.45f), r * 0.2f);
+    }
+
     /// <summary>Dither: a checkerboard.</summary>
     public static void Dither(IIconCanvas canvas, Vector2 centre, float r)
     {
