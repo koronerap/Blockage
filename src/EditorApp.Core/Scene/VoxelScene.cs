@@ -338,7 +338,13 @@ public sealed class VoxelScene
     /// reached. Something that only needs a point in the world — where to aim a light — asks for them
     /// with <paramref name="includeLocked"/>, since a floor is exactly what a light is aimed at.
     /// </summary>
-    public bool TryPick(Ray worldRay, out ScenePick pick, float maxDistance = VoxelRaycaster.DefaultMaxDistance, bool includeLocked = false)
+    /// <param name="skip">Objects to see straight through — the one being moved, when snapping it to what is behind.</param>
+    public bool TryPick(
+        Ray worldRay,
+        out ScenePick pick,
+        float maxDistance = VoxelRaycaster.DefaultMaxDistance,
+        bool includeLocked = false,
+        Func<VoxelObject, bool>? skip = null)
     {
         pick = default;
         bool found = false;
@@ -346,7 +352,7 @@ public sealed class VoxelScene
 
         foreach (VoxelObject o in _objects)
         {
-            if (!o.Visible || o.IsEmpty || (o.Locked && !includeLocked))
+            if (!o.Visible || o.IsEmpty || (o.Locked && !includeLocked) || (skip?.Invoke(o) ?? false))
             {
                 continue;
             }

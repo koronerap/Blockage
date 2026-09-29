@@ -565,14 +565,18 @@ public static class EditorOverlays
 
             Color32 color = transform.IsHighlighted(handle) ? GizmoActive : ColorFor(handle);
 
-            if (handle.Kind == GizmoKind.RotateRing)
+            if (handle.Kind is GizmoKind.RotateRing or GizmoKind.MoveFree)
             {
                 Vector3? previous = null;
-                foreach (Vector3 point in transform.RingPoints(handle, camera))
+                IEnumerable<Vector3> ring = handle.Kind == GizmoKind.MoveFree
+                    ? transform.FreeHandlePoints(handle, camera)
+                    : transform.RingPoints(handle, camera);
+
+                foreach (Vector3 point in ring)
                 {
                     if (previous is { } from)
                     {
-                        lines.AddThickLine(from, point, color, GizmoWidth);
+                        lines.AddThickLine(from, point, color, handle.Kind == GizmoKind.MoveFree ? GizmoEdgeWidth : GizmoWidth);
                     }
 
                     previous = point;
@@ -593,9 +597,32 @@ public static class EditorOverlays
         }
     }
 
+    /// <summary>
+    /// Where a snapped drag has landed: a ring round the point it snapped to, drawn over everything,
+    /// so it is clear the object jumped to something rather than slipped.
+    /// </summary>
+    public static void AddSnapTarget(LineGeometry lines, TransformInteraction transform, FlyCamera camera)
+    {
+        if (transform.SnapPoint is not { } point)
+        {
+            return;
+        }
+
+        float size = MathF.Max(Vector3.Distance(camera.Position, point) * 0.014f, 0.01f);
+        Vector3 right = camera.Right * size;
+        Vector3 up = camera.Up * size;
+
+        AddBillboardCircle(lines, point, right, up, 1f, SnapMark, GizmoEdgeWidth);
+        lines.AddThickLine(point - (right * 0.35f), point + (right * 0.35f), SnapMark, GizmoEdgeWidth);
+        lines.AddThickLine(point - (up * 0.35f), point + (up * 0.35f), SnapMark, GizmoEdgeWidth);
+    }
+
+    /// <summary>The ring round a snap target: Blender's snapping mark is this colour.</summary>
+    public static readonly Color32 SnapMark = new(255, 196, 64);
+
     public static Color32 ColorFor(GizmoHandle handle) => handle.Kind switch
     {
-        GizmoKind.EdgeHinge => GizmoEdge,
+        GizmoKind.EdgeHinge or GizmoKind.MoveFree => GizmoEdge,
         _ => handle.Axis switch
         {
             0 => AxisX,

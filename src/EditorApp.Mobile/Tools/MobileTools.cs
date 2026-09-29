@@ -147,9 +147,9 @@ public sealed class MobileTools
         switch (_holder)
         {
             case Holder.Gizmo when _session.ActiveTool == EditorTool.Transform:
-                // freeform: false — a finger cannot hold shift, and snapping to whole voxels is the
-                // behaviour worth having by default.
-                _transform.OnDrag(point, viewport, camera, freeform: false);
+                // Snapping on — a finger cannot hold Shift to ask for it, and landing on whole voxels
+                // is the behaviour worth having on a phone.
+                _transform.OnDrag(point, viewport, camera, snap: true);
                 break;
 
             case Holder.Gizmo:

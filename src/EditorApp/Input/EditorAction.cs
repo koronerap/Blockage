@@ -17,6 +17,7 @@ public enum EditorAction
     ToolView,
     ToolOtherMode,
     ToolCycleMode,
+    ToggleSnap,
 
     // Edit
     Undo,
@@ -92,6 +93,7 @@ public static class EditorActions
         new(EditorAction.ToolView, "tool.view", "View tool - the camera only", Tools),
         new(EditorAction.ToolOtherMode, "tool.othermode", "The tool's other mode", Tools),
         new(EditorAction.ToolCycleMode, "tool.cyclemode", "Cycle paint mode, axes, new object", Tools),
+        new(EditorAction.ToggleSnap, "tool.snap", "Snapping on or off", Tools),
 
         new(EditorAction.Undo, "edit.undo", "Undo", Edit),
         new(EditorAction.Redo, "edit.redo", "Redo", Edit),

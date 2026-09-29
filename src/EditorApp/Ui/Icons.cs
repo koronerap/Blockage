@@ -303,6 +303,65 @@ public static class Icons
         canvas.Rect(origin, origin + new Vector2(cell * 2f), 0f, 0.7f);
     }
 
+    // ---- Snapping ----------------------------------------------------------------------------
+
+    /// <summary>Snapping: a horseshoe magnet, the mark every editor uses for it.</summary>
+    public static void Magnet(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        const int Segments = 12;
+        Span<Vector2> bend = stackalloc Vector2[Segments + 1];
+        Vector2 middle = centre + new Vector2(0f, r * 0.12f);
+        float radius = r * 0.56f;
+
+        for (int i = 0; i <= Segments; i++)
+        {
+            float angle = i / (float)Segments * MathF.PI;
+            bend[i] = middle + (new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius);
+        }
+
+        canvas.Polyline(bend, 1.5f);
+        canvas.Line(middle + new Vector2(radius, 0f), middle + new Vector2(radius, -r * 0.62f), 1.5f);
+        canvas.Line(middle - new Vector2(radius, 0f), middle + new Vector2(-radius, -r * 0.62f), 1.5f);
+
+        // The poles, solid.
+        float pole = r * 0.2f;
+        canvas.FilledRect(middle + new Vector2(radius - pole, -r * 0.98f), middle + new Vector2(radius + pole, -r * 0.62f));
+        canvas.FilledRect(middle + new Vector2(-radius - pole, -r * 0.98f), middle + new Vector2(-radius + pole, -r * 0.62f));
+    }
+
+    /// <summary>Snap to increments: a lattice of points.</summary>
+    public static void SnapIncrement(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            for (int y = -1; y <= 1; y++)
+            {
+                canvas.FilledCircle(centre + (new Vector2(x, y) * r * 0.62f), r * 0.13f);
+            }
+        }
+    }
+
+    /// <summary>Snap to corners: a box with one corner marked.</summary>
+    public static void SnapCorner(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r * 0.7f), centre + new Vector2(r * 0.7f), 0f, 0.8f);
+        canvas.FilledCircle(centre + new Vector2(r * 0.7f, -r * 0.7f), r * 0.28f);
+    }
+
+    /// <summary>Snap to edge middles: a box with the middle of an edge marked.</summary>
+    public static void SnapEdge(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r * 0.7f), centre + new Vector2(r * 0.7f), 0f, 0.8f);
+        canvas.FilledCircle(centre + new Vector2(0f, -r * 0.7f), r * 0.28f);
+    }
+
+    /// <summary>Snap to surfaces: a block set down on a face.</summary>
+    public static void SnapSurface(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.FilledRect(centre + new Vector2(-r * 0.95f, r * 0.45f), centre + new Vector2(r * 0.95f, r * 0.75f));
+        canvas.Rect(centre + new Vector2(-r * 0.42f, -r * 0.55f), centre + new Vector2(r * 0.42f, r * 0.3f), 0f, 1f);
+    }
+
     // ---- Overlays ----------------------------------------------------------------------------
 
     public static void Grid(IIconCanvas canvas, Vector2 centre, float r)

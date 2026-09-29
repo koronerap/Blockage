@@ -13,6 +13,9 @@ public enum GizmoKind
     /// <summary>One of the three move arrows.</summary>
     MoveAxis,
 
+    /// <summary>The small ring at the middle: moves in the plane facing the camera, and follows the cursor onto surfaces.</summary>
+    MoveFree,
+
     /// <summary>One of the three rotate rings, at the object's own centre.</summary>
     RotateRing,
 
@@ -33,7 +36,10 @@ public readonly record struct GizmoHandle(
 /// space</b> — the gizmo has no colliders, so arrows, rings and edges are all hit-tested as
 /// projected line segments, which is also what keeps them grabbable at any camera distance.
 ///
-/// Snap is on unless Shift is held: movement lands on whole voxels, rotation on a fixed angle step.
+/// A drag goes where the mouse goes. It snaps when the session's magnet is lit, or while Shift is
+/// held when it is not — onto whole voxels, other objects' corners and edge middles, or the surface
+/// under the cursor, as <see cref="SnapSettings"/> says. An arrow's drag stays on its arrow even
+/// then: the target is met as nearly as the axis allows, as Blender does with a constraint.
 /// </summary>
 public sealed class TransformInteraction(EditorSession session)
 {
@@ -48,11 +54,21 @@ public sealed class TransformInteraction(EditorSession session)
 
     private const int RingSegments = 48;
 
+    /// <summary>How near a corner or an edge middle the cursor has to come to snap to it, in pixels.</summary>
+    public float SnapPixels { get; set; } = 16f;
+
     private IPlaceable? _target;
     private ObjectTransform _startTransform;
     private GizmoHandle _grabbed;
     private Vector2 _pressPosition;
     private float _pressAngle;
+    private Vector3 _pressWorld;
+    private Vector3 _planeNormal;
+
+    /// <summary>Where the drag last snapped to a point, and to what; null when it did not.</summary>
+    public Vector3? SnapPoint { get; private set; }
+
+    public SnapTarget SnapKind { get; private set; }
 
     public GizmoHandle? Hovered { get; private set; }
 
@@ -69,9 +85,6 @@ public sealed class TransformInteraction(EditorSession session)
     }
 
     private float _sizeScale = 1f;
-
-    /// <summary>What a snapped rotation steps by, in degrees. A preference.</summary>
-    public float AngleStep { get; set; } = ObjectTransform.DefaultAngleStepDegrees;
 
     /// <summary>Gizmo length in world units at the object's distance from the camera.</summary>
     private float GizmoScale(FlyCamera camera, Vector3 origin) =>
@@ -102,6 +115,8 @@ public sealed class TransformInteraction(EditorSession session)
 
             yield break;
         }
+
+        yield return new GizmoHandle(GizmoKind.MoveFree, -1, centre, Vector3.Zero, centre);
 
         bool local = session.TransformSpace == TransformSpace.Local;
         for (int axis = 0; axis < 3; axis++)
@@ -207,6 +222,23 @@ public sealed class TransformInteraction(EditorSession session)
         }
     }
 
+    /// <summary>The ring round the middle that moves freely, facing the camera, for drawing.</summary>
+    public IEnumerable<Vector3> FreeHandlePoints(GizmoHandle handle, FlyCamera camera)
+    {
+        float radius = GizmoScale(camera, handle.Origin) * FreeRingShare;
+        Vector3 right = camera.Right * radius;
+        Vector3 up = camera.Up * radius;
+
+        for (int i = 0; i <= RingSegments / 2; i++)
+        {
+            float angle = i / (float)(RingSegments / 2) * MathF.Tau;
+            yield return handle.Origin + (right * MathF.Cos(angle)) + (up * MathF.Sin(angle));
+        }
+    }
+
+    /// <summary>The free-move ring's size against the arrows' length.</summary>
+    private const float FreeRingShare = 0.14f;
+
     public void UpdateHover(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
         if (IsDragging)
@@ -219,6 +251,19 @@ public sealed class TransformInteraction(EditorSession session)
 
     private GizmoHandle? Pick(Vector2 mouse, Vector2 viewport, FlyCamera camera)
     {
+        // The ring in the middle first: the arrows start where it is, and a press on the middle of
+        // the gizmo means the ring rather than whichever arrow happens to be nearest.
+        foreach (GizmoHandle handle in Handles(camera))
+        {
+            if (handle.Kind == GizmoKind.MoveFree
+                && camera.TryProjectToScreen(handle.Origin, viewport, out Vector2 centre)
+                && camera.TryProjectToScreen(handle.Origin + (camera.Right * GizmoScale(camera, handle.Origin) * FreeRingShare), viewport, out Vector2 rim)
+                && Vector2.Distance(mouse, centre) <= MathF.Max(Vector2.Distance(centre, rim) + 4f, GrabPixels * 0.75f))
+            {
+                return handle;
+            }
+        }
+
         // Arrows and rings are tried first and win outright. A box edge runs the length of the
         // model and passes close to the gizmo at the centre, so sharing one nearest-wins test let
         // the hinge steal grabs from the move axes almost everywhere.
@@ -237,7 +282,7 @@ public sealed class TransformInteraction(EditorSession session)
 
         foreach (GizmoHandle handle in Handles(camera))
         {
-            if (handle.Kind == GizmoKind.EdgeHinge != edges)
+            if (handle.Kind == GizmoKind.EdgeHinge != edges || handle.Kind == GizmoKind.MoveFree)
             {
                 continue;
             }
@@ -331,28 +376,43 @@ public sealed class TransformInteraction(EditorSession session)
         _grabbed = handle;
         _pressPosition = mouse;
         _pressAngle = ScreenAngle(handle, mouse, viewport, camera);
+        _planeNormal = camera.Forward;
+        _pressWorld = PlaneHit(mouse, viewport, camera) ?? handle.Origin;
+        SnapPoint = null;
         Readout = string.Empty;
         return true;
     }
 
-    public void OnDrag(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool freeform)
+    /// <param name="snap">
+    /// Whether this frame's drag snaps: the magnet, turned the other way while Shift is held — the
+    /// host's to work out, since only it knows what is held.
+    /// </param>
+    public void OnDrag(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool snap)
     {
         if (_target is null)
         {
             return;
         }
 
-        if (_grabbed.Kind == GizmoKind.MoveAxis)
+        SnapPoint = null;
+
+        switch (_grabbed.Kind)
         {
-            DragMove(mouse, viewport, camera, freeform);
-        }
-        else
-        {
-            DragRotate(mouse, viewport, camera, freeform);
+            case GizmoKind.MoveAxis:
+                DragMove(mouse, viewport, camera, snap && session.Snap.AffectMove);
+                break;
+
+            case GizmoKind.MoveFree:
+                DragFree(mouse, viewport, camera, snap && session.Snap.AffectMove);
+                break;
+
+            default:
+                DragRotate(mouse, viewport, camera, snap && session.Snap.AffectRotate);
+                break;
         }
     }
 
-    private void DragMove(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool freeform)
+    private void DragMove(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool snap)
     {
         if (!camera.TryProjectToScreen(_grabbed.Origin, viewport, out Vector2 origin)
             || !camera.TryProjectToScreen(_grabbed.Origin + _grabbed.Direction, viewport, out Vector2 oneUnit))
@@ -367,23 +427,198 @@ public sealed class TransformInteraction(EditorSession session)
             return;   // edge on, the drag would be uncontrollable
         }
 
+        Vector3 axis = _grabbed.Direction;
         float units = Vector2.Dot(mouse - _pressPosition, screenAxis / pixelsPerUnit) / pixelsPerUnit;
+        ObjectTransform moved = _startTransform.Translated(axis * units);
 
-        Vector3 offset = _grabbed.Direction * units;
-        ObjectTransform moved = _startTransform.Translated(offset);
-
-        if (!freeform)
+        if (snap)
         {
-            moved = moved with { Position = ObjectTransform.SnapPosition(moved.Position, _startTransform.VoxelSize) };
+            if (FindTarget(mouse, viewport, camera) is { } target)
+            {
+                // Along the arrow only: as near the target as the axis lets the moved point come.
+                ObjectTransform start = Standing(_startTransform, target);
+                Vector3 basePoint = BaseFor(start, target);
+                moved = start.Translated(axis * Vector3.Dot(target.Point - basePoint, axis));
+                Landed(target);
+            }
+            else if (session.Snap.Snaps(SnapTarget.Increment))
+            {
+                moved = IncrementAlong(moved, axis, units);
+            }
         }
 
+        Apply(moved);
+    }
+
+    private void DragFree(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool snap)
+    {
+        if (PlaneHit(mouse, viewport, camera) is not { } hit)
+        {
+            return;
+        }
+
+        Vector3 delta = hit - _pressWorld;
+        ObjectTransform moved = _startTransform.Translated(delta);
+
+        if (snap)
+        {
+            if (FindTarget(mouse, viewport, camera) is { } target)
+            {
+                // Free to go wherever the target is: the moved point lands on it.
+                moved = Standing(moved, target);
+                moved = moved.Translated(target.Point - BaseFor(moved, target));
+
+                // Set down on a surface with whole voxels on as well: flush against the surface, and
+                // on the lattice along it — blocks stacked on blocks line up.
+                if (target.Kind == SnapTarget.Surface && session.Snap.Snaps(SnapTarget.Increment) && AxisOf(target.Normal) is { } normalAxis)
+                {
+                    Vector3 onGrid = Snapping.ToGrid(moved.Position, _startTransform.VoxelSize);
+                    Vector3 position = moved.Position;
+                    for (int a = 0; a < 3; a++)
+                    {
+                        if (a != normalAxis)
+                        {
+                            position[a] = onGrid[a];
+                        }
+                    }
+
+                    moved = moved with { Position = position };
+                }
+
+                Landed(target);
+            }
+            else if (session.Snap.Snaps(SnapTarget.Increment))
+            {
+                float step = _startTransform.VoxelSize;
+                moved = session.Snap.AbsoluteGrid
+                    ? moved with { Position = Snapping.ToGrid(moved.Position, step) }
+                    : _startTransform.Translated(Snapping.ToGrid(delta, step));
+            }
+        }
+
+        Apply(moved);
+    }
+
+    /// <summary>
+    /// Whole voxels along an arrow. On the world's lattice when the arrow lies along a world axis and
+    /// the grid is absolute — only that one coordinate, so the drag stays on its arrow; in whole
+    /// steps from where the drag began otherwise.
+    /// </summary>
+    private ObjectTransform IncrementAlong(ObjectTransform moved, Vector3 axis, float units)
+    {
+        float step = _startTransform.VoxelSize;
+
+        if (session.Snap.AbsoluteGrid && AxisOf(axis) is { } world)
+        {
+            Vector3 position = moved.Position;
+            position[world] = MathF.Round(position[world] / step, MidpointRounding.AwayFromZero) * step;
+            return moved with { Position = position };
+        }
+
+        return _startTransform.Translated(axis * (MathF.Round(units / step, MidpointRounding.AwayFromZero) * step));
+    }
+
+    /// <summary>Which world axis a direction lies along, if it lies along one.</summary>
+    private static int? AxisOf(Vector3 direction)
+    {
+        for (int a = 0; a < 3; a++)
+        {
+            if (MathF.Abs(direction[a]) > 0.999f)
+            {
+                return a;
+            }
+        }
+
+        return null;
+    }
+
+    private void Apply(ObjectTransform moved)
+    {
         session.ApplyTransform(_target!, moved);
 
         Vector3 delta = moved.Position - _startTransform.Position;
-        Readout = $"{delta.X:+0.##;-0.##;0}, {delta.Y:+0.##;-0.##;0}, {delta.Z:+0.##;-0.##;0}";
+        string landed = SnapPoint is null ? string.Empty : $"   snapped to {NameOf(SnapKind)}";
+        Readout = $"{delta.X:+0.##;-0.##;0}, {delta.Y:+0.##;-0.##;0}, {delta.Z:+0.##;-0.##;0}{landed}";
     }
 
-    private void DragRotate(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool freeform)
+    private static string NameOf(SnapTarget kind) => kind switch
+    {
+        SnapTarget.Corner => "a corner",
+        SnapTarget.EdgeCentre => "an edge middle",
+        _ => "a surface",
+    };
+
+    private void Landed((Vector3 Point, SnapTarget Kind, Vector3 Normal) target)
+    {
+        SnapPoint = target.Point;
+        SnapKind = target.Kind;
+    }
+
+    /// <summary>A surface with its up asked to follow it turns the moved thing to stand on it; anything else leaves it as it was.</summary>
+    private ObjectTransform Standing(ObjectTransform at, (Vector3 Point, SnapTarget Kind, Vector3 Normal) target) =>
+        target.Kind == SnapTarget.Surface && session.Snap.AlignToSurface
+            ? at with { Rotation = Snapping.Standing(_startTransform.Rotation, target.Normal) }
+            : at;
+
+    private Vector3 BaseFor(ObjectTransform at, (Vector3 Point, SnapTarget Kind, Vector3 Normal) target) =>
+        target.Kind == SnapTarget.Surface
+            ? Snapping.SurfaceBase(_target!, at, session.Snap.Base, target.Normal)
+            : Snapping.BasePoint(_target!, at, session.Snap.Base, target.Point);
+
+    /// <summary>
+    /// What the cursor is on to snap to: the nearest corner or edge middle within reach on screen, and
+    /// failing that the surface under the cursor. The moved thing, and anything that moves with it,
+    /// are seen through.
+    /// </summary>
+    private (Vector3 Point, SnapTarget Kind, Vector3 Normal)? FindTarget(Vector2 mouse, Vector2 viewport, FlyCamera camera)
+    {
+        SnapSettings settings = session.Snap;
+        Func<VoxelObject, bool> skip = MovesWithTarget;
+
+        (Vector3 Point, SnapTarget Kind)? best = null;
+        float nearest = SnapPixels;
+
+        foreach ((Vector3 point, SnapTarget kind, _) in Snapping.TargetPoints(session.Scene, settings, skip))
+        {
+            if (camera.TryProjectToScreen(point, viewport, out Vector2 screen) && Vector2.Distance(screen, mouse) < nearest)
+            {
+                nearest = Vector2.Distance(screen, mouse);
+                best = (point, kind);
+            }
+        }
+
+        if (best is { } found)
+        {
+            return (found.Point, found.Kind, Vector3.Zero);
+        }
+
+        if (settings.Snaps(SnapTarget.Surface)
+            && Snapping.TrySurface(session.Scene, camera.ScreenPointToRay(mouse, viewport), settings, skip, out Vector3 surface, out Vector3 normal, out _))
+        {
+            return (surface, SnapTarget.Surface, normal);
+        }
+
+        return null;
+    }
+
+    /// <summary>The moved thing itself, which a snap must see through.</summary>
+    private bool MovesWithTarget(VoxelObject o) => ReferenceEquals(o, _target);
+
+    /// <summary>Where the cursor's ray meets the plane the free ring moves in: through the gizmo, facing the camera as it was at the press.</summary>
+    private Vector3? PlaneHit(Vector2 mouse, Vector2 viewport, FlyCamera camera)
+    {
+        Core.Raycast.Ray ray = camera.ScreenPointToRay(mouse, viewport);
+        float facing = Vector3.Dot(ray.Direction, _planeNormal);
+        if (MathF.Abs(facing) < 1e-5f)
+        {
+            return null;
+        }
+
+        float along = Vector3.Dot(_grabbed.Origin - ray.Origin, _planeNormal) / facing;
+        return along > 0f ? ray.Origin + (ray.Direction * along) : null;
+    }
+
+    private void DragRotate(Vector2 mouse, Vector2 viewport, FlyCamera camera, bool snap)
     {
         float angle = ScreenAngle(_grabbed, mouse, viewport, camera);
         float degrees = (angle - _pressAngle) * (180f / MathF.PI);
@@ -391,9 +626,9 @@ public sealed class TransformInteraction(EditorSession session)
         // Keep the reading in (-180, 180] so a drag past the top does not read as 350 degrees.
         degrees = ((degrees + 180f) % 360f + 360f) % 360f - 180f;
 
-        if (!freeform)
+        if (snap)
         {
-            degrees = ObjectTransform.SnapAngleDegrees(degrees, AngleStep);
+            degrees = ObjectTransform.SnapAngleDegrees(degrees, session.Snap.RotationIncrement);
         }
 
         // Screen Y runs down, so a clockwise drag has to turn the object the same way it looks.
@@ -441,11 +676,12 @@ public sealed class TransformInteraction(EditorSession session)
         if (_target is { } target)
         {
             string what = target is SceneLight ? "light" : "object";
-            string name = _grabbed.Kind == GizmoKind.MoveAxis ? $"Move {what}" : $"Rotate {what}";
+            string name = _grabbed.Kind is GizmoKind.MoveAxis or GizmoKind.MoveFree ? $"Move {what}" : $"Rotate {what}";
             session.PushTransformEdit(target, _startTransform, name);
         }
 
         _target = null;
+        SnapPoint = null;
         Readout = string.Empty;
     }
 
@@ -457,12 +693,13 @@ public sealed class TransformInteraction(EditorSession session)
         }
 
         _target = null;
+        SnapPoint = null;
         Readout = string.Empty;
     }
 
     /// <summary>The pivot a hinge drag is currently turning about, for drawing.</summary>
     public Vector3? ActivePivot(Vector2 mouse, Vector2 viewport, FlyCamera camera) =>
-        _target is null || _grabbed.Kind == GizmoKind.MoveAxis
+        _target is null || _grabbed.Kind is GizmoKind.MoveAxis or GizmoKind.MoveFree
             ? null
             : _grabbed.Kind == GizmoKind.EdgeHinge
                 ? NearestCorner(_grabbed, mouse, viewport, camera)

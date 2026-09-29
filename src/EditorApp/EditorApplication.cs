@@ -293,10 +293,10 @@ public sealed class EditorApplication : IDisposable
         if (_transform is not null)
         {
             _transform.SizeScale = p.GizmoSize;
-            _transform.AngleStep = p.RotationStep;
         }
 
         _window.VSync = p.VSync;
+        _session.Snap.CopyFrom(p.Snap);
         _session.History.CellBudget = p.UndoMemory * 1_000_000;
 
         if (_autosave is not null)
@@ -331,6 +331,7 @@ public sealed class EditorApplication : IDisposable
     /// <summary>The overlay switches as they are now, which the View menu and its keys change too.</summary>
     private void RememberViewState()
     {
+        _preferences.Snap.CopyFrom(_session.Snap);
         _preferences.ShowGrid = _showGrid;
         _preferences.ShowMeasurements = _showMeasurements;
         _preferences.ShowLightIcons = _showLightIcons;
@@ -621,7 +622,9 @@ public sealed class EditorApplication : IDisposable
         {
             // Shift releases snap; without it movement lands on whole voxels and rotation on a
             // fixed angle step.
-            _transform.OnDrag(mouse, viewport, _camera, freeform: IsShiftHeld());
+            // Shift turns the magnet the other way for as long as it is held: snapping on when the
+            // magnet is off, as it is by default, and off when it is lit.
+            _transform.OnDrag(mouse, viewport, _camera, snap: _session.Snap.Enabled != IsShiftHeld());
         }
         else if (released)
         {
@@ -822,6 +825,11 @@ public sealed class EditorApplication : IDisposable
                     _session.TransformMode = action == EditorAction.ToolMove ? TransformMode.Move : TransformMode.Rotate;
                 }
 
+                break;
+
+            case EditorAction.ToggleSnap:
+                _session.Snap.Enabled = !_session.Snap.Enabled;
+                ReportLog.Shared.Post(_session.Snap.Enabled ? "Snapping on - Shift moves freely." : "Snapping off - Shift snaps.");
                 break;
 
             // "The other sub-mode" and "the next mode": what those are depends on the active tool.
@@ -1318,6 +1326,7 @@ public sealed class EditorApplication : IDisposable
 
         EditorOverlays.AddExtrudeArrow(gizmos, _session, _extrude!, _extrudeWouldPull);
         EditorOverlays.AddTransformGizmo(gizmos, _session, _transform!, _camera);
+        EditorOverlays.AddSnapTarget(gizmos, _transform!, _camera);
     }
 
     /// <summary>Shows where a Shift or Ctrl drag would land before it is committed.</summary>

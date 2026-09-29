@@ -148,6 +148,9 @@ public sealed class EditorSession
     /// <summary>Mirror planes Paint and Extrude repeat their writes across. Off until switched on.</summary>
     public Symmetry Symmetry { get; } = new();
 
+    /// <summary>How a Transform drag snaps: the header's magnet and what it lands on.</summary>
+    public SnapSettings Snap { get; } = new();
+
     /// <summary>
     /// A new voxel edit on the focused object, repeated across the mirror planes when symmetry is on.
     /// Only for the tools symmetry is for: a loop cut or a turn is never mirrored.

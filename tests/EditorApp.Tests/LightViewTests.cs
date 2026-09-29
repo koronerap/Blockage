@@ -152,7 +152,7 @@ public sealed class LightEditingTests : IDisposable
         Vector3 grip = (start + end) * 0.5f;
 
         Assert.True(transform.OnPress(ScreenOf(camera, grip), Viewport, camera));
-        transform.OnDrag(ScreenOf(camera, grip + (arrow.Direction * 3f)), Viewport, camera, freeform: false);
+        transform.OnDrag(ScreenOf(camera, grip + (arrow.Direction * 3f)), Viewport, camera, snap: true);
         transform.OnRelease();
 
         Assert.Equal(7f, point.Position.X, 3);

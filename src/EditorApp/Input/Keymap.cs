@@ -212,6 +212,9 @@ public sealed class Keymap
             [EditorAction.ToggleSidebar] = [new(Key.N)],
             [EditorAction.ShortcutSheet] = [new(Key.F1)],
             [EditorAction.Preferences] = [KeyChord.CtrlAlt(Key.S)],
+
+            // Blender's: Shift+Tab. Free in the old keys too, so both have it.
+            [EditorAction.ToggleSnap] = [KeyChord.ShiftOf(Key.Tab)],
         };
 
         if (preset == KeymapPreset.MimicBusters)

@@ -117,7 +117,7 @@ public class DragStabilityTests
             var seen = new HashSet<Vector3>();
             for (int frame = 0; frame < HeldFrames; frame++)
             {
-                transform.OnDrag(mouse, Viewport, camera, freeform: false);
+                transform.OnDrag(mouse, Viewport, camera, snap: true);
                 seen.Add(cube.Transform.Position);
             }
 
@@ -153,7 +153,7 @@ public class DragStabilityTests
             var seen = new HashSet<Quaternion>();
             for (int frame = 0; frame < HeldFrames; frame++)
             {
-                transform.OnDrag(mouse, Viewport, camera, freeform: false);
+                transform.OnDrag(mouse, Viewport, camera, snap: true);
                 seen.Add(cube.Transform.Rotation);
             }
 

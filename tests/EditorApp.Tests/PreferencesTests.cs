@@ -39,11 +39,14 @@ public sealed class PreferencesFileTests : IDisposable
             OrbitSpeed = 2f,
             FlySpeed = 0.5f,
             InvertZoom = true,
-            RotationStep = 45f,
             UndoMemory = 32,
             AutosaveMinutes = 5,
             RecentFilesKept = 20,
         };
+
+        saved.Snap.RotationIncrement = 45f;
+        saved.Snap.Enabled = true;
+        saved.Snap.Set(EditorApp.Core.Editing.SnapTarget.Surface, true);
 
         Keymap keymap = Keymap.For(KeymapPreset.MimicBusters);
         keymap.Bind(EditorAction.ToolPaint, 0, new KeyChord(Key.B));
@@ -64,7 +67,9 @@ public sealed class PreferencesFileTests : IDisposable
         Assert.Equal(2f, loaded.OrbitSpeed);
         Assert.Equal(0.5f, loaded.FlySpeed);
         Assert.True(loaded.InvertZoom);
-        Assert.Equal(45f, loaded.RotationStep);
+        Assert.Equal(45f, loaded.Snap.RotationIncrement);
+        Assert.True(loaded.Snap.Enabled);
+        Assert.True(loaded.Snap.Snaps(EditorApp.Core.Editing.SnapTarget.Surface));
         Assert.Equal(32, loaded.UndoMemory);
         Assert.Equal(5, loaded.AutosaveMinutes);
         Assert.Equal(20, loaded.RecentFilesKept);
@@ -83,7 +88,6 @@ public sealed class PreferencesFileTests : IDisposable
             FieldOfView = 500f,
             LineWidth = float.NaN,
             GizmoSize = 0.01f,
-            RotationStep = 7f,
             UndoMemory = 3,
             AutosaveMinutes = 3,
             RecentFilesKept = 99,
@@ -92,7 +96,8 @@ public sealed class PreferencesFileTests : IDisposable
         Assert.Equal(Preferences.MaxFieldOfView, preferences.FieldOfView);
         Assert.Equal(1f, preferences.LineWidth);
         Assert.Equal(0.5f, preferences.GizmoSize);
-        Assert.Equal(15f, preferences.RotationStep);
+        preferences.Snap.RotationIncrement = 500f;
+        Assert.Equal(90f, preferences.Snap.RotationIncrement);
         Assert.Equal(8, preferences.UndoMemory);
         Assert.Equal(2, preferences.AutosaveMinutes);
         Assert.Equal(RecentFiles.MaxCapacity, preferences.RecentFilesKept);

@@ -1,4 +1,5 @@
 using System.Numerics;
+using EditorApp.Core.Editing;
 using EditorApp.Input;
 using ImGuiNET;
 
@@ -323,17 +324,23 @@ public static class PreferencesWindow
     {
         bool changed = false;
 
-        if (Props.Section("Transform"))
+        if (Props.Section("Snapping"))
         {
-            string[] steps = [.. Preferences.RotationSteps.Select(s => $"{s:0}°")];
-            int step = Array.IndexOf(Preferences.RotationSteps, p.RotationStep);
-            if (Combo("Rotation snap", "pref-rotation-step", steps, ref step))
+            bool enabled = p.Snap.Enabled;
+            if (Props.Check("Magnet", "pref-snap", "On from the start (Shift does the opposite)", ref enabled))
             {
-                p.RotationStep = Preferences.RotationSteps[step];
+                p.Snap.Enabled = enabled;
                 changed = true;
             }
 
-            Props.Note(string.Empty, "Hold Shift while turning to go freely.", Theme.TextDim);
+            float increment = p.Snap.RotationIncrement;
+            if (Props.Slider("Rotation increment", "pref-rotation-step", ref increment, SnapSettings.MinRotationIncrement, SnapSettings.MaxRotationIncrement, "%.0f°"))
+            {
+                p.Snap.RotationIncrement = MathF.Round(increment);
+                changed = true;
+            }
+
+            Props.Note(string.Empty, "What to snap to is in the Transform tool's header, beside the magnet.", Theme.TextDim);
         }
 
         if (Props.Section("Undo"))
@@ -364,7 +371,7 @@ public static class PreferencesWindow
 
         return changed | RestoreDefaults(p, d =>
         {
-            p.RotationStep = d.RotationStep;
+            p.Snap.CopyFrom(d.Snap);
             p.UndoMemory = d.UndoMemory;
             p.AutosaveMinutes = d.AutosaveMinutes;
         });

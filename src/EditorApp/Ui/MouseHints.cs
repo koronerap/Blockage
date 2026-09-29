@@ -50,7 +50,7 @@ public static class MouseHints
     private static string? LeftButton(EditorSession session, bool shift, bool control, bool alt) =>
         session.ActiveTool switch
         {
-            EditorTool.Transform when shift => "Drag without snapping",
+            EditorTool.Transform when shift => session.Snap.Enabled ? "Drag without snapping" : "Drag with snapping",
             EditorTool.Transform => "Select, drag a handle",
 
             EditorTool.Extrude when alt => "Remove from selection",

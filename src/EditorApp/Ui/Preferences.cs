@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using EditorApp.Core.Editing;
 using EditorApp.Input;
 
 namespace EditorApp.Ui;
@@ -16,9 +17,6 @@ public sealed class Preferences
 {
     public const float MinFieldOfView = 30f;
     public const float MaxFieldOfView = 100f;
-
-    /// <summary>The rotation snap steps on offer, in degrees.</summary>
-    public static readonly float[] RotationSteps = [1f, 5f, 10f, 15f, 30f, 45f, 90f];
 
     /// <summary>The autosave intervals on offer, in minutes; zero is off.</summary>
     public static readonly int[] AutosaveChoices = [0, 1, 2, 5, 10];
@@ -109,14 +107,8 @@ public sealed class Preferences
 
     // ---- Editing -----------------------------------------------------------------------------
 
-    /// <summary>What a snapped rotation steps by, in degrees.</summary>
-    public float RotationStep
-    {
-        get => _rotationStep;
-        set => _rotationStep = RotationSteps.Contains(value) ? value : _rotationStep;
-    }
-
-    private float _rotationStep = 15f;
+    /// <summary>The magnet, what it snaps to, and the rotation increment — kept between sessions.</summary>
+    public SnapSettings Snap { get; set; } = new();
 
     /// <summary>How much the undo stack holds before its oldest steps go, in millions of cells.</summary>
     public int UndoMemory
@@ -183,6 +175,7 @@ public sealed class Preferences
                 loaded.TextSize = Enum.IsDefined(loaded.TextSize) ? loaded.TextSize : TextSize.Normal;
                 loaded.KeymapPreset = Enum.IsDefined(loaded.KeymapPreset) ? loaded.KeymapPreset : KeymapPreset.Default;
                 loaded.KeymapChanges ??= [];
+                loaded.Snap ??= new SnapSettings();
                 return loaded;
             }
         }

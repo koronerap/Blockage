@@ -72,6 +72,9 @@ public static class ToolOptions
         }
 
         ImGui.EndDisabled();
+
+        ImGui.SameLine(0f, Gap);
+        SnapMenu.DrawButtons(session.Snap, size);
     }
 
     private static void DrawExtrude(EditorSession session)
