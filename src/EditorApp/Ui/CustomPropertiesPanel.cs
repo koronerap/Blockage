@@ -52,6 +52,26 @@ public static class CustomPropertiesPanel
             ImGui.EndCombo();
         }
 
+        // A note is its words; how big its pin is drawn is not worth a field.
+        if (marker.IsNote)
+        {
+            string text = marker.Text;
+            ImGui.TextDisabled("Says");
+            if (ImGui.InputTextMultiline(
+                    "##note-text",
+                    ref text,
+                    ObjectMarker.MaxTextLength,
+                    new Vector2(-1f, ImGui.GetTextLineHeightWithSpacing() * 5f)))
+            {
+                Change(session, target);
+                session.SetMarkerLive(target, marker with { Text = text });
+            }
+
+            Tooltip("Shown over the view by the note, kept with the level, never sent to a game.");
+            End(session);
+            return;
+        }
+
         Vector3 size = marker.Size;
         string label = marker.Kind switch
         {

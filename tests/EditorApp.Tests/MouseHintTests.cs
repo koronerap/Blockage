@@ -79,6 +79,7 @@ public class MouseHintTests
     [InlineData(EditorTool.LoopCut)]
     [InlineData(EditorTool.Sculpt)]
     [InlineData(EditorTool.Select)]
+    [InlineData(EditorTool.Measure)]
     public void EveryEditingToolSaysWhatTheLeftButtonDoes(EditorTool tool) =>
         Assert.False(string.IsNullOrEmpty(Left(Hints(tool))));
 

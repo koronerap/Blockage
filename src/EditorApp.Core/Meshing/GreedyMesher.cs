@@ -94,8 +94,9 @@ public static class GreedyMesher
 
         foreach (Scene.VoxelObject o in scene.Objects)
         {
-            // A marker with nothing to mesh is a node of its own, where formats can say so.
-            if (instanceLinked && o.IsExported && o.IsMarker && o.IsEmpty)
+            // A marker with nothing to mesh is a node of its own, where formats can say so. A note is
+            // for the people working on the level, and goes nowhere.
+            if (instanceLinked && o.IsExported && o.IsMarker && o.IsEmpty && o.Marker is not { IsNote: true })
             {
                 combined.Instances.Add(new MeshInstance(o.Name, -1, o.Transform.ToMatrix(), ExtrasOf(o)));
                 continue;

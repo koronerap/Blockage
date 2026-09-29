@@ -97,6 +97,9 @@ public static class MouseHints
 
             EditorTool.LoopCut => "Cut here",
 
+            EditorTool.Measure when control => "Measure from the very point",
+            EditorTool.Measure => "Measure, or drag a ruler's end",
+
             EditorTool.Sculpt when shift => "Smooth",
             EditorTool.Sculpt => (control ? SculptOperations.Inverse(session.SculptMode) : session.SculptMode) switch
             {

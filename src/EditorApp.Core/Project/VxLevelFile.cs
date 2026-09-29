@@ -171,6 +171,7 @@ public static class VxLevelFile
                 LinkedTo = linkedTo,
                 Marker = o.Marker is { } marker ? ObjectMarker.KeyOf(marker.Kind) : null,
                 MarkerSize = o.Marker is { } sized ? [sized.Size.X, sized.Size.Y, sized.Size.Z] : null,
+                MarkerText = o.Marker is { Text.Length: > 0 } noted ? noted.Text : null,
                 Properties = o.Properties.Count == 0 ? null : [.. o.Properties.Select(p => new LevelManifest.PropertyEntry
                 {
                     Key = p.Key,
@@ -407,7 +408,7 @@ public static class VxLevelFile
                 if (ObjectMarker.Parse(entry.Marker) is { } kind)
                 {
                     Vector3 size = entry.MarkerSize is { Length: 3 } s ? new Vector3(s[0], s[1], s[2]) : ObjectMarker.Default(kind).Size;
-                    added.Marker = new ObjectMarker(kind, size).Clamped();
+                    added.Marker = new ObjectMarker(kind, size, entry.MarkerText ?? string.Empty).Clamped();
                 }
 
                 if (entry.Properties is { Length: > 0 } properties)

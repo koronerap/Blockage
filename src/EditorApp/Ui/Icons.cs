@@ -817,8 +817,45 @@ public static class Icons
         Core.Scene.MarkerKind.Spawn => MarkerSpawn,
         Core.Scene.MarkerKind.Trigger => MarkerTrigger,
         Core.Scene.MarkerKind.Sound => MarkerSound,
+        Core.Scene.MarkerKind.Note => MarkerNote,
         _ => MarkerEmpty,
     };
+
+    /// <summary>A note: a sheet with its corner turned down and lines written on it.</summary>
+    public static void MarkerNote(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Polyline(
+        [
+            centre + new Vector2(r * 0.3f, -r * 0.85f),
+            centre + new Vector2(-r * 0.7f, -r * 0.85f),
+            centre + new Vector2(-r * 0.7f, r * 0.85f),
+            centre + new Vector2(r * 0.7f, r * 0.85f),
+            centre + new Vector2(r * 0.7f, -r * 0.45f),
+            centre + new Vector2(r * 0.3f, -r * 0.85f),
+            centre + new Vector2(r * 0.3f, -r * 0.45f),
+            centre + new Vector2(r * 0.7f, -r * 0.45f),
+        ], 1.1f);
+        canvas.Line(centre + new Vector2(-r * 0.4f, -r * 0.1f), centre + new Vector2(r * 0.4f, -r * 0.1f), 1f);
+        canvas.Line(centre + new Vector2(-r * 0.4f, r * 0.2f), centre + new Vector2(r * 0.4f, r * 0.2f), 1f);
+        canvas.Line(centre + new Vector2(-r * 0.4f, r * 0.5f), centre + new Vector2(r * 0.15f, r * 0.5f), 1f);
+    }
+
+    /// <summary>The measure tool: a ruler laid slantwise, its marks along one edge.</summary>
+    public static void MeasureTool(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 along = Vector2.Normalize(new Vector2(1f, -1f));
+        Vector2 across = new(-along.Y, along.X);
+        Vector2 a = centre - (along * r * 0.95f) - (across * r * 0.3f);
+        Vector2 b = centre + (along * r * 0.95f) - (across * r * 0.3f);
+        Vector2 c = b + (across * r * 0.6f);
+        Vector2 d = a + (across * r * 0.6f);
+        canvas.Polyline([a, b, c, d, a], 1.1f);
+        for (int i = 1; i < 6; i++)
+        {
+            Vector2 mark = Vector2.Lerp(a, b, i / 6f);
+            canvas.Line(mark, mark + (across * r * (i % 2 == 0 ? 0.32f : 0.2f)), 1f);
+        }
+    }
 
     /// <summary>A plain empty: three crossed axes, as Blender draws one.</summary>
     public static void MarkerEmpty(IIconCanvas canvas, Vector2 centre, float r)

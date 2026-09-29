@@ -22,6 +22,7 @@ public static class ToolColumn
         (EditorTool.Paint, Icons.Paint, "Paint", "Recolor existing, visible voxels.\nNever creates or deletes."),
         (EditorTool.LoopCut, Icons.Cut, "Loop Cut", "Split the model at a grid plane\ninto two independent objects."),
         (EditorTool.Sculpt, Icons.Sculpt, "Sculpt", "Build up, carve, raise, flatten and smooth\nalong the surface. Ctrl turns the brush round,\nShift smooths, Ctrl+wheel sizes it."),
+        (EditorTool.Measure, Icons.MeasureTool, "Measure", "Drag from one point to another to measure\nbetween them. Drag an end to move it;\nDelete over a ruler takes it away."),
     ];
 
     /// <summary>The key a tool is on in the active keymap, empty when it has none.</summary>
@@ -33,6 +34,7 @@ public static class ToolColumn
         EditorTool.Paint => Shortcut.Of(EditorAction.ToolPaint),
         EditorTool.LoopCut => Shortcut.Of(EditorAction.ToolLoopCut),
         EditorTool.Sculpt => Shortcut.Of(EditorAction.ToolSculpt),
+        EditorTool.Measure => Shortcut.Of(EditorAction.ToolMeasure),
         _ => Shortcut.Of(EditorAction.ToolView),
     };
 

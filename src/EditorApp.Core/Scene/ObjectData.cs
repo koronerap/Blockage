@@ -18,15 +18,24 @@ public enum MarkerKind
 
     /// <summary>Where a sound comes from, heard as far as its size.</summary>
     Sound,
+
+    /// <summary>
+    /// Words set down in the level for whoever works on it (Fullreleaseplan 7.9): shown over the view,
+    /// kept with the level, never sent to a game.
+    /// </summary>
+    Note,
 }
 
 /// <summary>
 /// An object as a marker (Fullreleaseplan 6.4): a point, a spawn, a trigger box or a sound, with no
 /// voxels needed — Blender's empties. <paramref name="Size"/> is the box a trigger fills, how far a
-/// sound carries (its X), or how big the others are drawn, in world units.
+/// sound carries (its X), or how big the others are drawn, in world units. <paramref name="Text"/> is
+/// what a note says.
 /// </summary>
-public sealed record ObjectMarker(MarkerKind Kind, Vector3 Size)
+public sealed record ObjectMarker(MarkerKind Kind, Vector3 Size, string Text = "")
 {
+    public const int MaxTextLength = 2000;
+
     public static ObjectMarker Default(MarkerKind kind) => kind switch
     {
         MarkerKind.Trigger => new(kind, new Vector3(4f, 3f, 4f)),
@@ -39,6 +48,7 @@ public sealed record ObjectMarker(MarkerKind Kind, Vector3 Size)
         MarkerKind.Spawn => "Spawn point",
         MarkerKind.Trigger => "Trigger",
         MarkerKind.Sound => "Sound",
+        MarkerKind.Note => "Note",
         _ => "Empty",
     };
 
@@ -48,7 +58,14 @@ public sealed record ObjectMarker(MarkerKind Kind, Vector3 Size)
     public static MarkerKind? Parse(string? key) =>
         Enum.GetValues<MarkerKind>().Cast<MarkerKind?>().FirstOrDefault(kind => KeyOf(kind!.Value) == key);
 
-    public ObjectMarker Clamped() => this with { Size = Vector3.Clamp(Size, new Vector3(0.01f), new Vector3(10_000f)) };
+    public ObjectMarker Clamped() => this with
+    {
+        Size = Vector3.Clamp(Size, new Vector3(0.01f), new Vector3(10_000f)),
+        Text = Text.Length > MaxTextLength ? Text[..MaxTextLength] : Text,
+    };
+
+    /// <summary>A note: for the people working on the level, not for the game.</summary>
+    public bool IsNote => Kind == MarkerKind.Note;
 }
 
 /// <summary>What a custom property holds.</summary>

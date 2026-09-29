@@ -152,7 +152,7 @@ public static class AddMenu
         // Blender's empties: places for the game, with no voxels.
         if (IconMenu.Begin(Icons.MarkerEmpty, "Marker"))
         {
-            foreach (MarkerKind kind in Enum.GetValues<MarkerKind>())
+            foreach (MarkerKind kind in Enum.GetValues<MarkerKind>().Where(kind => kind != MarkerKind.Note))
             {
                 if (Entry(Icons.For(kind), ObjectMarker.NameOf(kind)))
                 {
@@ -164,6 +164,14 @@ public static class AddMenu
         }
 
         Remember("Marker");
+
+        // Words for whoever works on the level next, set down where they are about.
+        if (Entry(Icons.MarkerNote, "Note"))
+        {
+            Choose(new AddChoice(Marker: MarkerKind.Note), at);
+        }
+
+        Remember("Note");
 
         // Blender's: a camera, where the view stands.
         if (Entry(Icons.Camera, "Camera"))

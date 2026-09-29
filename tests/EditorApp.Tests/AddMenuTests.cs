@@ -76,6 +76,16 @@ public sealed class AddMenuTests : IDisposable
         Assert.True(AddMenu.TakePending()!.Value.Choice.Camera);
     }
 
+    /// <summary>A note is for the people working on the level, not one of the game's markers: it has an entry of its own.</summary>
+    [Fact]
+    public void ANoteIsOnTheMenuItself()
+    {
+        Open();
+        _ui.Click(Centre(AddMenu.ItemRect("Note")), Draw);
+
+        Assert.Equal(MarkerKind.Note, AddMenu.TakePending()!.Value.Choice.Marker);
+    }
+
     [Fact]
     public void APickIsTakenOnce()
     {

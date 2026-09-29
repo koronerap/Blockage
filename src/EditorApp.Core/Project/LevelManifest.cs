@@ -68,7 +68,7 @@ public sealed class LevelManifest
         [JsonPropertyName("id")]
         public int Id { get; set; }
 
-        /// <summary>What it marks — "empty", "spawn", "trigger" or "sound" — when it is a marker; absent otherwise.</summary>
+        /// <summary>What it marks — "empty", "spawn", "trigger", "sound" or "note" — when it is a marker; absent otherwise.</summary>
         [JsonPropertyName("marker")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Marker { get; set; }
@@ -77,6 +77,11 @@ public sealed class LevelManifest
         [JsonPropertyName("markerSize")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public float[]? MarkerSize { get; set; }
+
+        /// <summary>What a note says; absent for other markers and for a note with nothing written.</summary>
+        [JsonPropertyName("markerText")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MarkerText { get; set; }
 
         /// <summary>Its custom properties, in order; absent for none.</summary>
         [JsonPropertyName("properties")]

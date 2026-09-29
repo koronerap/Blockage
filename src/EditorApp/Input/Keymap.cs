@@ -211,6 +211,9 @@ public sealed class Keymap
             // Free in both, and the tool's own letter.
             [EditorAction.ToolSculpt] = [new(Key.S)],
 
+            // Blender gives its Measure no key; M, a Shift up from where collections are.
+            [EditorAction.ToolMeasure] = [KeyChord.ShiftOf(Key.M)],
+
             // Blender's M.
             [EditorAction.MoveToCollection] = [new(Key.M)],
 

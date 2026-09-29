@@ -32,6 +32,9 @@ public enum EditorTool
 
     /// <summary>Brushes that build, carve, raise, flatten and smooth volume along a surface.</summary>
     Sculpt,
+
+    /// <summary>Rulers between two points of the level, as Blender's Measure (Fullreleaseplan 7.9).</summary>
+    Measure,
 }
 
 /// <summary>What a Transform drag of several things turns about, Blender's pivot point.</summary>

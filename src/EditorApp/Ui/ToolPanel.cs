@@ -61,6 +61,11 @@ public static class ToolPanel
                 Wrapped("Hover the model to preview a cut plane, then click to split the object in two along it.");
                 break;
 
+            case EditorTool.Measure:
+                Wrapped("Drag from one point to another to measure between them: in voxels, and in metres at the scale the Walk preferences give. Ends land on voxel corners, or on the ground; hold Ctrl for the very point. Drag an end to move it, and press Delete over a ruler to take it away. Rulers are not saved with the level.");
+                Props.Value("Rulers", session.Rulers.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                break;
+
             default:
                 Wrapped("The camera only. Hold the right mouse button to look, W A S D and Q E to fly.");
                 break;

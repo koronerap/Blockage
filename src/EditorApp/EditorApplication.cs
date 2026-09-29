@@ -132,6 +132,18 @@ public sealed class EditorApplication : IDisposable
     /// <summary>The light whose aim line is under the pointer, drawn lit so it is seen to be grabbable.</summary>
     private SceneLight? _aimHover;
 
+    /// <summary>The ruler end being dragged by the measure tool: which ruler, and whether its end or its start.</summary>
+    private (int Index, bool End)? _rulerDrag;
+
+    /// <summary>The ruler under the pointer, lit — what Delete takes away; −1 for none.</summary>
+    private int _rulerHover = -1;
+
+    /// <summary>Where a ruler would start from under the pointer, shown before the press.</summary>
+    private Vector3? _measureCursor;
+
+    /// <summary>Where each note's words were drawn last frame, in the viewport's pixels, nearest last: a click there is a click on the note.</summary>
+    private readonly List<(int Id, Vector2 Min, Vector2 Max)> _noteLabels = [];
+
     /// <summary>A press would pull the extrude surface — the pointer is on its arrow or on the selection.</summary>
     private bool _extrudeWouldPull;
 
@@ -924,6 +936,10 @@ public sealed class EditorApplication : IDisposable
                 UpdateSculpt(leftDown, pressed, released);
                 break;
 
+            case EditorTool.Measure:
+                UpdateMeasure(local, leftDown, pressed, pointing);
+                break;
+
             // Transform and Loop Cut need the multi-object scene first (R4-R6); View never edits.
             default:
                 break;
@@ -1337,6 +1353,7 @@ public sealed class EditorApplication : IDisposable
             case EditorAction.ToolPaint: SwitchTool(EditorTool.Paint); break;
             case EditorAction.ToolLoopCut: SwitchTool(EditorTool.LoopCut); break;
             case EditorAction.ToolSculpt: SwitchTool(EditorTool.Sculpt); break;
+            case EditorAction.ToolMeasure: SwitchTool(EditorTool.Measure); break;
             case EditorAction.ToolView: SwitchTool(EditorTool.View); break;
 
             // Straight to a Transform mode, where the keymap has a key for each.
@@ -1393,6 +1410,7 @@ public sealed class EditorApplication : IDisposable
 
                 break;
 
+            case EditorAction.Delete when !IsDragging() && _session.ActiveTool == EditorTool.Measure: DeleteRuler(); break;
             case EditorAction.Delete when !IsDragging() && _session.InEditMode: _session.DeleteSelectedVoxels(); break;
             case EditorAction.Delete when !IsDragging(): _session.DeleteSelected(); break;
 
@@ -1550,7 +1568,7 @@ public sealed class EditorApplication : IDisposable
 
     /// <summary>A drag is running that an object-level key would pull the object out from under.</summary>
     private bool IsDragging() =>
-        _extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming || _session.IsStrokeActive || _select!.IsPressed;
+        _extrude!.IsBusy || _transform!.IsDragging || _aim!.IsAiming || _session.IsStrokeActive || _select!.IsPressed || _rulerDrag is not null;
 
     /// <summary>Changes tool, unless a drag is running. Returns whether it did.</summary>
     private bool SwitchTool(EditorTool tool)
@@ -1571,10 +1589,20 @@ public sealed class EditorApplication : IDisposable
         return true;
     }
 
-    /// <summary>The light whose icon is under the cursor, nearest the camera first, if any.</summary>
-    /// <summary>The marker whose middle is under the mouse, nearest the camera; null for none.</summary>
+    /// <summary>The marker whose middle — or, for a note, whose words — are under the mouse, nearest the camera; null for none.</summary>
     private VoxelObject? MarkerUnder(Vector2 mouse)
     {
+        // A note's words are drawn over everything, the nearest over the rest.
+        for (int i = _noteLabels.Count - 1; i >= 0; i--)
+        {
+            (int id, Vector2 min, Vector2 max) = _noteLabels[i];
+            if (mouse.X >= min.X && mouse.Y >= min.Y && mouse.X <= max.X && mouse.Y <= max.Y
+                && _session.Scene.Find(id) is { Visible: true, Locked: false } note)
+            {
+                return note;
+            }
+        }
+
         const float Reach = 14f;
         VoxelObject? found = null;
         float nearest = float.MaxValue;
@@ -1599,6 +1627,7 @@ public sealed class EditorApplication : IDisposable
         return found;
     }
 
+    /// <summary>The light whose icon is under the cursor, nearest the camera first, if any.</summary>
     private SceneLight? LightUnder(Vector2 mouse, Vector2 viewport)
     {
         const float Reach = 14f;
@@ -1922,6 +1951,17 @@ public sealed class EditorApplication : IDisposable
             }
         }
 
+        // The measure tool's rulers, over everything, while it is in hand — as Blender shows its own.
+        if (_session.ActiveTool == EditorTool.Measure)
+        {
+            gizmos.Transform = Matrix4x4.Identity;
+            for (int i = 0; i < _session.Rulers.Count; i++)
+            {
+                Ruler ruler = _session.Rulers[i];
+                gizmos.AddThickLine(ruler.Start, ruler.End, i == _rulerHover ? EditorOverlays.RulerHover : EditorOverlays.RulerColour, EditorOverlays.RulerWidth);
+            }
+        }
+
         // The cameras, but not the one the view is looking through.
         if (View.Overlays)
         {
@@ -1998,6 +2038,10 @@ public sealed class EditorApplication : IDisposable
 
                 case EditorTool.Sculpt:
                     EditorOverlays.AddSculptBrush(lines, hit, _session.SculptRadius, _session.SculptShape, HeldSculptMode());
+                    break;
+
+                // A ruler lands on a corner, not a face: the point is shown, not the voxel.
+                case EditorTool.Measure:
                     break;
 
                 case EditorTool.Extrude:
@@ -2141,6 +2185,8 @@ public sealed class EditorApplication : IDisposable
         DrawSelectBox();
         DrawEmptyHint();
         DrawCameraFrame();
+        DrawNotes();
+        DrawRulerLabels();
         DrawQuadLabels();
         DrawWalkHint();
 
@@ -2992,6 +3038,232 @@ public sealed class EditorApplication : IDisposable
         _gl = null;
     }
 
+    // ---- Measuring and notes (Fullreleaseplan 7.9) -------------------------------------------------
+
+    /// <summary>
+    /// The measure tool: a drag from one point to another lays a ruler between them; a drag that
+    /// starts on a ruler's end moves that end. A click that goes nowhere leaves nothing behind.
+    /// </summary>
+    private void UpdateMeasure(Vector2 local, bool leftDown, bool pressed, bool pointing)
+    {
+        List<Ruler> rulers = _session.Rulers;
+        if (_rulerDrag is { } stale && stale.Index >= rulers.Count)
+        {
+            _rulerDrag = null;
+        }
+
+        _measureCursor = pointing && _rulerDrag is null ? MeasurePoint(local) : null;
+        _rulerHover = _rulerDrag?.Index ?? (pointing ? RulerUnder(local) : -1);
+
+        if (pressed)
+        {
+            if (RulerEndUnder(local) is { } grabbed)
+            {
+                _rulerDrag = grabbed;
+            }
+            else if (MeasurePoint(local) is { } start)
+            {
+                rulers.Add(new Ruler(start, start));
+                _rulerDrag = (rulers.Count - 1, true);
+            }
+
+            return;
+        }
+
+        if (_rulerDrag is not { } drag)
+        {
+            return;
+        }
+
+        if (leftDown)
+        {
+            if (MeasurePoint(local) is { } point)
+            {
+                rulers[drag.Index] = drag.End ? rulers[drag.Index] with { End = point } : rulers[drag.Index] with { Start = point };
+            }
+
+            return;
+        }
+
+        if (rulers[drag.Index].Length < 1e-4f)
+        {
+            rulers.RemoveAt(drag.Index);
+            _rulerHover = -1;
+        }
+
+        _rulerDrag = null;
+    }
+
+    /// <summary>
+    /// Where a ruler's end goes for a point of the view: the voxel corner nearest what is under it,
+    /// or the ground's; with Ctrl, the very point.
+    /// </summary>
+    private Vector3? MeasurePoint(Vector2 local)
+    {
+        Ray ray = _camera.ScreenPointToRay(local, _viewport.Size);
+        bool free = IsControlHeld();
+        return PickAt(local, selectedOnly: false) is { } pick ? Measuring.PointOn(pick, ray, free) : Measuring.OnGround(ray, free);
+    }
+
+    /// <summary>The ruler end within reach of a point of the view, the nearest; null for none.</summary>
+    private (int Index, bool End)? RulerEndUnder(Vector2 local)
+    {
+        const float Reach = 9f;
+        (int Index, bool End)? found = null;
+        float nearest = Reach;
+        for (int i = 0; i < _session.Rulers.Count; i++)
+        {
+            Ruler ruler = _session.Rulers[i];
+            foreach ((Vector3 point, bool end) in new[] { (ruler.End, true), (ruler.Start, false) })
+            {
+                if (_camera.TryProjectToScreen(point, _viewport.Size, out Vector2 screen) && Vector2.Distance(screen, local) <= nearest)
+                {
+                    nearest = Vector2.Distance(screen, local);
+                    found = (i, end);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>The ruler whose end or line is under a point of the view, the newest first; −1 for none.</summary>
+    private int RulerUnder(Vector2 local)
+    {
+        if (RulerEndUnder(local) is { } end)
+        {
+            return end.Index;
+        }
+
+        const float Reach = 6f;
+        for (int i = _session.Rulers.Count - 1; i >= 0; i--)
+        {
+            Ruler ruler = _session.Rulers[i];
+            if (_camera.TryProjectToScreen(ruler.Start, _viewport.Size, out Vector2 a)
+                && _camera.TryProjectToScreen(ruler.End, _viewport.Size, out Vector2 b)
+                && DistanceToSegment(local, a, b) <= Reach)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static float DistanceToSegment(Vector2 point, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float along = ab.LengthSquared() < 1e-6f ? 0f : Math.Clamp(Vector2.Dot(point - a, ab) / ab.LengthSquared(), 0f, 1f);
+        return Vector2.Distance(point, a + (ab * along));
+    }
+
+    /// <summary>Delete with the measure tool: the ruler under the pointer goes — or, with none there, the newest.</summary>
+    private void DeleteRuler()
+    {
+        List<Ruler> rulers = _session.Rulers;
+        if (rulers.Count == 0)
+        {
+            return;
+        }
+
+        rulers.RemoveAt(_rulerHover >= 0 && _rulerHover < rulers.Count ? _rulerHover : rulers.Count - 1);
+        _rulerHover = -1;
+    }
+
+    /// <summary>The rulers' ends and what each measures, over the view, while the measure tool is in hand.</summary>
+    private void DrawRulerLabels()
+    {
+        if (_session.ActiveTool != EditorTool.Measure || WelcomeScreen.IsOpen)
+        {
+            return;
+        }
+
+        ImDrawListPtr draw = ImGui.GetBackgroundDrawList();
+        draw.PushClipRect(_viewport.Position, _viewport.Position + _viewport.Size, true);
+        uint plain = ImGui.GetColorU32(Theme.Text);
+        uint lit = ImGui.GetColorU32(Theme.Accent);
+        uint box = ImGui.GetColorU32(Theme.Surface with { W = 0.88f });
+        var padding = new Vector2(6f, 3f);
+        float perMetre = _preferences.Walk.Clamped().VoxelsPerMetre;
+
+        for (int i = 0; i < _session.Rulers.Count; i++)
+        {
+            Ruler ruler = _session.Rulers[i];
+            uint colour = i == _rulerHover ? lit : plain;
+            foreach (Vector3 end in new[] { ruler.Start, ruler.End })
+            {
+                if (_camera.TryProjectToScreen(end, _viewport.Size, out Vector2 at))
+                {
+                    draw.AddCircleFilled(_viewport.Position + at, i == _rulerHover ? 4.5f : 3.5f, colour);
+                }
+            }
+
+            if (ruler.Length > 0f && _camera.TryProjectToScreen((ruler.Start + ruler.End) * 0.5f, _viewport.Size, out Vector2 middle))
+            {
+                // Above the middle, clear of the line it is about.
+                string text = ruler.Describe(perMetre);
+                Vector2 size = ImGui.CalcTextSize(text);
+                Vector2 min = _viewport.Position + middle - new Vector2(size.X * 0.5f, size.Y + 10f) - padding;
+                draw.AddRectFilled(min, min + size + (padding * 2f), box, 4f);
+                draw.AddText(min + padding, colour, text);
+            }
+        }
+
+        // Where a press would start the next one.
+        if (_measureCursor is { } cursor && _camera.TryProjectToScreen(cursor, _viewport.Size, out Vector2 next))
+        {
+            draw.AddCircle(_viewport.Position + next, 5f, lit, 16, 1.5f);
+        }
+
+        draw.PopClipRect();
+    }
+
+    /// <summary>Each note's words, over the view at the head of its pin, the nearest drawn over the rest.</summary>
+    private void DrawNotes()
+    {
+        _noteLabels.Clear();
+        if (!View.Overlays || WelcomeScreen.IsOpen)
+        {
+            return;
+        }
+
+        List<VoxelObject> notes = [.. _session.Scene.Objects
+            .Where(o => o.Marker is { IsNote: true } && o.Visible)
+            .OrderByDescending(o => Vector3.DistanceSquared(_camera.Position, o.Transform.Position))];
+        if (notes.Count == 0)
+        {
+            return;
+        }
+
+        ImDrawListPtr draw = ImGui.GetBackgroundDrawList();
+        draw.PushClipRect(_viewport.Position, _viewport.Position + _viewport.Size, true);
+        float wrap = ImGui.GetFontSize() * 16f;
+        var padding = new Vector2(7f, 5f);
+
+        foreach (VoxelObject note in notes)
+        {
+            if (!_camera.TryProjectToScreen(EditorOverlays.NoteHead(note), _viewport.Size, out Vector2 head))
+            {
+                continue;
+            }
+
+            // Nothing written yet: its name, faintly, until there is.
+            string words = note.Marker!.Text;
+            string text = words.Length == 0 ? note.Name : words.Length > 400 ? words[..400] + "..." : words;
+            Vector2 size = ImGui.CalcTextSize(text, wrap);
+            Vector2 min = _viewport.Position + head + new Vector2(-6f, -size.Y - (padding.Y * 2f) - 4f);
+            Vector2 max = min + size + (padding * 2f);
+            bool chosen = _session.IsSelected(note.Id);
+
+            draw.AddRectFilled(min, max, ImGui.GetColorU32(Theme.Surface with { W = 0.9f }), 4f);
+            draw.AddRect(min, max, ImGui.GetColorU32(chosen ? Theme.Accent : Theme.Border), 4f, ImDrawFlags.None, chosen ? 2f : 1f);
+            draw.AddText(ImGui.GetFont(), ImGui.GetFontSize(), min + padding, ImGui.GetColorU32(words.Length == 0 ? Theme.TextDim : Theme.Text), text, wrap);
+            _noteLabels.Add((note.Id, min - _viewport.Position, max - _viewport.Position));
+        }
+
+        draw.PopClipRect();
+    }
+
     // ---- Levels in tabs (Fullreleaseplan 7.8) ------------------------------------------------------
 
     /// <summary>A level for a session, with its tools and its own autosave, at the end of the tabs.</summary>
@@ -3063,6 +3335,10 @@ public sealed class EditorApplication : IDisposable
         _pick = null;
         _hover = null;
         _paintShapeStart = null;
+        _rulerDrag = null;
+        _rulerHover = -1;
+        _measureCursor = null;
+        _noteLabels.Clear();
         View.Clip = level.Clip;
 
         // The renderer let go of this level's meshes while another was in front.

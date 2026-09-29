@@ -512,6 +512,14 @@ public static class EditorOverlays
                 break;
             }
 
+            // A pin standing on the spot; its words are drawn over the view, at its head.
+            case MarkerKind.Note:
+            {
+                lines.AddThickLine(at, NoteHead(o), colour, LightWidth);
+                AddRing(lines, at, Vector3.UnitX * 0.2f * size.X, Vector3.UnitZ * 0.2f * size.X, colour);
+                break;
+            }
+
             case MarkerKind.Sound:
             {
                 float reach = size.X;
@@ -534,6 +542,17 @@ public static class EditorOverlays
             }
         }
     }
+
+    /// <summary>The head of a note's pin, where its words hang.</summary>
+    public static Vector3 NoteHead(VoxelObject note) =>
+        note.Transform.Position + (Vector3.UnitY * (note.Marker?.Size.Y ?? 1f) * 1.5f);
+
+    /// <summary>A ruler of the measure tool, and the one under the pointer, lit.</summary>
+    public static readonly Color32 RulerColour = new(236, 236, 240);
+
+    public static readonly Color32 RulerHover = new(255, 214, 110);
+
+    public const float RulerWidth = 0.6f;
 
     private static void AddRing(LineGeometry lines, Vector3 centre, Vector3 u, Vector3 v, Color32 colour)
     {

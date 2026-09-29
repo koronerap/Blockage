@@ -41,7 +41,35 @@ public static class ToolOptions
             case EditorTool.Sculpt:
                 DrawSculpt(session);
                 break;
+
+            case EditorTool.Measure:
+                DrawMeasure(session);
+                break;
         }
+    }
+
+    /// <summary>How many rulers there are, and a way to be rid of them all.</summary>
+    private static void DrawMeasure(EditorSession session)
+    {
+        int count = session.Rulers.Count;
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled(count switch { 0 => "No rulers", 1 => "1 ruler", _ => $"{count} rulers" });
+        ImGui.SameLine(0f, 8f);
+
+        ImGui.BeginDisabled(count == 0);
+        if (ImGui.Button("Clear##rulers"))
+        {
+            session.Rulers.Clear();
+        }
+
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            ImGui.SetTooltip("Takes every ruler away. They are the view's, not the level's: none is saved.");
+        }
+
+        ImGui.SameLine(0f, 12f);
+        ImGui.TextDisabled("Ends land on voxel corners; Ctrl for the very point.");
     }
 
     /// <summary>The brush: what it does, its shape and its size.</summary>

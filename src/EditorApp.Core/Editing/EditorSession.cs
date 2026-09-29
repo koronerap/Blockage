@@ -1293,6 +1293,11 @@ public sealed partial class EditorSession
     public int SubdivideSelected() =>
         ForEachSelected("Subdivide", o => SubdivideProblem(o) is null, o => new SubdivideObjectCommand(o, Symmetry));
 
+    // ---- Measuring (Fullreleaseplan 7.9) --------------------------------------------------------
+
+    /// <summary>The measure tool's rulers: kept while the level is open, never saved with it.</summary>
+    public List<Ruler> Rulers { get; } = [];
+
     // ---- Clipboard -----------------------------------------------------------------------------
 
     /// <summary>
@@ -2541,6 +2546,7 @@ public sealed partial class EditorSession
         _extrudePreview = null;
         ExtrudeSteps = 0;
         Selection = null;
+        Rulers.Clear();
 
         Scene = scene;
         SelectedLightId = 0;
