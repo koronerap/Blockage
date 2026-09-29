@@ -75,6 +75,62 @@ public static class ObjectMenu
         }
     }
 
+    /// <summary>Align and Distribute: the selection lined up with the active object, or spaced out evenly.</summary>
+    private static void DrawArrange(EditorSession session)
+    {
+        int count = session.SelectedCount;
+        if (ImGui.BeginMenu("Align", count >= 2))
+        {
+            foreach ((Axis axis, string low, string high) in new[] { (Axis.X, "Left", "Right"), (Axis.Y, "Bottom", "Top"), (Axis.Z, "Back", "Front") })
+            {
+                if (ImGui.MenuItem($"{low} Edges ({axis})"))
+                {
+                    session.AlignSelected(axis, AlignEdge.Min);
+                }
+
+                if (ImGui.MenuItem($"Centres ({axis})"))
+                {
+                    session.AlignSelected(axis, AlignEdge.Centre);
+                }
+
+                if (ImGui.MenuItem($"{high} Edges ({axis})"))
+                {
+                    session.AlignSelected(axis, AlignEdge.Max);
+                }
+
+                if (axis != Axis.Z)
+                {
+                    ImGui.Separator();
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Lines the selection up with the active object, by an edge or the middle.");
+        }
+
+        if (ImGui.BeginMenu("Distribute", count >= 3))
+        {
+            foreach (Axis axis in new[] { Axis.X, Axis.Y, Axis.Z })
+            {
+                if (ImGui.MenuItem($"Along {axis}"))
+                {
+                    session.DistributeSelected(axis);
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Spaces the selection evenly between the two furthest apart, which stay where they are.");
+        }
+    }
+
     /// <summary>Tab: into the active object, or out of it, saying why when it cannot.</summary>
     public static void ToggleEditMode(EditorSession session, ReportLog log)
     {
@@ -526,6 +582,8 @@ public static class ObjectMenu
         {
             session.MakeSingleUser(shared.Id);
         }
+
+        DrawArrange(session);
 
         IPlaceable? active = (IPlaceable?)session.SelectedLight ?? scene.Focus;
         if (ImGui.MenuItem("Rename", Shortcut.Of(EditorAction.Rename), false, active is not null) && active is not null)
