@@ -145,6 +145,19 @@ public static class MainMenu
 
             ImGui.Separator();
 
+            // Blender's Append: objects from another level, brought in where they stood there.
+            if (ImGui.MenuItem("Append..."))
+            {
+                AppendDialog.Show();
+            }
+
+            if (ImGui.MenuItem("Prop Library"))
+            {
+                AddMenu.OpenPropLibrary();
+            }
+
+            ImGui.Separator();
+
             if (ImGui.MenuItem("Export mesh...", Shortcut.Of(EditorAction.Export)))
             {
                 export.Show();

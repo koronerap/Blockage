@@ -27,6 +27,9 @@ public static class AddMenu
 
     public static bool IsOpen { get; private set; }
 
+    /// <summary>Opens the prop library: the application's, which owns the window.</summary>
+    public static Action OpenPropLibrary { get; set; } = () => { };
+
     /// <summary>Where an entry was drawn last, by its name, for tests to aim at.</summary>
     public static (Vector2 Min, Vector2 Max)? ItemRect(string name) => Rects.TryGetValue(name, out var rect) ? rect : null;
 
@@ -102,6 +105,12 @@ public static class AddMenu
                 {
                     Choose(new AddChoice(Prop: prop), at);
                 }
+            }
+
+            ImGui.Separator();
+            if (Entry(Icons.Folder, "From the Library..."))
+            {
+                OpenPropLibrary();
             }
 
             ImGui.EndMenu();

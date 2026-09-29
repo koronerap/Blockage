@@ -506,6 +506,11 @@ public static class ObjectMenu
             Duplicate(session, camera);
         }
 
+        if (ImGui.MenuItem("Save to Prop Library...", string.Empty, false, objects.Count > 0))
+        {
+            AddMenu.OpenPropLibrary();
+        }
+
         if (ImGui.MenuItem("Duplicate Linked", Shortcut.Of(EditorAction.DuplicateLinked), false, objects.Count > 0))
         {
             DuplicateLinked(session, camera);

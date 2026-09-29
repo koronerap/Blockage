@@ -2,6 +2,7 @@ using System.Numerics;
 using EditorApp.Core.Editing;
 using EditorApp.Core.Export;
 using EditorApp.Core.Raycast;
+using EditorApp.Core.Project;
 using EditorApp.Core.Rendering;
 using EditorApp.Core.Scene;
 using EditorApp.Core.Voxels;
@@ -85,6 +86,7 @@ public sealed class EditorApplication : IDisposable
     private SelectInteraction? _select;
     private RenderWindow? _renderWindow;
     private RenderOutputsWindow? _outputsWindow;
+    private PropLibraryWindow? _library;
 
     /// <summary>
     /// The camera the view was put at by looking through it, and the view as it stood before, to go
@@ -256,6 +258,8 @@ public sealed class EditorApplication : IDisposable
         _select = new SelectInteraction(_session);
         _renderWindow = new RenderWindow(_gl);
         _outputsWindow = new RenderOutputsWindow(_gl);
+        _library = new PropLibraryWindow(_gl);
+        AddMenu.OpenPropLibrary = _library.Open;
         CameraPropertiesPanel.LookThrough = LookThrough;
         CameraPropertiesPanel.MoveToView = camera => _session.SetCameraToView(camera.Id, ViewAsCamera());
         _viewportRender = new ViewportRender(_gl);
@@ -2002,6 +2006,9 @@ public sealed class EditorApplication : IDisposable
         RenderWindow.DrawDialogs();
         _outputsWindow?.Draw(_session, RenderImageCamera);
         RenderOutputsWindow.DrawDialogs();
+        _library?.Draw(_session);
+        AppendDialog.Draw(_session);
+        PlaceLibraryProps();
         ViewportShotBrowser.Draw();
         AddMenu.DrawPopup();
         ViewportMenu.Draw(new ViewportMenuActions { Session = _session, Run = Run, Viewport = View });
@@ -2023,6 +2030,46 @@ public sealed class EditorApplication : IDisposable
     }
 
     private static readonly FileBrowserDialog ViewportShotBrowser = new();
+
+    /// <summary>
+    /// A prop clicked in the library goes where the view looks, into a move as anything added does;
+    /// one dragged onto the viewport stands on the surface it was let go over.
+    /// </summary>
+    private void PlaceLibraryProps()
+    {
+        if (_library is null || IsDragging())
+        {
+            return;
+        }
+
+        if (_library.TakeClicked() is { } clicked && LoadProp(clicked) is { } prop)
+        {
+            (Vector3 point, _) = SurfaceUnder(null);
+            if (_session.PlaceProp(prop, clicked.Name, point).Count > 0 && SwitchTool(EditorTool.Transform))
+            {
+                _session.TransformMode = TransformMode.Move;
+            }
+        }
+
+        if (_library.TakeDropped() is { } dropped && _viewport.Contains(dropped.At) && LoadProp(dropped.Entry) is { } droppedProp)
+        {
+            (Vector3 point, _) = SurfaceUnder(dropped.At);
+            _session.PlaceProp(droppedProp, dropped.Entry.Name, point);
+        }
+    }
+
+    private static VoxelScene? LoadProp(PropEntry entry)
+    {
+        try
+        {
+            return VxLevelFile.LoadScene(entry.LevelPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            ReportLog.Shared.Post($"Could not read the prop {entry.Name}: {exception.Message}", ReportKind.Error);
+            return null;
+        }
+    }
 
     /// <summary>What Render Image is seen from: the camera renders are seen from, or the view when there is none.</summary>
     private RenderCamera RenderImageCamera() => _session.Scene.ActiveCamera?.ToRenderCamera() ?? RenderCameraNow();
@@ -2495,6 +2542,7 @@ public sealed class EditorApplication : IDisposable
         _imgui?.Dispose();
         _renderWindow?.Dispose();
         _outputsWindow?.Dispose();
+        _library?.Dispose();
         _viewportRender?.Dispose();
         _renderer?.Dispose();
         _input?.Dispose();
