@@ -231,6 +231,16 @@ public static class ObjectMenu
                 session.RemoveLooseSelected();
             }
 
+            if (ImGui.MenuItem("Fill Enclosed"))
+            {
+                session.FillEnclosedSelected();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Fills what the model closes off from outside, in the colour in hand.");
+            }
+
             ImGui.Separator();
             if (ImGui.MenuItem("Halve Resolution"))
             {

@@ -325,6 +325,63 @@ public static class VolumeOperations
         return changed;
     }
 
+    /// <summary>
+    /// Fills every hollow the model closes off — the empty cells no way leads to from outside — in
+    /// <paramref name="colour"/>: a sealed room made solid, a shell made a block.
+    /// </summary>
+    public static int FillEnclosed(byte colour, VoxelEditCommand command)
+    {
+        VoxelWorld grid = command.Target;
+        if (!grid.TryGetBounds(out Int3 min, out Int3 max))
+        {
+            return 0;
+        }
+
+        // Everything outside the box, one cell round, is outside; what the air reaches from there is too.
+        Int3 low = min - Int3.One;
+        Int3 high = max + Int3.One;
+        var outside = new HashSet<Int3>();
+        var queue = new Queue<Int3>();
+        queue.Enqueue(low);
+        outside.Add(low);
+
+        while (queue.Count > 0)
+        {
+            Int3 cell = queue.Dequeue();
+            for (int f = 0; f < FaceInfo.Count; f++)
+            {
+                Int3 next = cell + FaceInfo.Offset((Face)f);
+                if (next.X < low.X || next.Y < low.Y || next.Z < low.Z || next.X > high.X || next.Y > high.Y || next.Z > high.Z)
+                {
+                    continue;
+                }
+
+                if (!grid.IsSolid(next) && outside.Add(next))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        int changed = 0;
+        for (int x = min.X; x <= max.X; x++)
+        {
+            for (int y = min.Y; y <= max.Y; y++)
+            {
+                for (int z = min.Z; z <= max.Z; z++)
+                {
+                    var cell = new Int3(x, y, z);
+                    if (!grid.IsSolid(cell) && !outside.Contains(cell) && command.Apply(cell, colour))
+                    {
+                        changed++;
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+
     // ---- Resampling ----------------------------------------------------------------------------
 
     /// <summary>

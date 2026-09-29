@@ -91,4 +91,13 @@ public enum PaintMode
     Brush,
     Bucket,
     Pattern,
+
+    /// <summary>A drag across the surface: the colour in hand at its start, the second colour at its end, dithered between.</summary>
+    Gradient,
+
+    /// <summary>The surface scattered with the two colours, as much of the second as the mix says.</summary>
+    Noise,
+
+    /// <summary>The surface in an even pattern of the two colours, in the mix's proportion.</summary>
+    Dither,
 }

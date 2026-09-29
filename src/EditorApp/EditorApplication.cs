@@ -903,8 +903,35 @@ public sealed class EditorApplication : IDisposable
         }
     }
 
+    /// <summary>Where a gradient drag began, until it is let go.</summary>
+    private RaycastHit? _gradientStart;
+
     private void UpdatePaint(bool leftDown, bool pressed, bool released)
     {
+        // A gradient is a drag: from the face pressed on to the cell let go over. Drawn as a line
+        // meanwhile, as a painted line is.
+        if (_session.PaintMode == PaintMode.Gradient)
+        {
+            if (pressed && _hover is { } from)
+            {
+                _gradientStart = from;
+                _paintShapeStart = from.Voxel;
+                _paintShapeIsBox = false;
+            }
+            else if (released)
+            {
+                if (_gradientStart is { } start)
+                {
+                    _session.PaintGradient(start, _hover?.Voxel ?? start.Voxel);
+                }
+
+                _gradientStart = null;
+                _paintShapeStart = null;
+            }
+
+            return;
+        }
+
         if (pressed)
         {
             // The shape modifier is read once, when the drag starts.
@@ -1457,7 +1484,7 @@ public sealed class EditorApplication : IDisposable
                 break;
 
             case EditorTool.Paint:
-                _session.PaintMode = (PaintMode)(((int)_session.PaintMode + 1) % 3);
+                _session.PaintMode = (PaintMode)(((int)_session.PaintMode + 1) % Enum.GetValues<PaintMode>().Length);
                 break;
         }
     }

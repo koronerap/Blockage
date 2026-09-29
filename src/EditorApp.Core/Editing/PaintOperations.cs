@@ -126,6 +126,89 @@ public static class PaintOperations
     }
 
     /// <summary>
+    /// The same connected surface as <see cref="Bucket"/>, each face taking the colour
+    /// <paramref name="colourOf"/> gives its cell — the two-colour fills: gradient, noise, dither.
+    /// </summary>
+    public static int Mix(
+        Int3 seed,
+        Face face,
+        int threshold,
+        Func<Int3, byte> colourOf,
+        VoxelEditCommand command,
+        int limit = 2_000_000)
+    {
+        VoxelWorld world = command.Target;
+        if (!IsFaceExposed(world, seed, face))
+        {
+            return 0;
+        }
+
+        Color32 target = world.Palette[world.GetFaceColor(seed, face)];
+
+        int changed = 0;
+        foreach (Int3 cell in Surface(world, seed, face, target, threshold, limit).ToList())
+        {
+            if (command.ApplyFace(cell, face, colourOf(cell)))
+            {
+                changed++;
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// The 4 × 4 ordered-dither threshold of a cell, across the plane of <paramref name="face"/>: a
+    /// share of the second colour below it takes the first. What makes a two-colour gradient read as
+    /// a gradient on a lattice, the way pixel art does it.
+    /// </summary>
+    public static float Bayer(Int3 cell, Face face)
+    {
+        ReadOnlySpan<int> matrix = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+        (int u, int v) = FaceInfo.Axis(face) switch
+        {
+            0 => (cell.Y, cell.Z),
+            1 => (cell.X, cell.Z),
+            _ => (cell.X, cell.Y),
+        };
+
+        return (matrix[((v & 3) * 4) + (u & 3)] + 0.5f) / 16f;
+    }
+
+    /// <summary>A number from 0 to 1 that belongs to the cell: noise that is the same every time it is made.</summary>
+    public static float Scatter(Int3 cell)
+    {
+        uint h = unchecked((uint)(cell.X * 73856093) ^ (uint)(cell.Y * 19349663) ^ (uint)(cell.Z * 83492791));
+        h ^= h >> 13;
+        h = unchecked(h * 0x5bd1e995);
+        h ^= h >> 15;
+        return (h & 0xFFFFFF) / (float)0x1000000;
+    }
+
+    /// <summary>
+    /// From <paramref name="from"/>'s colour at the start to <paramref name="to"/>'s at
+    /// <paramref name="end"/>, along the line between, dithered: each cell's share of the way along
+    /// against its dither threshold picks which.
+    /// </summary>
+    public static int Gradient(Int3 start, Face face, Int3 end, byte from, byte to, int threshold, VoxelEditCommand command)
+    {
+        Int3 run = end - start;
+        float length = (run.X * run.X) + (run.Y * run.Y) + (run.Z * run.Z);
+
+        return Mix(start, face, threshold, cell =>
+        {
+            if (length == 0f)
+            {
+                return from;
+            }
+
+            Int3 along = cell - start;
+            float t = Math.Clamp(((along.X * run.X) + (along.Y * run.Y) + (along.Z * run.Z)) / length, 0f, 1f);
+            return t > Bayer(cell, face) ? to : from;
+        }, command);
+    }
+
+    /// <summary>
     /// The same connected surface as <see cref="Bucket"/>, but each face takes its colour from a
     /// tiled pattern projected onto the plane it lies in.
     /// </summary>

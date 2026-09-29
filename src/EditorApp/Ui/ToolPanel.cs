@@ -159,7 +159,7 @@ public static class ToolPanel
             int mode = Props.Choice(
                 "Mode",
                 "paint-mode",
-                [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket"), (Icons.Pattern, "Pattern")],
+                [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket"), (Icons.Pattern, "Pattern"), (Icons.Gradient, "Gradient"), (Icons.Noise, "Noise"), (Icons.Dither, "Dither")],
                 (int)session.PaintMode);
             session.PaintMode = (PaintMode)mode;
             Tooltip("X cycles");
@@ -182,9 +182,34 @@ public static class ToolPanel
                     DrawBucket(session);
                     break;
 
-                default:
+                case PaintMode.Pattern:
                     DrawBucket(session);
                     DrawPattern(session);
+                    break;
+
+                default:
+                    DrawBucket(session);
+                    Props.Value("Second colour", $"index {session.SecondaryColorIndex}");
+                    if (Props.Buttons(string.Empty, "swap-colours", "Swap colours") == 0)
+                    {
+                        session.SwapColours();
+                    }
+
+                    if (session.PaintMode != PaintMode.Gradient)
+                    {
+                        float mix = session.MixAmount;
+                        if (Props.Slider("Mix", "mix-amount", ref mix, 0f, 1f, "%.2f"))
+                        {
+                            session.MixAmount = mix;
+                        }
+
+                        Tooltip("How much of the second colour: 0 none, 1 all of it.");
+                    }
+                    else
+                    {
+                        Wrapped("Drag across the surface: the colour in hand where the drag starts, the second colour where it ends, dithered between.");
+                    }
+
                     break;
             }
         }

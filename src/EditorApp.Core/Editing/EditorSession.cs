@@ -109,6 +109,25 @@ public sealed partial class EditorSession
     /// <summary>Palette index the tools write. Never 0 — that is the empty marker.</summary>
     public byte ActiveColorIndex { get; set; } = 1;
 
+    /// <summary>The second colour, for the two-colour fills: where a gradient ends, what noise and dither mix in.</summary>
+    public byte SecondaryColorIndex { get; set; } = 1;
+
+    /// <summary>How much of the second colour noise and dither mix in, 0 to 1.</summary>
+    public float MixAmount
+    {
+        get => _mixAmount;
+        set => _mixAmount = float.IsFinite(value) ? Math.Clamp(value, 0f, 1f) : _mixAmount;
+    }
+
+    private float _mixAmount = 0.5f;
+
+    /// <summary>The colour in hand and the second colour trade places.</summary>
+    public void SwapColours() => (ActiveColorIndex, SecondaryColorIndex) = (SecondaryColorIndex, ActiveColorIndex);
+
+    /// <summary>A gradient dragged from one face to a cell, over the surface it starts on, as one undo step.</summary>
+    public bool PaintGradient(RaycastHit start, Int3 end) =>
+        RunStep("Gradient", c => PaintOperations.Gradient(start.Voxel, start.Face, end, ActiveColorIndex, SecondaryColorIndex, BucketThreshold, c));
+
     /// <summary>3D euclidean radius. 0 is exactly one voxel.</summary>
     public float BrushRadius { get; set; }
 
@@ -402,6 +421,15 @@ public sealed partial class EditorSession
             PaintMode.Pattern => Pattern is { } pattern
                 ? PaintOperations.Pattern(hit.Voxel, hit.Face, pattern, BucketThreshold, _stroke!) > 0
                 : PaintOperations.Bucket(hit.Voxel, hit.Face, ActiveColorIndex, BucketThreshold, _stroke!) > 0,
+
+            // A gradient is a drag, not a click: PaintGradient, once it is let go.
+            PaintMode.Gradient => false,
+
+            PaintMode.Noise => PaintOperations.Mix(hit.Voxel, hit.Face, BucketThreshold,
+                cell => PaintOperations.Scatter(cell) < MixAmount ? SecondaryColorIndex : ActiveColorIndex, _stroke!) > 0,
+
+            PaintMode.Dither => PaintOperations.Mix(hit.Voxel, hit.Face, BucketThreshold,
+                cell => PaintOperations.Bayer(cell, hit.Face) < MixAmount ? SecondaryColorIndex : ActiveColorIndex, _stroke!) > 0,
 
             _ => PaintOperations.Brush(hit.Voxel, hit.Face, BrushRadius, ActiveColorIndex, _stroke!) > 0,
         };

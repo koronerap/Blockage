@@ -214,13 +214,48 @@ public static class ToolOptions
 
         IconButton.Choice(
             "paint-mode",
-            [(Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill")],
+            [
+                (Icons.Brush, "Brush"), (Icons.Bucket, "Bucket fill"), (Icons.Pattern, "Pattern fill"),
+                (Icons.Gradient, "Gradient - drag from the colour in hand to the second colour"),
+                (Icons.Noise, "Noise - the two colours scattered"),
+                (Icons.Dither, "Dither - the two colours in an even pattern"),
+            ],
             (int)session.PaintMode,
             Shortcut.Of(EditorAction.ToolCycleMode),
             size,
             value => session.PaintMode = (PaintMode)value);
 
         ImGui.SameLine(0f, 4f);
+
+        // The two-colour fills: the second colour, a swap, and for noise and dither how much of it.
+        if (session.PaintMode is PaintMode.Gradient or PaintMode.Noise or PaintMode.Dither)
+        {
+            Palette palette = session.Scene.Palette;
+            ImGui.ColorButton("##secondary", palette[session.SecondaryColorIndex].ToVector4(), ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoTooltip, new Vector2(size * 1.4f, size));
+            Tooltip("The second colour. Choose it as the colour in hand, then swap.");
+            ImGui.SameLine(0f, 2f);
+            if (ImGui.Button("Swap", new Vector2(0f, size)))
+            {
+                session.SwapColours();
+            }
+
+            Tooltip("The colour in hand and the second colour trade places.");
+
+            if (session.PaintMode is PaintMode.Noise or PaintMode.Dither)
+            {
+                ImGui.SameLine(0f, 4f);
+                Field("Mix", 84f);
+                float mix = session.MixAmount;
+                if (ImGui.DragFloat("##mix", ref mix, 0.01f, 0f, 1f, "%.2f", ImGuiSliderFlags.AlwaysClamp))
+                {
+                    session.MixAmount = mix;
+                }
+
+                Tooltip("How much of the second colour: 0 none, 1 all of it.");
+            }
+
+            ImGui.SameLine(0f, 4f);
+        }
 
         if (session.PaintMode == PaintMode.Brush)
         {

@@ -247,6 +247,57 @@ public static class Icons
         }
     }
 
+    /// <summary>Gradient: a square going from solid to empty in dithered steps.</summary>
+    public static void Gradient(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r), centre + new Vector2(r));
+        float cell = r * 0.5f;
+        for (int row = 0; row < 4; row++)
+        {
+            for (int column = 0; column < 4; column++)
+            {
+                // Fewer filled the further right: all, then three in four, half, one in four.
+                bool filled = column == 0 || (column == 1 && (row & 3) != 3) || (column == 2 && ((row + column) & 1) == 0) || (column == 3 && row == 1);
+                if (filled)
+                {
+                    Vector2 min = centre + new Vector2(-r + (column * cell), -r + (row * cell));
+                    canvas.FilledRect(min, min + new Vector2(cell));
+                }
+            }
+        }
+    }
+
+    /// <summary>Noise: pixels scattered unevenly in a square.</summary>
+    public static void Noise(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r), centre + new Vector2(r));
+        float cell = r * 0.5f;
+        ReadOnlySpan<(int X, int Y)> scattered = [(0, 0), (2, 0), (1, 1), (3, 1), (0, 2), (1, 3), (3, 3), (2, 2)];
+        foreach ((int x, int y) in scattered[..6])
+        {
+            Vector2 min = centre + new Vector2(-r + (x * cell), -r + (y * cell));
+            canvas.FilledRect(min, min + new Vector2(cell));
+        }
+    }
+
+    /// <summary>Dither: a checkerboard.</summary>
+    public static void Dither(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        canvas.Rect(centre - new Vector2(r), centre + new Vector2(r));
+        float cell = r * 0.5f;
+        for (int row = 0; row < 4; row++)
+        {
+            for (int column = 0; column < 4; column++)
+            {
+                if (((row + column) & 1) == 0)
+                {
+                    Vector2 min = centre + new Vector2(-r + (column * cell), -r + (row * cell));
+                    canvas.FilledRect(min, min + new Vector2(cell));
+                }
+            }
+        }
+    }
+
     /// <summary>Text: a block capital T, in the font's own square pixels.</summary>
     public static void Text(IIconCanvas canvas, Vector2 centre, float r)
     {

@@ -88,6 +88,9 @@ public static class MouseHints
             {
                 PaintMode.Bucket => "Fill",
                 PaintMode.Pattern => "Fill with the pattern",
+                PaintMode.Gradient => "Drag a gradient",
+                PaintMode.Noise => "Fill with noise",
+                PaintMode.Dither => "Fill with a dither",
                 _ => "Paint",
             },
 

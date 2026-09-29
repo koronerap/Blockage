@@ -149,6 +149,10 @@ public sealed partial class EditorSession
 
     public int RemoveLooseSelected() => FilterSelected("Remove loose pieces", command => VolumeOperations.RemoveLoose(LooseMinimum, command));
 
+    /// <summary>Fills what each selected model closes off, in the colour in hand.</summary>
+    public int FillEnclosedSelected() =>
+        FilterSelected("Fill enclosed", command => VolumeOperations.FillEnclosed(ActiveColorIndex == Palette.EmptyIndex ? Palette.WhiteIndex : ActiveColorIndex, command));
+
     /// <summary>Why an object cannot be resampled by this much, or null when it can.</summary>
     public static string? ResampleProblem(VoxelObject target, float scale, float voxelSize)
     {

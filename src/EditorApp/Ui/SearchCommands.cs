@@ -195,6 +195,7 @@ public static class SearchCommands
             ("object.volume.thin", "Thin", session.ThinSelected, "erode shrink"),
             ("object.volume.smooth", "Smooth volume", session.SmoothSelected, "blur spikes holes"),
             ("object.volume.loose", "Remove loose pieces", session.RemoveLooseSelected, "clean crumbs islands"),
+            ("object.volume.fillenclosed", "Fill enclosed", session.FillEnclosedSelected, "solid cavity hollow inside"),
             ("object.volume.halve", "Halve resolution", session.HalveSelected, "downsample decimate unsubdivide"),
             ("object.volume.scale", "Scale in voxels", session.ScaleSelected, "resize resample"),
         })
