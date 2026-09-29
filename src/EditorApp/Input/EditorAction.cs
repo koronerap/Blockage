@@ -33,6 +33,8 @@ public enum EditorAction
     UnlockAll,
     Rename,
     Subdivide,
+    SetParent,
+    ClearParent,
     KeepExtrude,
     Cancel,
 
@@ -112,6 +114,8 @@ public static class EditorActions
         new(EditorAction.UnlockAll, "edit.unlockall", "Unlock everything", Edit),
         new(EditorAction.Rename, "edit.rename", "Rename", Edit),
         new(EditorAction.Subdivide, "edit.subdivide", "Subdivide", Edit),
+        new(EditorAction.SetParent, "edit.setparent", "Parent to...", Edit),
+        new(EditorAction.ClearParent, "edit.clearparent", "Clear parent", Edit),
         new(EditorAction.KeepExtrude, "edit.keepextrude", "Keep an extrude", Edit),
         new(EditorAction.Cancel, "edit.cancel", "Cancel, or let go", Edit),
 

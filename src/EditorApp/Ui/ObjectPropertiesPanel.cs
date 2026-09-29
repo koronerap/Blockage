@@ -60,6 +60,11 @@ public static class ObjectPropertiesPanel
             DrawVoxels(session, focus);
         }
 
+        if (Props.Section("Relations", openByDefault: false))
+        {
+            DrawRelations(session, focus);
+        }
+
         if (Props.Section("Visibility", openByDefault: false))
         {
             bool visible = focus.Visible;
@@ -99,6 +104,19 @@ public static class ObjectPropertiesPanel
         if (ImGui.IsItemDeactivatedAfterEdit())
         {
             rename(_nameBuffer);
+        }
+    }
+
+    /// <summary>Blender's Relations: the parent, and — for an object — how many it has under it.</summary>
+    public static void DrawRelations(EditorSession session, IPlaceable target)
+    {
+        ParentMenu.DrawField(session, target);
+
+        int children = session.Scene.ChildrenOf(target.Id).Count();
+        if (children > 0)
+        {
+            Props.Label(string.Empty);
+            ImGui.TextDisabled(children == 1 ? "1 child moves with it." : $"{children} children move with it.");
         }
     }
 

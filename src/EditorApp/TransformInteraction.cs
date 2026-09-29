@@ -601,8 +601,9 @@ public sealed class TransformInteraction(EditorSession session)
         return null;
     }
 
-    /// <summary>The moved thing itself, which a snap must see through.</summary>
-    private bool MovesWithTarget(VoxelObject o) => ReferenceEquals(o, _target);
+    /// <summary>The moved thing itself and its children, which move with it: a snap must see through them all.</summary>
+    private bool MovesWithTarget(VoxelObject o) =>
+        _target is { } target && (ReferenceEquals(o, target) || session.Scene.IsDescendantOf(o.Id, target.Id));
 
     /// <summary>Where the cursor's ray meets the plane the free ring moves in: through the gizmo, facing the camera as it was at the press.</summary>
     private Vector3? PlaneHit(Vector2 mouse, Vector2 viewport, FlyCamera camera)

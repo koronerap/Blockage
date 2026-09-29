@@ -330,7 +330,12 @@ public sealed class EditorSession
 
         // Same transform, and the voxels keep their coordinates, so the new object appears exactly
         // where the extrude drew it.
-        var command = new CreateObjectCommand(Scene, grid, source.Transform, source.Name + " (extruded)");
+        var command = new CreateObjectCommand(
+            Scene,
+            grid,
+            source.Transform,
+            source.Name + " (extruded)",
+            parentId: Scene.ParentOf(source)?.Id ?? 0);
         command.Redo();
         History.Push(command);
 
@@ -651,6 +656,38 @@ public sealed class EditorSession
         return true;
     }
 
+    // ---- Parents -------------------------------------------------------------------------------
+
+    /// <summary>Why one thing cannot be put under another, or null when it can. 0 is no parent, which always can.</summary>
+    public string? ParentProblem(int childId, int parentId) => Scene.ParentProblem(childId, parentId);
+
+    /// <summary>
+    /// Makes an object or a light the child of an object, which it then moves with; 0 for none. It
+    /// stays where it is either way. One undo step; false when refused or when nothing would change.
+    /// </summary>
+    public bool SetParent(int childId, int parentId)
+    {
+        if (Scene.FindPlaceable(childId) is not { } child
+            || Scene.ParentProblem(childId, parentId) is not null
+            || (Scene.ParentOf(child)?.Id ?? 0) == parentId)
+        {
+            return false;
+        }
+
+        EndStroke();
+        CancelExtrude();
+
+        string name = Scene.Find(parentId) is { } parent ? $"Parent {child.Name} to {parent.Name}" : $"Clear parent of {child.Name}";
+        var command = new ParentCommand(Scene, child, parentId, name);
+        command.Redo();
+        History.Push(command);
+        HasUnsavedChanges = true;
+        return true;
+    }
+
+    /// <summary>Frees something from its parent, leaving it where it is. One undo step.</summary>
+    public bool ClearParent(int childId) => SetParent(childId, 0);
+
     // ---- Lights --------------------------------------------------------------------------------
 
     /// <summary>
@@ -733,6 +770,9 @@ public sealed class EditorSession
             Name = DuplicateName(source.Name, Scene.Lights.Select(l => l.Name)),
             Transform = source.Transform.Translated(offset),
         });
+
+        // Under the same parent; held where it lands once it is in the level.
+        copy.ParentId = Scene.ParentOf(source)?.Id ?? 0;
 
         var command = new AddLightCommand(Scene, copy, $"Duplicate {source.Name}");
         command.Redo();
@@ -1031,7 +1071,8 @@ public sealed class EditorSession
             placed,
             DuplicateName(source.Name, Scene.Objects.Select(o => o.Name)),
             $"Duplicate {source.Name}",
-            Scene.IndexOf(source.Id) + 1);
+            Scene.IndexOf(source.Id) + 1,
+            Scene.ParentOf(source)?.Id ?? 0);
 
         command.Redo();
         History.Push(command);

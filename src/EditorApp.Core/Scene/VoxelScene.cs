@@ -134,6 +134,7 @@ public sealed class VoxelScene
 
         original.Grid.ReplacePalette(Palette);
         Insert(original, insertAt);
+        Reattach(original.Id);
 
         if (FocusId == 0)
         {
@@ -173,10 +174,230 @@ public sealed class VoxelScene
             _lights.Add(light);
         }
 
+        light.Moved = OnMoved;
+        HoldAtCurrentPlace(light);
         _nextId = Math.Max(_nextId, light.Id + 1);
     }
 
-    public bool RemoveLight(int id) => _lights.RemoveAll(l => l.Id == id) > 0;
+    // ---- Parents -------------------------------------------------------------------------------
+
+    /// <summary>An object or a light by id, whichever it is.</summary>
+    public IPlaceable? FindPlaceable(int id) => (IPlaceable?)Find(id) ?? FindLight(id);
+
+    /// <summary>
+    /// The parent something has now: an object still in the level. A parent that was deleted leaves
+    /// its id behind on its children, so that undoing the delete puts them back under it; until then
+    /// they are simply without one.
+    /// </summary>
+    public VoxelObject? ParentOf(IPlaceable child) => child.ParentId == 0 ? null : Find(child.ParentId);
+
+    /// <summary>The objects and lights whose parent this is, in list order, objects first.</summary>
+    public IEnumerable<IPlaceable> ChildrenOf(int id)
+    {
+        foreach (VoxelObject o in _objects)
+        {
+            if (o.ParentId == id && o.Id != id)
+            {
+                yield return o;
+            }
+        }
+
+        foreach (SceneLight light in _lights)
+        {
+            if (light.ParentId == id)
+            {
+                yield return light;
+            }
+        }
+    }
+
+    /// <summary>Whether <paramref name="id"/> is below <paramref name="ancestorId"/> — its child, its child's child, and so on.</summary>
+    public bool IsDescendantOf(int id, int ancestorId)
+    {
+        IPlaceable? step = FindPlaceable(id);
+
+        // Bounded by the number of objects, so a cycle that got in some other way cannot hang this.
+        for (int hops = 0; step is not null && hops <= _objects.Count; hops++)
+        {
+            if (ParentOf(step) is not { } parent)
+            {
+                return false;
+            }
+
+            if (parent.Id == ancestorId)
+            {
+                return true;
+            }
+
+            step = parent;
+        }
+
+        return false;
+    }
+
+    /// <summary>Why one thing cannot be made the child of another, in words for a tooltip; null when it can.</summary>
+    public string? ParentProblem(int childId, int parentId)
+    {
+        if (FindPlaceable(childId) is not { } child)
+        {
+            return "There is nothing to parent.";
+        }
+
+        if (parentId == 0)
+        {
+            return null;
+        }
+
+        if (Find(parentId) is not { } parent)
+        {
+            return "Only an object can be a parent.";
+        }
+
+        if (parentId == childId)
+        {
+            return "Nothing can be its own parent.";
+        }
+
+        if (IsDescendantOf(parentId, childId))
+        {
+            return $"{parent.Name} is below {child.Name} already - it would be its own grandparent.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Makes one thing the child of an object, or of nothing with 0. It stays exactly where it is —
+    /// Blender's "Keep Transform" — and from now on moves with its parent. Refused as
+    /// <see cref="ParentProblem"/> says.
+    /// </summary>
+    public bool SetParent(int childId, int parentId)
+    {
+        if (ParentProblem(childId, parentId) is not null || FindPlaceable(childId) is not { } child)
+        {
+            return false;
+        }
+
+        switch (child)
+        {
+            case VoxelObject o:
+                o.ParentId = parentId;
+                break;
+
+            case SceneLight light:
+                light.ParentId = parentId;
+                break;
+        }
+
+        HoldAtCurrentPlace(child);
+        return true;
+    }
+
+    /// <summary>Takes the offset a child is held at from where it and its parent are now.</summary>
+    private void HoldAtCurrentPlace(IPlaceable child)
+    {
+        ObjectTransform offset = ParentOf(child) is { } parent
+            ? Parenting.Relative(parent.Transform, child.Transform)
+            : ObjectTransform.Identity;
+
+        switch (child)
+        {
+            case VoxelObject o:
+                o.ParentOffset = offset;
+                break;
+
+            case SceneLight light:
+                light.ParentOffset = offset;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Something moved. Moved by hand, it is held at its new place in its parent's frame; either way,
+    /// its children go with it.
+    /// </summary>
+    private void OnMoved(IPlaceable moved, bool byParent)
+    {
+        if (!byParent)
+        {
+            HoldAtCurrentPlace(moved);
+        }
+
+        if (moved is not VoxelObject parent)
+        {
+            return;
+        }
+
+        foreach (IPlaceable child in ChildrenOf(parent.Id).ToArray())
+        {
+            ObjectTransform world = Parenting.Compose(parent.Transform, OffsetOf(child), child.Transform.VoxelSize);
+
+            switch (child)
+            {
+                case VoxelObject o:
+                    o.Follow(world);
+                    break;
+
+                case SceneLight light:
+                    light.Follow(world);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Where something is held in its parent's frame.</summary>
+    public static ObjectTransform OffsetOf(IPlaceable thing) => thing switch
+    {
+        VoxelObject o => o.ParentOffset,
+        SceneLight light => light.ParentOffset,
+        _ => ObjectTransform.Identity,
+    };
+
+    /// <summary>
+    /// Puts back a parent and offset exactly as they were, a deleted parent's id included — for undo,
+    /// where nothing has moved since they were taken, so there is nothing to work out again.
+    /// </summary>
+    internal static void PlaceUnder(IPlaceable child, int parentId, ObjectTransform offset)
+    {
+        switch (child)
+        {
+            case VoxelObject o:
+                o.ParentId = parentId;
+                o.ParentOffset = offset;
+                break;
+
+            case SceneLight light:
+                light.ParentId = parentId;
+                light.ParentOffset = offset;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A parent back in the level: its children, which kept its id, are held again at wherever they
+    /// are now — they may have been moved while it was gone.
+    /// </summary>
+    private void Reattach(int parentId)
+    {
+        foreach (IPlaceable child in ChildrenOf(parentId).ToArray())
+        {
+            HoldAtCurrentPlace(child);
+        }
+    }
+
+    public bool RemoveLight(int id)
+    {
+        int index = IndexOfLight(id);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        // Out of the level, moving it — as an undo holding it might — moves nothing that is in it.
+        _lights[index].Moved = null;
+        _lights.RemoveAt(index);
+        return true;
+    }
 
     public SceneLight? FindLight(int id) => _lights.Find(l => l.Id == id);
 
@@ -205,6 +426,8 @@ public sealed class VoxelScene
 
     private void Insert(VoxelObject item, int? index)
     {
+        item.Moved = OnMoved;
+
         if (index is { } at)
         {
             _objects.Insert(Math.Clamp(at, 0, _objects.Count), item);
@@ -234,7 +457,13 @@ public sealed class VoxelScene
         {
             VoxelWorld grid = o.Grid.Copy();
             grid.ReplacePalette(copy.Palette);
-            copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name) { Visible = o.Visible, Locked = o.Locked });
+            copy._objects.Add(new VoxelObject(o.Id, grid, o.Transform, o.Name)
+            {
+                Visible = o.Visible,
+                Locked = o.Locked,
+                ParentId = o.ParentId,
+                ParentOffset = o.ParentOffset,
+            });
         }
 
         foreach (SceneLight light in _lights)
@@ -253,6 +482,8 @@ public sealed class VoxelScene
             return false;
         }
 
+        // Its children keep its id, and so find it again if it is put back; until then they are free.
+        _objects[index].Moved = null;
         _objects.RemoveAt(index);
 
         if (FocusId == id)
@@ -307,6 +538,16 @@ public sealed class VoxelScene
 
     public void Clear()
     {
+        foreach (VoxelObject o in _objects)
+        {
+            o.Moved = null;
+        }
+
+        foreach (SceneLight light in _lights)
+        {
+            light.Moved = null;
+        }
+
         _objects.Clear();
         _lights.Clear();
         FocusId = 0;

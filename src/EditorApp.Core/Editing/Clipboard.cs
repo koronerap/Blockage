@@ -203,9 +203,14 @@ public static class ClipboardOperations
 /// <summary>
 /// One object's voxels moved into another's and the first taken out of the level, as one step. Undo
 /// takes the voxels back out of the target and puts the source back where it was in the list.
+///
+/// What was under the source goes under the target, as Blender's join does; the target, if it was
+/// one of them, takes the source's own parent instead.
 /// </summary>
 public sealed class JoinCommand(VoxelScene scene, VoxelObject source, VoxelObject target, LatticeMap map) : ICommand
 {
+    private readonly ParentRecord _children = new();
+
     private VoxelEditCommand? _writes;
     private int _index = -1;
     private int _previousFocus;
@@ -228,8 +233,18 @@ public sealed class JoinCommand(VoxelScene scene, VoxelObject source, VoxelObjec
             _writes.Redo();
         }
 
+        int sourceParent = scene.ParentOf(source)?.Id ?? 0;
+        IPlaceable[] children = [.. scene.ChildrenOf(source.Id)];
+        _children.Capture(children);
+
         _index = scene.IndexOf(source.Id);
         scene.Remove(source.Id);
+
+        foreach (IPlaceable child in children)
+        {
+            scene.SetParent(child.Id, child.Id == target.Id ? sourceParent : target.Id);
+        }
+
         scene.SetFocus(target.Id);
     }
 
@@ -237,6 +252,7 @@ public sealed class JoinCommand(VoxelScene scene, VoxelObject source, VoxelObjec
     {
         _writes?.Undo();
         scene.Restore(source, _index >= 0 ? _index : null);
+        _children.Restore();
         scene.SetFocus(_previousFocus);
     }
 }

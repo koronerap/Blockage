@@ -116,7 +116,7 @@ public static class VxLevelFile
             ChunkSize = Chunk.Size,
             Palette = LevelManifest.EncodePalette(scene.Palette),
             SavedCustomSlots = [.. scene.Palette.SavedCustomSlots()],
-            Lights = [.. scene.Lights.Select(WriteLight)],
+            Lights = [.. scene.Lights.Select(light => WriteLight(scene, light))],
             Ambient = scene.Ambient,
             SavedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
@@ -143,6 +143,7 @@ public static class VxLevelFile
                 Visible = o.Visible,
                 VoxelSize = o.VoxelSize,
                 Locked = o.Locked,
+                Parent = scene.ParentOf(o)?.Id,
             });
 
             foreach (ChunkCoord coord in coordinates)
@@ -294,6 +295,11 @@ public static class VxLevelFile
         float levelVoxelSize = ObjectTransform.ValidVoxelSize(manifest.VoxelSize ?? 1f) ?? 1f;
         bool perObject = manifest.Version >= PerObjectVoxelSizeVersion;
 
+        // Ids are the file's own and the scene hands out new ones, so parents are matched up once
+        // everything is in: a child may well be listed before its parent.
+        var byFileId = new Dictionary<int, VoxelObject>();
+        var parented = new List<(IPlaceable Child, int ParentFileId)>();
+
         if (manifest.Objects is { Length: > 0 } objects)
         {
             foreach (LevelManifest.ObjectEntry entry in objects)
@@ -310,6 +316,12 @@ public static class VxLevelFile
 
                 added.Visible = entry.Visible;
                 added.Locked = entry.Locked;
+
+                byFileId.TryAdd(entry.Id, added);
+                if (entry.Parent is { } parent)
+                {
+                    parented.Add((added, parent));
+                }
             }
         }
         else
@@ -326,12 +338,25 @@ public static class VxLevelFile
         {
             foreach (LevelManifest.LightEntry entry in lights)
             {
-                ReadLight(scene, entry);
+                SceneLight light = ReadLight(scene, entry);
+                if (entry.Parent is { } parent)
+                {
+                    parented.Add((light, parent));
+                }
             }
         }
         else
         {
             scene.AddDefaultSun();
+        }
+
+        // A parent that is not there, or that would close a loop, is simply no parent.
+        foreach ((IPlaceable child, int parentFileId) in parented)
+        {
+            if (byFileId.TryGetValue(parentFileId, out VoxelObject? parent))
+            {
+                scene.SetParent(child.Id, parent.Id);
+            }
         }
 
         scene.Ambient = manifest.Ambient ?? VoxelScene.DefaultAmbient;
@@ -340,7 +365,7 @@ public static class VxLevelFile
         return scene;
     }
 
-    private static LevelManifest.LightEntry WriteLight(SceneLight light)
+    private static LevelManifest.LightEntry WriteLight(VoxelScene scene, SceneLight light)
     {
         Vector3 colour = light.Colour * 255f;
 
@@ -363,10 +388,11 @@ public static class VxLevelFile
             SpotBlend = light.SpotBlend,
             Visible = light.Visible,
             Locked = light.Locked,
+            Parent = scene.ParentOf(light)?.Id,
         };
     }
 
-    private static void ReadLight(VoxelScene scene, LevelManifest.LightEntry entry)
+    private static SceneLight ReadLight(VoxelScene scene, LevelManifest.LightEntry entry)
     {
         LightKind kind = entry.Kind.ToLowerInvariant() switch
         {
@@ -397,6 +423,7 @@ public static class VxLevelFile
         });
 
         light.Locked = entry.Locked;
+        return light;
     }
 
     private static Vector3 ParseLightColour(LevelManifest.LightEntry entry)

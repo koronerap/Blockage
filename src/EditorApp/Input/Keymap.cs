@@ -198,6 +198,8 @@ public sealed class Keymap
             [EditorAction.Lock] = [new(Key.L)],
             [EditorAction.UnlockAll] = [KeyChord.AltOf(Key.L)],
             [EditorAction.Rename] = [new(Key.F2)],
+            [EditorAction.SetParent] = [KeyChord.Ctrl(Key.P)],
+            [EditorAction.ClearParent] = [KeyChord.AltOf(Key.P)],
             [EditorAction.KeepExtrude] = [new(Key.Enter), new(Key.KeypadEnter)],
             [EditorAction.Cancel] = [new(Key.Escape)],
 

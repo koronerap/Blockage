@@ -954,6 +954,23 @@ public sealed class EditorApplication : IDisposable
 
             case EditorAction.Subdivide when !IsDragging(): ObjectMenu.SubdivideFocus(_session, ReportLog.Shared); break;
 
+            // Whatever is in hand — the picked light, or else the focused object — is the child.
+            case EditorAction.SetParent when !IsDragging():
+                if ((_session.SelectedLight as IPlaceable ?? _session.Scene.Focus) is { } child)
+                {
+                    ParentMenu.Open(child.Id);
+                }
+
+                break;
+
+            case EditorAction.ClearParent when !IsDragging():
+                if ((_session.SelectedLight as IPlaceable ?? _session.Scene.Focus) is { } freed)
+                {
+                    ParentMenu.Clear(_session, freed);
+                }
+
+                break;
+
             case EditorAction.ToggleGrid: View.Grid = !View.Grid; break;
             case EditorAction.ToggleMeasurements: View.Measurements = !View.Measurements; break;
             case EditorAction.ToggleXRay: View.XRay = !View.XRay; break;
@@ -1387,6 +1404,12 @@ public sealed class EditorApplication : IDisposable
         {
             EditorOverlays.AddOrigins(gizmos, _session.Scene, _camera);
         }
+
+        if (View.Overlays && View.RelationshipLines)
+        {
+            EditorOverlays.AddRelationshipLines(gizmos, _session.Scene, _camera, ShowLightIcons);
+        }
+
         EditorOverlays.AddSnapTarget(gizmos, _transform!, _camera);
     }
 
@@ -1470,6 +1493,7 @@ public sealed class EditorApplication : IDisposable
         _mimicraft!.Draw();
         _referencePanel.DrawDialogs();
         ToolOptions.DrawDialogs();
+        ParentMenu.DrawPopup(_session);
 
         // The asterisk in the title is the only always-visible unsaved-changes indicator.
         string title = _project.WindowTitle;

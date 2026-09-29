@@ -27,6 +27,9 @@ public interface IPlaceable
 
     ObjectTransform Transform { get; set; }
 
+    /// <summary>What it is a child of — an object's id — or 0. It moves with its parent.</summary>
+    int ParentId { get; }
+
     /// <summary>Where the gizmo sits and what the rings turn about.</summary>
     Vector3 WorldCentre();
 }
@@ -75,7 +78,38 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
 
     public LightKind Kind { get; set; } = kind;
 
-    public ObjectTransform Transform { get; set; } = ObjectTransform.Identity;
+    private ObjectTransform _transform = ObjectTransform.Identity;
+
+    /// <summary>
+    /// Where it is in the world. Set by anything that moves it; a parent's move sets it through
+    /// <see cref="Follow"/> instead, which is how children go with their parent without every place
+    /// that moves an object having to know about children.
+    /// </summary>
+    public ObjectTransform Transform
+    {
+        get => _transform;
+        set
+        {
+            _transform = value;
+            Moved?.Invoke(this, false);
+        }
+    }
+
+    /// <summary>The object this is a child of; 0 for none. An id with no object behind it — a deleted parent — is no parent.</summary>
+    public int ParentId { get; internal set; }
+
+    /// <summary>Where this sits in its parent's frame, kept while it has one.</summary>
+    public ObjectTransform ParentOffset { get; internal set; } = ObjectTransform.Identity;
+
+    /// <summary>Told when this moves, so its children follow and its own offset stays true. Set by the scene.</summary>
+    internal Action<IPlaceable, bool>? Moved { get; set; }
+
+    /// <summary>Moved by its parent: the world placement changes, the offset it is held at does not.</summary>
+    internal void Follow(ObjectTransform world)
+    {
+        _transform = world;
+        Moved?.Invoke(this, true);
+    }
 
     /// <summary>Red, green and blue, each 0 to 1.</summary>
     public Vector3 Colour { get; set; } = Vector3.One;
@@ -120,7 +154,20 @@ public sealed class SceneLight(int id, LightKind kind, string name) : IPlaceable
         Visible = state.Visible;
     }
 
-    public SceneLight Copy(int id) => new(id, Kind, Name) { Transform = Transform, Colour = Colour, Intensity = Intensity, Range = Range, SpotAngle = SpotAngle, SpotBlend = SpotBlend, Visible = Visible, Locked = Locked };
+    /// <summary>A copy with a new id: every setting, and the same parent at the same offset.</summary>
+    public SceneLight Copy(int id) => new(id, Kind, Name)
+    {
+        Transform = Transform,
+        Colour = Colour,
+        Intensity = Intensity,
+        Range = Range,
+        SpotAngle = SpotAngle,
+        SpotBlend = SpotBlend,
+        Visible = Visible,
+        Locked = Locked,
+        ParentId = ParentId,
+        ParentOffset = ParentOffset,
+    };
 
     /// <summary>The turn that makes a light shine along <paramref name="direction"/>.</summary>
     public static Quaternion Aiming(Vector3 direction)

@@ -19,6 +19,11 @@ internal sealed class RecordingLines : LineGeometry
     public IEnumerable<Vector3> FillPoints => FillVertices.ToArray().Select(v => v.Position);
 
     public IEnumerable<uint> StrokeColours => QuadVertices.ToArray().Select(v => v.Rgba).Distinct();
+
+    /// <summary>Thin lines, two points each.</summary>
+    public int Hairlines => LineVertices.Length / 2;
+
+    public IEnumerable<Vector3> HairlinePoints => LineVertices.ToArray().Select(v => v.Position);
 }
 
 /// <summary>Faces drawn as one surface: a tint over all of them and a line round the outside only.</summary>

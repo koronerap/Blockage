@@ -97,6 +97,11 @@ public sealed class LevelManifest
         [JsonPropertyName("locked")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool Locked { get; set; }
+
+        /// <summary>The <see cref="Id"/> of the object this is a child of; absent for none.</summary>
+        [JsonPropertyName("parent")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Parent { get; set; }
     }
 
     /// <summary>
@@ -151,6 +156,11 @@ public sealed class LevelManifest
         [JsonPropertyName("locked")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool Locked { get; set; }
+
+        /// <summary>The id of the object this light is a child of; absent for none.</summary>
+        [JsonPropertyName("parent")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Parent { get; set; }
     }
 
     [JsonPropertyName("savedUtc")]

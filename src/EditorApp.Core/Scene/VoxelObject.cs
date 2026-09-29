@@ -19,7 +19,38 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
 
     public VoxelWorld Grid { get; } = grid;
 
-    public ObjectTransform Transform { get; set; } = transform;
+    private ObjectTransform _transform = transform;
+
+    /// <summary>
+    /// Where it is in the world. Set by anything that moves it; a parent's move sets it through
+    /// <see cref="Follow"/> instead, which is how children go with their parent without every place
+    /// that moves an object having to know about children.
+    /// </summary>
+    public ObjectTransform Transform
+    {
+        get => _transform;
+        set
+        {
+            _transform = value;
+            Moved?.Invoke(this, false);
+        }
+    }
+
+    /// <summary>The object this is a child of; 0 for none. An id with no object behind it — a deleted parent — is no parent.</summary>
+    public int ParentId { get; internal set; }
+
+    /// <summary>Where this sits in its parent's frame, kept while it has one.</summary>
+    public ObjectTransform ParentOffset { get; internal set; } = ObjectTransform.Identity;
+
+    /// <summary>Told when this moves, so its children follow and its own offset stays true. Set by the scene.</summary>
+    internal Action<IPlaceable, bool>? Moved { get; set; }
+
+    /// <summary>Moved by its parent: the world placement changes, the offset it is held at does not.</summary>
+    internal void Follow(ObjectTransform world)
+    {
+        _transform = world;
+        Moved?.Invoke(this, true);
+    }
 
     public bool Visible { get; set; } = true;
 

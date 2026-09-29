@@ -175,6 +175,7 @@ public static class ObjectMenu
         if (scene.Focus is { } joined)
         {
             DrawJoinMenu(session, joined);
+            ParentMenu.DrawSubmenu(session, joined);
         }
 
         ImGui.Separator();

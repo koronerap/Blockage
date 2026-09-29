@@ -221,6 +221,24 @@ public static class Props
     }
 
     /// <summary>
+    /// A dropdown in the value column, showing <paramref name="preview"/> while closed. Returns whether
+    /// it is open; when it is, the caller lists the choices and closes it with <c>ImGui.EndCombo</c>.
+    /// </summary>
+    public static bool BeginCombo(string label, string id, string preview)
+    {
+        Label(label);
+        bool open = ImGui.BeginCombo($"##{id}", preview);
+
+        // Once open, the last item is the list's own window rather than the field.
+        if (!open)
+        {
+            Remember(id);
+        }
+
+        return open;
+    }
+
+    /// <summary>
     /// A slim, collapsible section: a chevron and its title on a faint bar, the contents not indented.
     /// Returns whether it is open; nothing needs closing afterwards.
     /// </summary>

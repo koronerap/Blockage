@@ -135,6 +135,11 @@ public static class LightPropertiesPanel
             }
         }
 
+        if (Props.Section("Relations", openByDefault: false))
+        {
+            ObjectPropertiesPanel.DrawRelations(session, light);
+        }
+
         if (edited != state)
         {
             if (_editing is null)

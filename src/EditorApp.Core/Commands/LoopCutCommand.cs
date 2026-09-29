@@ -7,6 +7,9 @@ namespace EditorApp.Core.Commands;
 /// Splits one object into two, reversibly. The original object is kept intact rather than
 /// reconstructed on undo, so a cut and an undo return the level to exactly the objects it had —
 /// same grid instance, same transform, same name.
+///
+/// Both halves stay under the original's parent. Its children go to the half that keeps its name,
+/// and back to the original on undo.
 /// </summary>
 public sealed class LoopCutCommand : ICommand
 {
@@ -14,6 +17,8 @@ public sealed class LoopCutCommand : ICommand
     private readonly VoxelObject _original;
     private readonly VoxelWorld _low;
     private readonly VoxelWorld _high;
+
+    private readonly ParentRecord _children = new();
 
     private VoxelObject? _lowObject;
     private VoxelObject? _highObject;
@@ -37,11 +42,24 @@ public sealed class LoopCutCommand : ICommand
 
     public void Redo()
     {
+        int parentId = _scene.ParentOf(_original)?.Id ?? 0;
+        IPlaceable[] children = [.. _scene.ChildrenOf(_original.Id)];
+        _children.Capture(children);
+
         _scene.Remove(_original.Id);
 
         // Both halves inherit the original placement, so nothing moves at the moment of the cut.
         _lowObject = _scene.Add(_low, _original.Transform, _original.Name);
         _highObject = _scene.Add(_high, _original.Transform, _original.Name + " (cut)");
+
+        _scene.SetParent(_lowObject.Id, parentId);
+        _scene.SetParent(_highObject.Id, parentId);
+
+        foreach (IPlaceable child in children)
+        {
+            _scene.SetParent(child.Id, _lowObject.Id);
+        }
+
         _scene.SetFocus(_highObject.Id);
     }
 
@@ -58,6 +76,7 @@ public sealed class LoopCutCommand : ICommand
         }
 
         _scene.Restore(_original);
+        _children.Restore();
         _scene.SetFocus(_original.Id);
 
         _lowObject = null;

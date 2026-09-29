@@ -19,6 +19,10 @@ namespace EditorApp.Ui;
 /// Click to focus an object or pick a light, double-click or F2 to rename, right-click for the rest.
 /// Hovering an object's row outlines it in the viewport, and a light's lights up its icon, so a name
 /// can be matched to a shape without guessing.
+///
+/// Children are listed under their parents, indented, behind an arrow that folds them away. Drag a
+/// row onto an object's row to make it that object's child, as in Blender; drag it below the list
+/// to free it.
 /// </summary>
 public static class ObjectListPanel
 {
@@ -28,11 +32,38 @@ public static class ObjectListPanel
     /// <summary>Between the switches at the end of a row.</summary>
     private const float ToggleGap = 1f;
 
+    private const string RowPayload = "blockage-row";
+
     private static readonly Dictionary<(int Id, string Toggle), (Vector2 Min, Vector2 Max)> ToggleRects = [];
 
-    /// <summary>Where a row's switch — "lock" or "eye" — was drawn last frame, for tests to aim at.</summary>
+    private static readonly Dictionary<int, (Vector2 Min, Vector2 Max)> RowRects = [];
+
+    /// <summary>Parents whose children are folded away.</summary>
+    private static readonly HashSet<int> Folded = [];
+
+    /// <summary>Where a row's switch — "lock" or "eye" — or its "fold" arrow was drawn last frame, for tests to aim at.</summary>
     public static (Vector2 Min, Vector2 Max)? ToggleRect(int id, string toggle) =>
         ToggleRects.TryGetValue((id, toggle), out var rect) ? rect : null;
+
+    /// <summary>Where a row's name was drawn last frame — what a click or a drag takes hold of.</summary>
+    public static (Vector2 Min, Vector2 Max)? RowRect(int id) => RowRects.TryGetValue(id, out var rect) ? rect : null;
+
+    /// <summary>Where the space below the rows was drawn last frame: a row dropped there is freed from its parent.</summary>
+    public static (Vector2 Min, Vector2 Max)? DropSpaceRect { get; private set; }
+
+    /// <summary>Whether a parent's children are folded away in the list.</summary>
+    public static bool IsFolded(int id) => Folded.Contains(id);
+
+    /// <summary>
+    /// Whether any row is under another, so the list is drawn as a tree. A level with none is drawn
+    /// as the plain list it always was, without a column of arrows that are never there.
+    /// </summary>
+    private static bool _tree;
+
+    /// <summary>The row being dragged, and what letting go of it where it is would do.</summary>
+    private static int _draggedId;
+    private static int _draggedFrame = -1;
+    private static string? _dropHint;
 
     private static int _renamingId;
     private static string _renameBuffer = string.Empty;
@@ -42,6 +73,9 @@ public static class ObjectListPanel
 
     /// <summary>The object or light whose row the mouse is over, for the viewport to mark. 0 for none.</summary>
     public static int HoveredId { get; private set; }
+
+    /// <summary>For another list that names objects — the Parent menu — to mark the one under the mouse the same way.</summary>
+    public static void MarkHovered(int id) => HoveredId = id;
 
     /// <summary>Filters in the Outliner's header: a level with many lights can hide them to find its objects, and back.</summary>
     public static bool ShowObjects { get; set; } = true;
@@ -66,6 +100,10 @@ public static class ObjectListPanel
     public static void Draw(EditorSession session, FlyCamera camera, Vector2 size)
     {
         HoveredId = 0;
+
+        // Only what is drawn this frame: a row folded away has no place to aim at.
+        RowRects.Clear();
+        ToggleRects.Clear();
         VoxelScene scene = session.Scene;
 
         float row = ImGui.GetFrameHeight();
@@ -82,13 +120,26 @@ public static class ObjectListPanel
 
         if (ImGui.BeginChild("##outliner", new Vector2(-1f, MathF.Max(size.Y - headerHeight, row))))
         {
+            // Children are listed under their parents only while the parents are listed at all.
+            _tree = ShowObjects
+                && (scene.Objects.Any(o => scene.ParentOf(o) is not null) || (ShowLights && scene.Lights.Any(l => scene.ParentOf(l) is not null)));
+
+            // Whatever was picked elsewhere is shown, even if it was folded away under its parent.
+            if (focusMoved || lightMoved)
+            {
+                Reveal(scene, lightMoved && session.SelectedLightId != 0 ? session.SelectedLightId : scene.FocusId);
+            }
+
+            _dropHint = null;
+
             if (ShowObjects)
             {
                 foreach (VoxelObject o in scene.Objects.ToArray())
                 {
-                    ImGui.PushID(o.Id);
-                    DrawObjectRow(session, camera, o, row, focusMoved);
-                    ImGui.PopID();
+                    if (!_tree || scene.ParentOf(o) is null)
+                    {
+                        DrawObjectBranch(session, camera, o, row, focusMoved, lightMoved, 0);
+                    }
                 }
             }
 
@@ -96,16 +147,196 @@ public static class ObjectListPanel
             {
                 foreach (SceneLight light in scene.Lights.ToArray())
                 {
-                    ImGui.PushID(light.Id);
-                    DrawLightRow(session, camera, light, row, lightMoved);
-                    ImGui.PopID();
+                    if (!_tree || scene.ParentOf(light) is null)
+                    {
+                        ImGui.PushID(light.Id);
+                        DrawLightRow(session, camera, light, row, lightMoved, 0);
+                        ImGui.PopID();
+                    }
                 }
             }
+
+            DrawDropSpace(session, row);
+            DrawDragHint(session);
         }
 
         ImGui.EndChild();
         ImGui.PopStyleVar();
     }
+
+    /// <summary>An object's row, then — unless folded — its children's, each a step further in.</summary>
+    private static void DrawObjectBranch(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved, bool lightMoved, int depth)
+    {
+        VoxelScene scene = session.Scene;
+        IPlaceable[] children = _tree ? [.. scene.ChildrenOf(o.Id).Where(c => c is VoxelObject || ShowLights)] : [];
+
+        ImGui.PushID(o.Id);
+        DrawObjectRow(session, camera, o, row, focusMoved, depth, children.Length > 0);
+        ImGui.PopID();
+
+        // A loop cannot be made, but a list that followed one would never end; the depth bounds it.
+        if (children.Length == 0 || Folded.Contains(o.Id) || depth >= scene.Objects.Count)
+        {
+            return;
+        }
+
+        foreach (IPlaceable child in children)
+        {
+            switch (child)
+            {
+                case VoxelObject inner:
+                    DrawObjectBranch(session, camera, inner, row, focusMoved, lightMoved, depth + 1);
+                    break;
+
+                case SceneLight light:
+                    ImGui.PushID(light.Id);
+                    DrawLightRow(session, camera, light, row, lightMoved, depth + 1);
+                    ImGui.PopID();
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Unfolds every parent above something, so its row can be seen.</summary>
+    private static void Reveal(VoxelScene scene, int id)
+    {
+        IPlaceable? step = scene.FindPlaceable(id);
+
+        for (int hops = 0; step is not null && scene.ParentOf(step) is { } parent && hops <= scene.Objects.Count; hops++)
+        {
+            Folded.Remove(parent.Id);
+            step = parent;
+        }
+    }
+
+    private static float Indent(float row) => MathF.Round(row * 0.8f);
+
+    /// <summary>
+    /// The start of a row in a tree: its depth's indent, and the arrow that folds its children away —
+    /// or the arrow's space, so names at one depth line up whether or not they have children.
+    /// </summary>
+    private static void DrawLead(int id, int depth, bool hasChildren, float row)
+    {
+        if (!_tree)
+        {
+            return;
+        }
+
+        float start = ImGui.GetCursorPosX() + (depth * Indent(row));
+
+        if (!hasChildren)
+        {
+            ImGui.SetCursorPosX(start + Indent(row));
+            return;
+        }
+
+        ImGui.SetCursorPosX(start);
+
+        bool folded = Folded.Contains(id);
+        if (ImGui.InvisibleButton("##fold", new Vector2(Indent(row), row)))
+        {
+            if (folded)
+            {
+                Folded.Remove(id);
+            }
+            else
+            {
+                Folded.Add(id);
+            }
+        }
+
+        Vector2 min = ImGui.GetItemRectMin();
+        Vector2 max = ImGui.GetItemRectMax();
+        ToggleRects[(id, "fold")] = (min, max);
+
+        bool hovered = ImGui.IsItemHovered();
+        uint colour = ImGui.ColorConvertFloat4ToU32(hovered ? Theme.Text : Theme.TextDim);
+        Icons.Painter arrow = folded ? Icons.ChevronRight : Icons.ChevronDown;
+        arrow(new ImGuiIconCanvas(ImGui.GetWindowDrawList(), colour, 1.3f), (min + max) * 0.5f, row * 0.26f);
+
+        if (hovered)
+        {
+            ImGui.SetTooltip(folded ? "Show what is under it" : "Fold what is under it away");
+        }
+
+        ImGui.SameLine(0f, 0f);
+    }
+
+    /// <summary>A row's name can be dragged: onto an object to parent to it, below the list to be freed.</summary>
+    private static void DragSource(int id)
+    {
+        // The tooltip is drawn once the rows are, when it is known what is under the mouse.
+        if (!ImGui.BeginDragDropSource(ImGuiDragDropFlags.SourceNoPreviewTooltip))
+        {
+            return;
+        }
+
+        _draggedId = id;
+        _draggedFrame = ImGui.GetFrameCount();
+        ImGui.SetDragDropPayload(RowPayload, IntPtr.Zero, 0);
+        ImGui.EndDragDropSource();
+    }
+
+    /// <summary>An object's row takes a dragged row as its child, if it can be one.</summary>
+    private static void DropOnto(EditorSession session, VoxelObject parent)
+    {
+        if (!ImGui.BeginDragDropTarget())
+        {
+            return;
+        }
+
+        if (parent.Id != _draggedId && session.Scene.FindPlaceable(_draggedId) is { } dragged)
+        {
+            bool already = session.Scene.ParentOf(dragged)?.Id == parent.Id;
+            string? problem = already ? $"{dragged.Name} is under {parent.Name} already." : session.ParentProblem(dragged.Id, parent.Id);
+            _dropHint = problem ?? $"Parent {dragged.Name} to {parent.Name}";
+
+            if (problem is null && Delivered(ImGui.AcceptDragDropPayload(RowPayload)))
+            {
+                ParentMenu.Parent(session, dragged, parent);
+            }
+        }
+
+        ImGui.EndDragDropTarget();
+    }
+
+    /// <summary>The space below the rows, where a dragged row is let go to be freed from its parent.</summary>
+    private static void DrawDropSpace(EditorSession session, float row)
+    {
+        Vector2 available = ImGui.GetContentRegionAvail();
+        ImGui.InvisibleButton("##drop-space", new Vector2(MathF.Max(available.X, 1f), MathF.Max(available.Y, row)));
+        DropSpaceRect = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+
+        if (!ImGui.BeginDragDropTarget())
+        {
+            return;
+        }
+
+        if (session.Scene.FindPlaceable(_draggedId) is { } dragged && session.Scene.ParentOf(dragged) is { } parent)
+        {
+            _dropHint = $"Clear parent: free {dragged.Name} from {parent.Name}";
+
+            if (Delivered(ImGui.AcceptDragDropPayload(RowPayload)))
+            {
+                ParentMenu.Clear(session, dragged);
+            }
+        }
+
+        ImGui.EndDragDropTarget();
+    }
+
+    /// <summary>While a row is dragged, what letting go would do, beside the mouse.</summary>
+    private static void DrawDragHint(EditorSession session)
+    {
+        if (_draggedFrame != ImGui.GetFrameCount() || session.Scene.FindPlaceable(_draggedId) is not { } dragged)
+        {
+            return;
+        }
+
+        ImGui.SetTooltip(_dropHint ?? $"{dragged.Name}\nDrop it on an object to make that its parent,\nor below the list to free it.");
+    }
+
+    private static unsafe bool Delivered(ImGuiPayloadPtr payload) => payload.NativePtr != null && payload.Delivery;
 
     /// <summary>
     /// One slim row: the title, and on the right the filters, "show everything" when anything is
@@ -183,13 +414,14 @@ public static class ObjectListPanel
         return ImGui.GetCursorPosY() - start;
     }
 
-    private static void DrawObjectRow(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved)
+    private static void DrawObjectRow(EditorSession session, FlyCamera camera, VoxelObject o, float row, bool focusMoved, int depth, bool hasChildren)
     {
         bool focused = o.Id == session.Scene.FocusId;
 
         // While a light is picked, the focused object is only the one the voxel tools would act on,
         // so it keeps its mark but gives up the accent to the light.
         bool emphasised = focused && session.SelectedLightId == 0;
+        DrawLead(o.Id, depth, hasChildren, row);
         float width = NameWidth(row);
 
         if (_renamingId == o.Id)
@@ -206,6 +438,10 @@ public static class ObjectListPanel
                     StartRename(o);
                 }
             }
+
+            RowRects[o.Id] = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+            DragSource(o.Id);
+            DropOnto(session, o);
 
             if (emphasised && focusMoved)
             {
@@ -238,9 +474,10 @@ public static class ObjectListPanel
         }
     }
 
-    private static void DrawLightRow(EditorSession session, FlyCamera camera, SceneLight light, float row, bool lightMoved)
+    private static void DrawLightRow(EditorSession session, FlyCamera camera, SceneLight light, float row, bool lightMoved, int depth)
     {
         bool picked = light.Id == session.SelectedLightId;
+        DrawLead(light.Id, depth, hasChildren: false, row);
         float width = NameWidth(row);
 
         if (_renamingId == light.Id)
@@ -255,6 +492,9 @@ public static class ObjectListPanel
             {
                 StartRename(light);
             }
+
+            RowRects[light.Id] = (ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+            DragSource(light.Id);
 
             if (picked && lightMoved)
             {
@@ -414,6 +654,9 @@ public static class ObjectListPanel
         ObjectMenu.DrawJoinMenu(session, o);
 
         ImGui.Separator();
+        ParentMenu.DrawSubmenu(session, o);
+
+        ImGui.Separator();
 
         // Refused for the last object: with no Place tool, an empty scene is a dead end.
         bool isLast = session.Scene.Objects.Count <= 1;
@@ -456,6 +699,9 @@ public static class ObjectListPanel
         {
             session.SetLightLocked(light.Id, !light.Locked);
         }
+
+        ImGui.Separator();
+        ParentMenu.DrawSubmenu(session, light);
 
         ImGui.Separator();
 

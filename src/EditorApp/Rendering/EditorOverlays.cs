@@ -662,6 +662,57 @@ public static class EditorOverlays
         }
     }
 
+    /// <summary>
+    /// A dashed line from each child to its parent, Blender's relationship lines: what moves with what
+    /// is otherwise seen only by moving it. Centre to centre, where the eye already is — an origin can
+    /// sit well away from the voxels. Lights are left out while their icons are.
+    /// </summary>
+    public static void AddRelationshipLines(LineGeometry lines, VoxelScene scene, FlyCamera camera, bool lights)
+    {
+        foreach (VoxelObject o in scene.Objects)
+        {
+            if (o.Visible && scene.ParentOf(o) is { Visible: true } parent)
+            {
+                AddDashed(lines, o.WorldCentre(), parent.WorldCentre(), camera, RelationshipLine);
+            }
+        }
+
+        if (!lights)
+        {
+            return;
+        }
+
+        foreach (SceneLight light in scene.Lights)
+        {
+            if (scene.ParentOf(light) is { Visible: true } parent)
+            {
+                AddDashed(lines, light.WorldCentre(), parent.WorldCentre(), camera, RelationshipLine);
+            }
+        }
+    }
+
+    /// <summary>Dashes of a length that looks the same near and far: a share of the distance to the camera.</summary>
+    private static void AddDashed(LineGeometry lines, Vector3 from, Vector3 to, FlyCamera camera, Color32 colour)
+    {
+        float length = Vector3.Distance(from, to);
+        if (length < 1e-4f)
+        {
+            return;
+        }
+
+        float dash = MathF.Max(Vector3.Distance(camera.Position, (from + to) * 0.5f) * 0.012f, 0.01f);
+        int steps = Math.Min((int)MathF.Ceiling(length / dash), 400);
+
+        for (int i = 0; i < steps; i += 2)
+        {
+            Vector3 a = Vector3.Lerp(from, to, i / (float)steps);
+            Vector3 b = Vector3.Lerp(from, to, Math.Min(i + 1, steps) / (float)steps);
+            lines.AddLine(a, b, colour);
+        }
+    }
+
+    public static readonly Color32 RelationshipLine = new(150, 156, 170);
+
     public static readonly Color32 OriginFocused = new(255, 170, 64);
 
     public static readonly Color32 OriginOther = new(170, 170, 180);

@@ -895,6 +895,15 @@ public static class Icons
     public static void ChevronDown(IIconCanvas canvas, Vector2 centre, float r) =>
         Chevron(canvas, centre, r, up: false);
 
+    /// <summary>Pointing right: something folded away, that opens downwards.</summary>
+    public static void ChevronRight(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        Vector2 point = centre + new Vector2(r * 0.45f, 0f);
+
+        canvas.Line(centre + new Vector2(-r * 0.25f, -r * 0.7f), point);
+        canvas.Line(point, centre + new Vector2(-r * 0.25f, r * 0.7f));
+    }
+
     private static void Chevron(IIconCanvas canvas, Vector2 centre, float r, bool up)
     {
         float sign = up ? -1f : 1f;
