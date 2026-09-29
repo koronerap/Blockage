@@ -68,6 +68,14 @@ public sealed class LevelManifest
         [JsonPropertyName("id")]
         public int Id { get; set; }
 
+        /// <summary>
+        /// A linked copy: the <see cref="Id"/> of the object whose voxels it shares, which alone has
+        /// them written. Absent for an object with voxels of its own.
+        /// </summary>
+        [JsonPropertyName("linkedTo")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? LinkedTo { get; set; }
+
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 

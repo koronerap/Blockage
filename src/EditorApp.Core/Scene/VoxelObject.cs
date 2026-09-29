@@ -17,7 +17,30 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
 
     public string Name { get; set; } = name;
 
-    public VoxelWorld Grid { get; } = grid;
+    private VoxelWorld _grid = grid;
+
+    /// <summary>
+    /// Its voxels. Linked copies share one grid, so an edit to one is an edit to all; making one a
+    /// single user gives it a grid of its own.
+    /// </summary>
+    public VoxelWorld Grid
+    {
+        get => _grid;
+        internal set
+        {
+            if (ReferenceEquals(_grid, value))
+            {
+                return;
+            }
+
+            StopEvaluating();
+            _grid = value;
+            ModifierGeneration++;
+
+            // Whatever drew this grid before may have let go of it: it is drawn afresh.
+            value.MarkAllDirty();
+        }
+    }
 
     private ObjectTransform _transform = transform;
 
@@ -105,6 +128,20 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
     private IReadOnlyList<VoxelModifier> _modifiers = [];
     private ModifierEvaluator? _evaluator;
 
+    /// <summary>Which of the grid's chunks changed since the modifiers last looked: a set of their own, as the grid may be shared.</summary>
+    private HashSet<ChunkCoord>? _changed;
+
+    private void StopEvaluating()
+    {
+        if (_changed is not null)
+        {
+            Grid.StopListening(_changed);
+            _changed = null;
+        }
+
+        _evaluator = null;
+    }
+
     /// <summary>The modifiers drawn over the voxels, in the order they apply.</summary>
     public IReadOnlyList<VoxelModifier> Modifiers => _modifiers;
 
@@ -116,7 +153,7 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
     public void SetModifiers(IEnumerable<VoxelModifier> modifiers)
     {
         _modifiers = [.. modifiers.Select(m => m.Clamped())];
-        _evaluator = null;
+        StopEvaluating();
         ModifierGeneration++;
 
         // Whichever grid is shown now is drawn afresh, all of it.
@@ -137,14 +174,17 @@ public sealed class VoxelObject(int id, VoxelWorld grid, ObjectTransform transfo
                 return Grid;
             }
 
-            if (_evaluator is null)
+            if (_evaluator is null || _changed is null)
             {
-                Grid.ConsumeDirtyChunks();
+                StopEvaluating();
+                _changed = Grid.Listen();
                 _evaluator = new ModifierEvaluator(Grid, _modifiers);
             }
-            else if (Grid.DirtyChunks.Count > 0)
+            else if (_changed.Count > 0)
             {
-                _evaluator.Update(Grid, Grid.ConsumeDirtyChunks());
+                List<ChunkCoord> changed = [.. _changed];
+                _changed.Clear();
+                _evaluator.Update(Grid, changed);
             }
 
             return _evaluator.Shown;

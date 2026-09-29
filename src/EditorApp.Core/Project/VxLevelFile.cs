@@ -146,13 +146,18 @@ public static class VxLevelFile
 
         var entries = new List<LevelManifest.ObjectEntry>();
 
+        // Linked copies' voxels are written once, with the first of them; the rest point to it.
+        var writtenBy = new Dictionary<VoxelWorld, int>(ReferenceEqualityComparer.Instance);
         foreach (VoxelObject o in scene.Objects)
         {
-            List<ChunkCoord> coordinates = SortedCoordinates(o.Grid);
+            int? linkedTo = writtenBy.TryGetValue(o.Grid, out int first) ? first : null;
+            writtenBy.TryAdd(o.Grid, o.Id);
+            List<ChunkCoord> coordinates = linkedTo is null ? SortedCoordinates(o.Grid) : [];
 
             entries.Add(new LevelManifest.ObjectEntry
             {
                 Id = o.Id,
+                LinkedTo = linkedTo,
                 Name = o.Name,
                 Position = [o.Transform.Position.X, o.Transform.Position.Y, o.Transform.Position.Z],
                 Rotation =
@@ -361,6 +366,7 @@ public static class VxLevelFile
         }
 
         var collected = new List<(IPlaceable Thing, int CollectionFileId)>();
+        var linked = new List<(VoxelObject Copy, int SourceFileId)>();
 
         // An empty list is a level with nothing in it; only a missing one is version 1's single grid.
         if (manifest.Objects is { } objects)
@@ -399,6 +405,11 @@ public static class VxLevelFile
                 {
                     parented.Add((added, parent));
                 }
+
+                if (entry.LinkedTo is { } linkedTo)
+                {
+                    linked.Add((added, linkedTo));
+                }
             }
         }
         else
@@ -435,6 +446,15 @@ public static class VxLevelFile
         else
         {
             scene.AddDefaultSun();
+        }
+
+        // Linked copies take the voxels of the object they share them with.
+        foreach ((VoxelObject copy, int sourceFileId) in linked)
+        {
+            if (byFileId.TryGetValue(sourceFileId, out VoxelObject? source) && !ReferenceEquals(source, copy))
+            {
+                copy.Grid = source.Grid;
+            }
         }
 
         foreach ((IPlaceable thing, int collectionFileId) in collected)

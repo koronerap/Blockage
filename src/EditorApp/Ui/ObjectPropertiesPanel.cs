@@ -206,6 +206,18 @@ public static class ObjectPropertiesPanel
             session.SetObjectVoxelSize(focus.Id, 1f);
         }
 
+        // A linked copy says so, and can be given voxels of its own.
+        int users = session.UsersOf(focus);
+        if (users > 1)
+        {
+            Props.Value("Linked", users == 2 ? "shared with 1 other object" : $"shared with {users - 1} other objects");
+            Tooltip("A linked copy: its voxels are shared, so an edit to it is an edit to every copy.\nIts place, name and modifiers are its own.");
+            if (Props.Buttons(string.Empty, "single-user", "Make Single User") == 0)
+            {
+                session.MakeSingleUser(focus.Id);
+            }
+        }
+
         if (!focus.Grid.TryGetBounds(out Int3 min, out Int3 max))
         {
             Props.Value("Voxels", "none");

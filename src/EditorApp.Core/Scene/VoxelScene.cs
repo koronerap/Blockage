@@ -745,10 +745,17 @@ public sealed class VoxelScene
 
         copy._selected.UnionWith(_selected);
 
+        // Linked copies stay linked in the copy: each grid copied once, shared as before.
+        var grids = new Dictionary<VoxelWorld, VoxelWorld>(ReferenceEqualityComparer.Instance);
         foreach (VoxelObject o in _objects)
         {
-            VoxelWorld grid = o.Grid.Copy();
-            grid.ReplacePalette(copy.Palette);
+            if (!grids.TryGetValue(o.Grid, out VoxelWorld? grid))
+            {
+                grid = o.Grid.Copy();
+                grid.ReplacePalette(copy.Palette);
+                grids[o.Grid] = grid;
+            }
+
             var copied = new VoxelObject(o.Id, grid, o.Transform, o.Name)
             {
                 OwnVisible = o.OwnVisible,

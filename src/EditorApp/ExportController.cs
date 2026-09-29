@@ -115,7 +115,8 @@ public sealed class ExportController(EditorSession session)
 
         // Colour stops constraining the merge once there is somewhere for it to go. Palette blocks
         // still need it: there, a merged quad samples one texel and so can only be one colour.
-        _analysis = GreedyMesher.BuildScene(session.Scene, uvSelector: null, mergeAcrossColors: unwrapped);
+        // glTF can share one mesh between linked copies; the other formats bake each where it stands.
+        _analysis = GreedyMesher.BuildScene(session.Scene, uvSelector: null, mergeAcrossColors: unwrapped, instanceLinked: Current is GltfExporter);
 
         // Unwrapping rewrites the mesh's UVs, so it belongs here with the meshing rather than inside
         // an exporter — both formats have to be handed the same layout and the same sheet.

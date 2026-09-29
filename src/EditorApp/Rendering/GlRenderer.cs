@@ -16,7 +16,11 @@ namespace EditorApp.Rendering;
 /// </summary>
 public sealed class GlRenderer : IDisposable
 {
-    private readonly record struct ChunkKey(int ObjectId, ChunkCoord Coord);
+    /// <summary>A chunk of a grid, by the grid's <see cref="VoxelWorld.Serial"/>: linked copies share one grid, and so its meshes.</summary>
+    private readonly record struct ChunkKey(int MeshId, ChunkCoord Coord);
+
+    /// <summary>The grids drawn this frame, by serial, for their chunks to be meshed from.</summary>
+    private readonly Dictionary<int, VoxelWorld> _grids = [];
 
     private readonly GL _gl;
     private readonly Dictionary<int, Dictionary<ChunkCoord, ChunkMeshBuffer>> _buffers = new();
@@ -121,26 +125,28 @@ public sealed class GlRenderer : IDisposable
     /// </summary>
     public void SyncDirtyChunks(VoxelScene scene)
     {
-        DropDeletedObjects(scene);
-
+        // Each grid once, however many linked copies show it. A grid no object shows any more — an
+        // object deleted, its modifiers changed, a copy made a single user — is let go of.
+        _grids.Clear();
         foreach (VoxelObject o in scene.Objects)
         {
-            // Its modifiers changed: whatever was drawn for it may be of chunks it no longer has.
-            if (_modifierGenerations.GetValueOrDefault(o.Id) != o.ModifierGeneration)
+            VoxelWorld shown = o.Shown;
+            if (!_grids.TryAdd(shown.Serial, shown))
             {
-                _modifierGenerations[o.Id] = o.ModifierGeneration;
-                DropBuffers(o.Id);
+                continue;
             }
 
-            foreach (ChunkCoord coord in o.Shown.ConsumeDirtyChunks())
+            foreach (ChunkCoord coord in shown.ConsumeDirtyChunks())
             {
-                var key = new ChunkKey(o.Id, coord);
+                var key = new ChunkKey(shown.Serial, coord);
                 if (_pending.Add(key))
                 {
                     _pendingOrder.Enqueue(key);
                 }
             }
         }
+
+        DropUnusedMeshes();
 
         LastRemeshedChunks = 0;
         LastMeshMilliseconds = 0;
@@ -165,14 +171,13 @@ public sealed class GlRenderer : IDisposable
             ChunkKey key = _pendingOrder.Dequeue();
             _pending.Remove(key);
 
-            VoxelObject? owner = FindObject(scene, key.ObjectId);
-            if (owner is null)
+            if (!_grids.TryGetValue(key.MeshId, out VoxelWorld? grid))
             {
-                continue;   // the object went away before its chunk came up
+                continue;   // nothing shows that grid any more
             }
 
             stepClock.Restart();
-            EditMesher.BuildChunk(owner.Shown, key.Coord, _scratch);
+            EditMesher.BuildChunk(grid, key.Coord, _scratch);
             LastMeshMilliseconds += stepClock.Elapsed.TotalMilliseconds;
 
             stepClock.Restart();
@@ -183,21 +188,30 @@ public sealed class GlRenderer : IDisposable
         }
     }
 
-    /// <summary>The modifier generation each object was last drawn at.</summary>
-    private readonly Dictionary<int, int> _modifierGenerations = [];
-
-    /// <summary>Lets go of everything drawn for one object.</summary>
-    private void DropBuffers(int id)
+    /// <summary>Lets go of everything drawn for a grid nothing shows any more.</summary>
+    private void DropUnusedMeshes()
     {
-        if (!_buffers.Remove(id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+        List<int>? stale = null;
+        foreach (int id in _buffers.Keys)
         {
-            return;
+            if (!_grids.ContainsKey(id))
+            {
+                (stale ??= []).Add(id);
+            }
         }
 
-        foreach (ChunkMeshBuffer buffer in chunks.Values)
+        foreach (int id in stale ?? [])
         {
-            TotalVertices -= buffer.VertexCount;
-            buffer.Dispose();
+            if (!_buffers.Remove(id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+            {
+                continue;
+            }
+
+            foreach (ChunkMeshBuffer buffer in chunks.Values)
+            {
+                TotalVertices -= buffer.VertexCount;
+                buffer.Dispose();
+            }
         }
     }
 
@@ -246,56 +260,13 @@ public sealed class GlRenderer : IDisposable
         _gl.BindTexture(TextureTarget.Texture2D, 0);
     }
 
-    private static VoxelObject? FindObject(VoxelScene scene, int id)
-    {
-        foreach (VoxelObject o in scene.Objects)
-        {
-            if (o.Id == id)
-            {
-                return o;
-            }
-        }
-
-        return null;
-    }
-
-    private void DropDeletedObjects(VoxelScene scene)
-    {
-        List<int>? stale = null;
-        foreach (int id in _buffers.Keys)
-        {
-            if (FindObject(scene, id) is null)
-            {
-                (stale ??= []).Add(id);
-            }
-        }
-
-        if (stale is null)
-        {
-            return;
-        }
-
-        foreach (int id in stale)
-        {
-            if (!_buffers.Remove(id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
-            {
-                continue;
-            }
-
-            foreach (ChunkMeshBuffer buffer in chunks.Values)
-            {
-                TotalVertices -= buffer.VertexCount;
-                buffer.Dispose();
-            }
-        }
-    }
 
     private void ApplyChunkMesh(ChunkKey key)
     {
-        if (!_buffers.TryGetValue(key.ObjectId, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+        if (!_buffers.TryGetValue(key.MeshId, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
         {
             chunks = [];
-            _buffers.Add(key.ObjectId, chunks);
+            _buffers.Add(key.MeshId, chunks);
         }
 
         if (_scratch.IsEmpty)
@@ -581,7 +552,7 @@ public sealed class GlRenderer : IDisposable
     {
         foreach (VoxelObject o in scene.Objects)
         {
-            if (!o.Visible || !_buffers.TryGetValue(o.Id, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
+            if (!o.Visible || !_buffers.TryGetValue(o.Shown.Serial, out Dictionary<ChunkCoord, ChunkMeshBuffer>? chunks))
             {
                 continue;
             }

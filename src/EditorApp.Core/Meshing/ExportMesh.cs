@@ -28,6 +28,9 @@ public readonly record struct QuadColors(int Width, int Height, byte[] Cells)
 /// <param name="VoxelSize">World size of this part's voxels, so its quads can be measured in voxels again.</param>
 public readonly record struct MeshPart(string Name, int FirstQuad, int QuadCount, float VoxelSize = 1f);
 
+/// <summary>A part put down in the level: under a name, where an object stands.</summary>
+public readonly record struct MeshInstance(string Name, int Part, Matrix4x4 Transform);
+
 public sealed class ExportMesh
 {
     public List<Vector3> Positions { get; } = [];
@@ -49,6 +52,13 @@ public sealed class ExportMesh
     /// case the whole thing is one part.
     /// </summary>
     public List<MeshPart> Parts { get; } = [];
+
+    /// <summary>
+    /// Where each part is put down, when parts are shared — linked copies' voxels meshed once in
+    /// their own space and placed wherever each copy stands, as formats with instancing can say.
+    /// Empty when every part is baked where it stands, as it is for formats without.
+    /// </summary>
+    public List<MeshInstance> Instances { get; } = [];
 
     public int VertexCount => Positions.Count;
 

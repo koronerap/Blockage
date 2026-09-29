@@ -6,8 +6,19 @@ namespace EditorApp.Core.Voxels;
 /// </summary>
 public sealed class VoxelWorld
 {
+    private static int _serials;
+
     private readonly Dictionary<ChunkCoord, Chunk> _chunks = new();
     private readonly HashSet<ChunkCoord> _dirty = new();
+
+    /// <summary>Further readers' dirty sets: see <see cref="Listen"/>.</summary>
+    private List<HashSet<ChunkCoord>>? _listeners;
+
+    /// <summary>
+    /// A number no other grid has had in this run. Linked copies share one grid, so it names the
+    /// voxels themselves rather than an object: what draws them draws them once for all the copies.
+    /// </summary>
+    public int Serial { get; } = Interlocked.Increment(ref _serials);
 
     public Palette Palette { get; private set; } = Palette.CreateDefault();
 
@@ -72,7 +83,7 @@ public sealed class VoxelWorld
 
         // Only this chunk's mesh changes: a face colour is invisible to the neighbours, unlike a
         // voxel appearing or disappearing.
-        _dirty.Add(coord);
+        Dirty(coord);
         return true;
     }
 
@@ -110,7 +121,7 @@ public sealed class VoxelWorld
             return false;
         }
 
-        _dirty.Add(coord);
+        Dirty(coord);
         MarkTouchedNeighbours(coord, lx, ly, lz);
         return true;
     }
@@ -134,18 +145,44 @@ public sealed class VoxelWorld
     {
         if (_chunks.ContainsKey(coord))
         {
-            _dirty.Add(coord);
+            Dirty(coord);
         }
     }
 
-    public void MarkDirty(ChunkCoord coord) => _dirty.Add(coord);
+    public void MarkDirty(ChunkCoord coord) => Dirty(coord);
+
+    private void Dirty(ChunkCoord coord)
+    {
+        _dirty.Add(coord);
+        if (_listeners is not null)
+        {
+            foreach (HashSet<ChunkCoord> set in _listeners)
+            {
+                set.Add(coord);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A dirty set of its own for another reader of these voxels — each linked copy's modifiers, over
+    /// the grid the copies share — so that one reading its changes does not take them from the rest.
+    /// Starts with nothing in it. Let go of with <see cref="StopListening"/>.
+    /// </summary>
+    public HashSet<ChunkCoord> Listen()
+    {
+        var set = new HashSet<ChunkCoord>();
+        (_listeners ??= []).Add(set);
+        return set;
+    }
+
+    public void StopListening(HashSet<ChunkCoord> set) => _listeners?.Remove(set);
 
     /// <summary>Marks every chunk dirty — used after a palette edit, which recolors existing meshes.</summary>
     public void MarkAllDirty()
     {
         foreach (ChunkCoord coord in _chunks.Keys)
         {
-            _dirty.Add(coord);
+            Dirty(coord);
         }
     }
 
@@ -165,7 +202,7 @@ public sealed class VoxelWorld
         {
             chunk = new Chunk();
             _chunks.Add(coord, chunk);
-            _dirty.Add(coord);
+            Dirty(coord);
         }
 
         return chunk;
@@ -192,6 +229,7 @@ public sealed class VoxelWorld
         {
             _chunks.Remove(coord);
             _dirty.Remove(coord);
+            _listeners?.ForEach(set => set.Remove(coord));
         }
     }
 
@@ -224,7 +262,7 @@ public sealed class VoxelWorld
     {
         foreach (ChunkCoord coord in _chunks.Keys)
         {
-            _dirty.Add(coord);
+            Dirty(coord);
         }
 
         _chunks.Clear();

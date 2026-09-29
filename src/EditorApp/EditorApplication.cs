@@ -1275,6 +1275,7 @@ public sealed class EditorApplication : IDisposable
             // The object keys act on everything selected, lights included — or, inside an object, on
             // its chosen voxels.
             case EditorAction.Duplicate when !IsDragging(): ObjectMenu.Duplicate(_session, _camera); break;
+            case EditorAction.DuplicateLinked when !IsDragging(): ObjectMenu.DuplicateLinked(_session, _camera); break;
 
             case EditorAction.ShowAll:
                 _session.ShowAllObjects();

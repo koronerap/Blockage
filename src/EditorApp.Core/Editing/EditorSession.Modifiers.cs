@@ -108,12 +108,15 @@ public sealed partial class EditorSession
         IReadOnlyList<VoxelModifier> before = target.Modifiers;
         VoxelWorld baked = new ModifierEvaluator(target.Grid, [.. before.Take(index + 1)]).Shown;
 
+        // Applied to this object alone: a linked copy is given voxels of its own first.
+        ICommand? single = SingleUserFirst(target);
         var grid = new ReplaceGridCommand(target, baked, target.Transform, "Apply modifier");
         grid.Redo();
         var list = new ModifierCommand(target, before, [.. before.Skip(index + 1)], "Apply modifier");
         list.Redo();
 
-        History.Push(new CompositeCommand(index == 0 ? $"Apply {before[0].Label}" : $"Apply {index + 1} modifiers", [grid, list]));
+        List<ICommand> steps = single is null ? [grid, list] : [single, grid, list];
+        History.Push(new CompositeCommand(index == 0 ? $"Apply {before[0].Label}" : $"Apply {index + 1} modifiers", steps));
         HasUnsavedChanges = true;
         return true;
     }

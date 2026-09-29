@@ -969,7 +969,9 @@ public sealed partial class EditorSession
     /// among each other — and selects the copies. A copy of something whose parent is copied too goes
     /// under the parent's copy; otherwise it keeps the parent. One undo step.
     /// </summary>
-    public IReadOnlyList<IPlaceable> DuplicateSelected(Vector3 towards)
+    public IReadOnlyList<IPlaceable> DuplicateSelected(Vector3 towards) => DuplicateSelected(towards, linked: false);
+
+    private IReadOnlyList<IPlaceable> DuplicateSelected(Vector3 towards, bool linked)
     {
         List<VoxelObject> objects = [.. Scene.SelectedObjects.Where(o => !o.IsEmpty)];
         List<SceneLight> lights = [.. Scene.SelectedLights];
@@ -991,12 +993,13 @@ public sealed partial class EditorSession
         foreach (VoxelObject source in ParentsFirst(objects))
         {
             int parent = Scene.ParentOf(source)?.Id ?? 0;
+            // A linked copy shares the very grid; any other copy gets one of its own.
             var command = new CreateObjectCommand(
                 Scene,
-                source.Grid.Copy(),
+                linked ? source.Grid : source.Grid.Copy(),
                 source.Transform.Translated(offset),
                 DuplicateName(source.Name, Scene.Objects.Select(o => o.Name)),
-                $"Duplicate {source.Name}",
+                linked ? $"Duplicate {source.Name} Linked" : $"Duplicate {source.Name}",
                 Scene.IndexOf(source.Id) + 1,
                 copyOf.GetValueOrDefault(parent, parent),
                 source.CollectionId);
@@ -1042,7 +1045,7 @@ public sealed partial class EditorSession
 
         SelectOnly(ids);
 
-        History.Push(CompositeCommand.Of(Several("Duplicate", [.. objects, .. lights]), steps));
+        History.Push(CompositeCommand.Of(Several(linked ? "Duplicate Linked" : "Duplicate", [.. objects, .. lights]), steps));
         HasUnsavedChanges = true;
         return copies;
     }
@@ -1219,7 +1222,9 @@ public sealed partial class EditorSession
         EndStroke();
         CancelExtrude();
 
+        // Joining into a linked copy would put the voxels into every copy of it: it is given its own first.
         var steps = new List<ICommand>();
+        ICommand? single = Scene.SelectedObjects.Any(o => o.Id != target.Id) ? SingleUserFirst(target) : null;
         foreach (VoxelObject source in Scene.SelectedObjects.Where(o => o.Id != target.Id).ToList())
         {
             if (JoinProblem(source.Id, target.Id) is not null
@@ -1236,11 +1241,18 @@ public sealed partial class EditorSession
 
         if (steps.Count == 0)
         {
+            single?.Undo();
             return 0;
         }
 
+        string joined = steps.Count == 1 ? steps[0].Name : $"Join {steps.Count} into {target.Name}";
+        if (single is not null)
+        {
+            steps.Insert(0, single);
+        }
+
         Selection = null;
-        History.Push(CompositeCommand.Of(steps.Count == 1 ? steps[0].Name : $"Join {steps.Count} into {target.Name}", steps));
+        History.Push(CompositeCommand.Of(joined, steps));
         HasUnsavedChanges = true;
         return steps.Count;
     }
@@ -1494,9 +1506,10 @@ public sealed partial class EditorSession
         CancelExtrude();
         Selection = null;
 
+        ICommand? single = SingleUserFirst(target);
         var command = new JoinCommand(Scene, source, target, map);
         command.Redo();
-        History.Push(command);
+        History.Push(single is null ? command : CompositeCommand.Of(command.Name, [single, command]));
         KeepEditModeHonest();
         HasUnsavedChanges = true;
         return true;

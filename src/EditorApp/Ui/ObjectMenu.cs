@@ -56,6 +56,25 @@ public static class ObjectMenu
         }
     }
 
+    /// <summary>
+    /// Alt+D: linked copies of what is selected — sharing their voxels with the originals, so an
+    /// edit to one is an edit to all — taken straight into a move, as a duplicate is.
+    /// </summary>
+    public static void DuplicateLinked(EditorSession session, FlyCamera camera)
+    {
+        if (session.InEditMode)
+        {
+            ReportLog.Shared.Post("Linked copies are of whole objects - Tab back to Object Mode first.", ReportKind.Warning);
+            return;
+        }
+
+        if (session.DuplicateSelectedLinked(camera.Right).Count > 0)
+        {
+            session.ActiveTool = EditorTool.Transform;
+            session.TransformMode = TransformMode.Move;
+        }
+    }
+
     /// <summary>Tab: into the active object, or out of it, saying why when it cannot.</summary>
     public static void ToggleEditMode(EditorSession session, ReportLog log)
     {
@@ -485,6 +504,22 @@ public static class ObjectMenu
         if (ImGui.MenuItem("Duplicate", Shortcut.Of(EditorAction.Duplicate), false, any))
         {
             Duplicate(session, camera);
+        }
+
+        if (ImGui.MenuItem("Duplicate Linked", Shortcut.Of(EditorAction.DuplicateLinked), false, objects.Count > 0))
+        {
+            DuplicateLinked(session, camera);
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Copies that share their voxels with the originals: an edit to one is an edit to all.");
+        }
+
+        if (scene.Focus is { } shared && objects.Contains(shared) && session.UsersOf(shared) > 1
+            && ImGui.MenuItem("Make Single User"))
+        {
+            session.MakeSingleUser(shared.Id);
         }
 
         IPlaceable? active = (IPlaceable?)session.SelectedLight ?? scene.Focus;

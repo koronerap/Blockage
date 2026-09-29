@@ -62,17 +62,55 @@ public static class GreedyMesher
     /// object is merged in its own space, which is what keeps greedy merging working after a
     /// rotation.
     /// </summary>
+    /// <param name="instanceLinked">
+    /// Linked copies' shared voxels meshed once, in their own space, and placed where each copy stands
+    /// through <see cref="ExportMesh.Instances"/> — for formats that can share one mesh between many
+    /// placements. Everything else is still baked where it stands, and placed where it is.
+    /// </param>
     public static ExportMesh BuildScene(
         Scene.VoxelScene scene,
         Func<byte, Vector2>? uvSelector = null,
-        bool mergeAcrossColors = false)
+        bool mergeAcrossColors = false,
+        bool instanceLinked = false)
     {
         var combined = new ExportMesh();
+
+        // Grids more than one exported object shows as they are — modifiers make each one's own.
+        var shared = new HashSet<Voxels.VoxelWorld>(ReferenceEqualityComparer.Instance);
+        if (instanceLinked)
+        {
+            foreach (IGrouping<Voxels.VoxelWorld, Scene.VoxelObject> group in scene.Objects
+                .Where(o => o.IsExported && !o.IsEmpty && !o.HasModifiers)
+                .GroupBy(o => o.Grid, ReferenceEqualityComparer.Instance as IEqualityComparer<Voxels.VoxelWorld>))
+            {
+                if (group.Count() > 1)
+                {
+                    shared.Add(group.Key);
+                }
+            }
+        }
+
+        var partOf = new Dictionary<Voxels.VoxelWorld, int>(ReferenceEqualityComparer.Instance);
 
         foreach (Scene.VoxelObject o in scene.Objects)
         {
             if (!o.IsExported || o.IsEmpty)
             {
+                continue;
+            }
+
+            if (!o.HasModifiers && shared.Contains(o.Grid))
+            {
+                if (!partOf.TryGetValue(o.Grid, out int part))
+                {
+                    int start = combined.QuadCount;
+                    combined.Append(Build(o.Grid, uvSelector, mergeAcrossColors), Scene.ObjectTransform.Identity);
+                    combined.BeginPart(o.Name, start);
+                    part = combined.Parts.Count - 1;
+                    partOf[o.Grid] = part;
+                }
+
+                combined.Instances.Add(new MeshInstance(o.Name, part, o.Transform.ToMatrix()));
                 continue;
             }
 
@@ -83,6 +121,10 @@ public static class GreedyMesher
             int first = combined.QuadCount;
             combined.Append(Build(o.Shown, uvSelector, mergeAcrossColors), o.Transform);
             combined.BeginPart(o.Name, first, o.VoxelSize);
+            if (instanceLinked)
+            {
+                combined.Instances.Add(new MeshInstance(o.Name, combined.Parts.Count - 1, Matrix4x4.Identity));
+            }
         }
 
         return combined;

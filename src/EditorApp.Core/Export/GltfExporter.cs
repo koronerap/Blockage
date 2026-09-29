@@ -62,6 +62,7 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
         // material and the sheet, so this stays a single texture and a single draw call's worth of
         // state — it only stops the pieces arriving welded into one lump that has to be separated
         // by hand on the other side.
+        var builders = new List<MeshBuilder<VertexPositionNormal, VertexTexture1>>();
         foreach (MeshPart part in mesh.PartsOrWhole)
         {
             var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexTexture1>(part.Name);
@@ -84,7 +85,23 @@ public sealed class GltfExporter(bool binary = true) : IMeshExporter
                 }
             }
 
-            scene.AddRigidMesh(meshBuilder, Matrix4x4.Identity);
+            builders.Add(meshBuilder);
+        }
+
+        // Linked copies: one mesh, a node for every copy, each where its copy stands.
+        if (mesh.Instances.Count > 0)
+        {
+            foreach (MeshInstance instance in mesh.Instances)
+            {
+                scene.AddRigidMesh(builders[instance.Part], instance.Transform).WithName(instance.Name);
+            }
+        }
+        else
+        {
+            foreach (var builder in builders)
+            {
+                scene.AddRigidMesh(builder, Matrix4x4.Identity);
+            }
         }
 
         ModelRoot model = scene.ToGltf2();
