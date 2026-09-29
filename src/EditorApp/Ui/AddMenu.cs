@@ -147,6 +147,7 @@ public static class AddMenu
         ShapeKind.Torus => Icons.ShapeTorus,
         ShapeKind.Stairs => Icons.ShapeStairs,
         ShapeKind.Arch => Icons.ShapeArch,
+        ShapeKind.Text => Icons.Text,
         _ => Icons.ObjectTab,
     };
 

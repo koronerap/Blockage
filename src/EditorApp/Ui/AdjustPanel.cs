@@ -50,6 +50,23 @@ public static class AdjustPanel
             {
                 ShapeSettings settings = shape.Settings;
 
+                // Lettering says something: what, first, typed straight in.
+                if (kind == ShapeKind.Text)
+                {
+                    string text = settings.Text;
+                    Props.Label("Text");
+                    ImGui.SetNextItemWidth(-1f);
+                    if (ImGui.InputTextMultiline("##adjust-text", ref text, ShapeSettings.MaxTextLength, new System.Numerics.Vector2(-1f, ImGui.GetTextLineHeight() * 3.2f)))
+                    {
+                        settings = settings with { Text = text };
+                    }
+
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Capitals, digits and the common marks, Turkish letters too. Enter starts a new line.");
+                    }
+                }
+
                 for (int i = 0; i < fields.Count; i++)
                 {
                     ShapeField field = fields[i];

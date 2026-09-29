@@ -310,7 +310,7 @@ public sealed class EditorApplication : IDisposable
 
         // Every text size goes into the atlas while it is being built, so changing size later is a
         // pointer swap rather than a rebuilt texture.
-        return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels), () =>
+        return new ImGuiController(gl, _window, input, new ImGuiFontConfig(fontPath, Theme.FontSizePixels, _ => Theme.GlyphRanges), () =>
         {
             ImFontAtlasPtr atlas = ImGui.GetIO().Fonts;
             Theme.AddFonts(atlas, fontPath, atlas.Fonts[0]);

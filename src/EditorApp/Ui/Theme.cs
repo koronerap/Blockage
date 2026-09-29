@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using ImGuiNET;
 
 namespace EditorApp.Ui;
@@ -145,6 +146,32 @@ public static class Theme
 
     public static AccentKind AccentColour { get; private set; } = AccentKind.Blue;
 
+    /// <summary>
+    /// The characters the interface's font carries: Latin with Latin-1 and Latin Extended-A — where
+    /// Turkish's İ, Ğ and Ş are, outside ImGui's default, so they showed as question marks in a name —
+    /// and the punctuation and arrows the interface's own text uses. Held for the life of the program:
+    /// the atlas reads it whenever it is built.
+    /// </summary>
+    public static IntPtr GlyphRanges
+    {
+        get
+        {
+            if (_glyphRanges == IntPtr.Zero)
+            {
+                ushort[] ranges = [0x0020, 0x017F, 0x2000, 0x206F, 0x2190, 0x21FF, 0x2212, 0x2212, 0];
+                _glyphRanges = Marshal.AllocHGlobal(ranges.Length * sizeof(ushort));
+                for (int i = 0; i < ranges.Length; i++)
+                {
+                    Marshal.WriteInt16(_glyphRanges, i * sizeof(ushort), unchecked((short)ranges[i]));
+                }
+            }
+
+            return _glyphRanges;
+        }
+    }
+
+    private static IntPtr _glyphRanges;
+
     /// <summary>Called while the font atlas is being built: one face at every size.</summary>
     public static void AddFonts(ImFontAtlasPtr atlas, string path, ImFontPtr normal)
     {
@@ -154,11 +181,11 @@ public static class Theme
         {
             if (size != TextSize.Normal)
             {
-                Fonts[size] = atlas.AddFontFromFileTTF(path, PixelsFor(size));
+                Fonts[size] = atlas.AddFontFromFileTTF(path, PixelsFor(size), new ImFontConfigPtr(IntPtr.Zero), GlyphRanges);
             }
         }
 
-        _title = atlas.AddFontFromFileTTF(path, TitlePixels);
+        _title = atlas.AddFontFromFileTTF(path, TitlePixels, new ImFontConfigPtr(IntPtr.Zero), GlyphRanges);
     }
 
     /// <summary>Whether the text size can be changed — not with ImGui's built-in bitmap font, which comes in one size.</summary>

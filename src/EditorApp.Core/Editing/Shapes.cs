@@ -16,14 +16,25 @@ public enum ShapeKind
     Torus,
     Stairs,
     Arch,
+
+    /// <summary>Lettering in the built-in pixel font: a sign, a label, a number on a door.</summary>
+    Text,
 }
 
 /// <summary>One number a shape is made from: what it is called, where it starts, and how far it may go.</summary>
 public readonly record struct ShapeField(string Name, int Default, int Min, int Max, string Tooltip);
 
-/// <summary>A shape and what it is made with: its numbers, in the order its fields list them, and whether it is only a shell.</summary>
-public sealed record ShapeSettings(ShapeKind Kind, IReadOnlyList<int> Values, bool Hollow = false)
+/// <summary>
+/// A shape and what it is made with: its numbers, in the order its fields list them, whether it is
+/// only a shell, and — for lettering — what it says.
+/// </summary>
+public sealed record ShapeSettings(ShapeKind Kind, IReadOnlyList<int> Values, bool Hollow = false, string Text = ShapeSettings.DefaultText)
 {
+    public const string DefaultText = "TEXT";
+
+    /// <summary>Longer than this and a sign is a wall of letters no one set out to make.</summary>
+    public const int MaxTextLength = 64;
+
     /// <summary>The value of a field, held inside the field's range.</summary>
     public int this[int field]
     {
@@ -47,9 +58,10 @@ public sealed record ShapeSettings(ShapeKind Kind, IReadOnlyList<int> Values, bo
         other is not null
         && Kind == other.Kind
         && Hollow == other.Hollow
+        && Text == other.Text
         && Enumerable.Range(0, Shapes.FieldsOf(Kind).Count).All(i => this[i] == other[i]);
 
-    public override int GetHashCode() => HashCode.Combine(Kind, Hollow, Enumerable.Range(0, Shapes.FieldsOf(Kind).Count).Aggregate(0, (h, i) => HashCode.Combine(h, this[i])));
+    public override int GetHashCode() => HashCode.Combine(Kind, Hollow, Text, Enumerable.Range(0, Shapes.FieldsOf(Kind).Count).Aggregate(0, (h, i) => HashCode.Combine(h, this[i])));
 }
 
 /// <summary>
@@ -67,7 +79,14 @@ public static class Shapes
     public static readonly ShapeKind[] All =
     [
         ShapeKind.Voxel, ShapeKind.Cube, ShapeKind.Plane, ShapeKind.Wall, ShapeKind.Sphere, ShapeKind.Cylinder,
-        ShapeKind.Cone, ShapeKind.Pyramid, ShapeKind.Torus, ShapeKind.Stairs, ShapeKind.Arch,
+        ShapeKind.Cone, ShapeKind.Pyramid, ShapeKind.Torus, ShapeKind.Stairs, ShapeKind.Arch, ShapeKind.Text,
+    ];
+
+    private static readonly ShapeField[] Lettering =
+    [
+        new("Size", 1, 1, 8, "Voxels to one pixel of the font: a letter is five pixels wide and seven tall."),
+        new("Depth", 2, 1, 16, "How thick the letters stand, in voxels."),
+        new("Spacing", 1, 0, 8, "Pixels between letters."),
     ];
 
     private static readonly ShapeField[] None = [];
@@ -146,6 +165,7 @@ public static class Shapes
         ShapeKind.Pyramid => "Pyramid",
         ShapeKind.Torus => "Torus",
         ShapeKind.Stairs => "Stairs",
+        ShapeKind.Text => "Text",
         _ => "Arch",
     };
 
@@ -161,6 +181,7 @@ public static class Shapes
         ShapeKind.Torus => Ring,
         ShapeKind.Stairs => Flight,
         ShapeKind.Arch => Doorway,
+        ShapeKind.Text => Lettering,
         _ => None,
     };
 
@@ -216,6 +237,11 @@ public static class Shapes
 
             case ShapeKind.Arch:
                 Arch(cells, s[0], s[1], s[2]);
+                break;
+
+            case ShapeKind.Text:
+                string text = s.Text.Length > ShapeSettings.MaxTextLength ? s.Text[..ShapeSettings.MaxTextLength] : s.Text;
+                cells.UnionWith(VoxelFont.Cells(text.Trim().Length == 0 ? ShapeSettings.DefaultText : text, s[0], s[1], s[2]));
                 break;
 
             default:

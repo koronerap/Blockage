@@ -247,6 +247,14 @@ public static class Icons
         }
     }
 
+    /// <summary>Text: a block capital T, in the font's own square pixels.</summary>
+    public static void Text(IIconCanvas canvas, Vector2 centre, float r)
+    {
+        float p = r * 0.34f;
+        canvas.FilledRect(centre + new Vector2(-r, -r), centre + new Vector2(r, -r + p));
+        canvas.FilledRect(centre + new Vector2(-p * 0.5f, -r + p), centre + new Vector2(p * 0.5f, r));
+    }
+
     /// <summary>Ellipse selection: a dashed round.</summary>
     public static void EllipseSelect(IIconCanvas canvas, Vector2 centre, float r)
     {
