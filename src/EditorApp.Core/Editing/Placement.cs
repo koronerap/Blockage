@@ -41,8 +41,9 @@ public static class Placement
         return new ObjectTransform(Snap(position, voxelSize), Quaternion.Identity, voxelSize);
     }
 
+    /// <summary>Each coordinate to the nearest whole voxel — and never to -0, which a field would show as "-0".</summary>
     private static Vector3 Snap(Vector3 position, float size) => new(
-        MathF.Round(position.X / size) * size,
-        MathF.Round(position.Y / size) * size,
-        MathF.Round(position.Z / size) * size);
+        (MathF.Round(position.X / size) * size) + 0f,
+        (MathF.Round(position.Y / size) * size) + 0f,
+        (MathF.Round(position.Z / size) * size) + 0f);
 }

@@ -238,6 +238,22 @@ public class PropPresetTests
         Assert.True(colours.Count >= 2, $"{kind} is in one colour");
     }
 
+    /// <summary>In a new level's palette a prop is in its own colours exactly: wood is brown, not the olive nearest a guess.</summary>
+    [Fact]
+    public void InTheDefaultPaletteAPropsColoursAreExact()
+    {
+        Palette palette = Palette.CreateDefault();
+        VoxelWorld crate = PropPresets.Build(PropKind.Crate, palette);
+        VoxelWorld tree = PropPresets.Build(PropKind.Tree, palette);
+
+        Color32 planks = palette[crate.GetVoxel(new Int3(0, 5, 0))];
+        Color32 leaves = palette[tree.GetVoxel(new Int3(0, 7, 3))];
+
+        Assert.Equal(Color32.FromHsv(2 * (360f / 22f), 0.55f, 0.6f), planks);
+        Assert.True(planks.R > planks.G && planks.G > planks.B, $"{planks} is not a brown");
+        Assert.True(leaves.G > leaves.R && leaves.G > leaves.B, $"{leaves} is not a green");
+    }
+
     [Fact]
     public void TheNearestColourIsTheColourWhenThePaletteHasIt()
     {
@@ -290,6 +306,17 @@ public class PlacementTests
         (_, Vector3 max) = WorldBox(Placement.Against(Cube, new Vector3(0f, 10f, 0f), -Vector3.UnitY, 1f));
 
         Assert.Equal(10f, max.Y);
+    }
+
+    /// <summary>A point just below zero rounds to zero, not to minus zero — which a field shows as "-0".</summary>
+    [Fact]
+    public void ItNeverLandsOnMinusZero()
+    {
+        ObjectTransform at = Placement.Against(Cube, new Vector3(-0.2f, 0f, -0.3f), Vector3.UnitY, 1f);
+
+        Assert.False(float.IsNegative(at.Position.X));
+        Assert.False(float.IsNegative(at.Position.Z));
+        Assert.Equal("0", at.Position.Z.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     [Fact]

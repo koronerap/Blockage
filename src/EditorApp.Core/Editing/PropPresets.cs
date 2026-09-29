@@ -23,11 +23,14 @@ public static class PropPresets
 {
     public static readonly PropKind[] All = [PropKind.Crate, PropKind.Barrel, PropKind.Table, PropKind.Chair, PropKind.Tree, PropKind.Fence];
 
-    private static readonly Color32 Wood = new(0xB0, 0x80, 0x4E);
-    private static readonly Color32 DarkWood = new(0x6E, 0x4A, 0x2C);
-    private static readonly Color32 Metal = new(0x5E, 0x60, 0x64);
-    private static readonly Color32 Bark = new(0x6B, 0x4A, 0x30);
-    private static readonly Color32 Leaves = new(0x4C, 0x8A, 0x3C);
+    // The default palette's own browns, grey and green, so a prop in a new level is in exactly these
+    // — and a colour picked by eye between its steps can land on the wrong hue: a brown that is
+    // nearest to the palette's olive is not a brown any more.
+    private static readonly Color32 Wood = Color32.FromHsv(2 * (360f / 22f), 0.55f, 0.6f);
+    private static readonly Color32 DarkWood = Color32.FromHsv(2 * (360f / 22f), 0.55f, 0.4f);
+    private static readonly Color32 Metal = new(91, 91, 91);
+    private static readonly Color32 Bark = DarkWood;
+    private static readonly Color32 Leaves = Color32.FromHsv(7 * (360f / 22f), 0.55f, 0.6f);
 
     public static string NameOf(PropKind kind) => kind switch
     {
